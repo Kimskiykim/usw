@@ -1,0 +1,30 @@
+{
+  "name": "usw",
+  "version": "0.1.0+codex.20260715150522",
+  "description": "Initialize and use the USW harness in any project.",
+  "author": {
+    "name": "USW contributors",
+    "url": "https://github.com/Kimskiykim"
+  },
+  "repository": "https://github.com/Kimskiykim/usw",
+  "license": "MIT",
+  "keywords": [
+    "harness",
+    "workflow",
+    "sync"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "USW",
+    "shortDescription": "Initialize the USW project harness.",
+    "longDescription": "Adds a deterministic workflow that initializes the USW harness and its SYNC.md file in a project.",
+    "developerName": "USW contributors",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Run /usw-init to initialize USW in this project."
+    ]
+  }
+}

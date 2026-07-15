@@ -1,0 +1,20 @@
+{
+  "name": "usw",
+  "interface": {
+    "displayName": "USW"
+  },
+  "plugins": [
+    {
+      "name": "usw",
+      "source": {
+        "source": "local",
+        "path": "./plugins/usw"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
