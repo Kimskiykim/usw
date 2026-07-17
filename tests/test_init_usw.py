@@ -6,8 +6,6 @@ from pathlib import Path
 
 SCRIPT_PATH = (
     Path(__file__).parents[1]
-    / "plugins"
-    / "usw"
     / "skills"
     / "usw-initialize-project"
     / "scripts"

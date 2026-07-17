@@ -7,8 +7,8 @@
     {
       "name": "usw",
       "source": {
-        "source": "local",
-        "path": "./plugins/usw"
+        "source": "url",
+        "url": "https://github.com/Kimskiykim/usw.git"
       },
       "policy": {
         "installation": "AVAILABLE",

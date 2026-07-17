@@ -69,9 +69,9 @@ class InstallTests(unittest.TestCase):
 
             self.assertEqual(0, result.returncode, result.stderr)
             source_skill = (
-                ROOT / "plugins/usw/skills/usw-initialize-project/SKILL.md"
+                ROOT / "skills/usw-initialize-project/SKILL.md"
             ).read_text(encoding="utf-8")
-            source_command = (ROOT / "plugins/usw/commands/usw-init.md").read_text(
+            source_command = (ROOT / "commands/usw-init.md").read_text(
                 encoding="utf-8"
             )
             self.assertEqual(source_skill, qwen_skill.read_text(encoding="utf-8"))
