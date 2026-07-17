@@ -1,7 +1,7 @@
 interface:
   display_name: "USW Init"
-  short_description: "Initialize the USW harness in a project"
-  default_prompt: "Use $usw-initialize-project to initialize USW in this project."
+  short_description: "Initialize OpenSpec and local USW state"
+  default_prompt: "Use $usw-initialize-project to initialize an OpenSpec-compatible USW workspace in this project."
 
 policy:
   allow_implicit_invocation: false

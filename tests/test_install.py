@@ -10,6 +10,15 @@ INSTALL = ROOT / "install.sh"
 
 
 class InstallTests(unittest.TestCase):
+    SKILL_NAMES = (
+        "usw-initialize-project",
+        "usw-manage-handoff",
+        "usw-brainstorm-solutions",
+        "usw-plan-small-steps",
+        "usw-explain-me",
+    )
+    COMMAND_NAMES = ("usw-init.md", "usw-handoff.md", "usw-resume.md")
+
     def run_install(self, home: Path, *args: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env["HOME"] = str(home)
@@ -24,21 +33,31 @@ class InstallTests(unittest.TestCase):
             check=False,
         )
 
-    def test_installs_both_skills_by_default(self):
+    def test_installs_all_components_for_both_agents_by_default(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
 
             result = self.run_install(home)
 
             self.assertEqual(0, result.returncode, result.stderr)
-            self.assertTrue(
-                (home / ".qwen/skills/usw-initialize-project/SKILL.md").is_file()
-            )
-            self.assertTrue((home / ".qwen/commands/usw-init.md").is_file())
-            self.assertTrue(
-                (home / ".agents/skills/usw-initialize-project/SKILL.md").is_file()
-            )
-            self.assertTrue((home / ".codex/prompts/usw-init.md").is_file())
+            for skills_dir in (home / ".qwen/skills", home / ".agents/skills"):
+                for skill_name in self.SKILL_NAMES:
+                    self.assertTrue((skills_dir / skill_name / "SKILL.md").is_file())
+                self.assertTrue(
+                    (
+                        skills_dir
+                        / "usw-initialize-project/templates/openspec/AGENTS.md"
+                    ).is_file()
+                )
+                self.assertTrue(
+                    (
+                        skills_dir
+                        / "usw-initialize-project/templates/task/task.md"
+                    ).is_file()
+                )
+            for commands_dir in (home / ".qwen/commands", home / ".codex/prompts"):
+                for command_name in self.COMMAND_NAMES:
+                    self.assertTrue((commands_dir / command_name).is_file())
 
     def test_refuses_to_overwrite_without_force(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -52,32 +71,36 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(1, result.returncode)
             self.assertEqual("local change\n", installed_skill.read_text(encoding="utf-8"))
 
-    def test_force_replaces_existing_skills(self):
+    def test_force_replaces_existing_components(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             self.assertEqual(0, self.run_install(home).returncode)
-            qwen_skill = home / ".qwen/skills/usw-initialize-project/SKILL.md"
-            codex_skill = home / ".agents/skills/usw-initialize-project/SKILL.md"
-            qwen_command = home / ".qwen/commands/usw-init.md"
-            codex_command = home / ".codex/prompts/usw-init.md"
-            qwen_skill.write_text("stale\n", encoding="utf-8")
-            codex_skill.write_text("stale\n", encoding="utf-8")
-            qwen_command.write_text("stale\n", encoding="utf-8")
-            codex_command.write_text("stale\n", encoding="utf-8")
+            installed_skills = []
+            for skills_dir in (home / ".qwen/skills", home / ".agents/skills"):
+                for skill_name in self.SKILL_NAMES:
+                    path = skills_dir / skill_name / "SKILL.md"
+                    path.write_text("stale\n", encoding="utf-8")
+                    installed_skills.append((skill_name, path))
+            installed_commands = []
+            for commands_dir in (home / ".qwen/commands", home / ".codex/prompts"):
+                for command_name in self.COMMAND_NAMES:
+                    path = commands_dir / command_name
+                    path.write_text("stale\n", encoding="utf-8")
+                    installed_commands.append((command_name, path))
 
             result = self.run_install(home, "--force")
 
             self.assertEqual(0, result.returncode, result.stderr)
-            source_skill = (
-                ROOT / "skills/usw-initialize-project/SKILL.md"
-            ).read_text(encoding="utf-8")
-            source_command = (ROOT / "commands/usw-init.md").read_text(
-                encoding="utf-8"
-            )
-            self.assertEqual(source_skill, qwen_skill.read_text(encoding="utf-8"))
-            self.assertEqual(source_skill, codex_skill.read_text(encoding="utf-8"))
-            self.assertEqual(source_command, qwen_command.read_text(encoding="utf-8"))
-            self.assertEqual(source_command, codex_command.read_text(encoding="utf-8"))
+            for skill_name, installed_path in installed_skills:
+                source = (ROOT / "skills" / skill_name / "SKILL.md").read_text(
+                    encoding="utf-8"
+                )
+                self.assertEqual(source, installed_path.read_text(encoding="utf-8"))
+            for command_name, installed_path in installed_commands:
+                source = (ROOT / "commands" / command_name).read_text(
+                    encoding="utf-8"
+                )
+                self.assertEqual(source, installed_path.read_text(encoding="utf-8"))
 
     def test_force_removes_legacy_skill_name(self):
         with tempfile.TemporaryDirectory() as directory:

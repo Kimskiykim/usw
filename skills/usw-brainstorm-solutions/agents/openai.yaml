@@ -1,0 +1,7 @@
+interface:
+  display_name: "USW Structured Brainstorm"
+  short_description: "Structure problems and compare solution paths"
+  default_prompt: "Use $usw-brainstorm-solutions to analyze this problem and propose clear solution paths."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,7 +1,7 @@
 {
   "name": "usw",
   "version": "0.1.0+codex.20260717085420",
-  "description": "Initialize and use the USW harness in any project.",
+  "description": "Initialize an OpenSpec-compatible USW workspace and resume local work across sessions.",
   "author": {
     "name": "USW contributors",
     "url": "https://github.com/Kimskiykim"
@@ -16,15 +16,15 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "USW",
-    "shortDescription": "Initialize the USW project harness.",
-    "longDescription": "Adds a deterministic workflow that initializes the USW harness and its SYNC.md file in a project.",
+    "shortDescription": "Initialize OpenSpec and resume local work.",
+    "longDescription": "Initializes an OpenSpec-compatible shared workspace plus developer-local USW state, saves factual Markdown handoffs before pauses, and resumes work from one concrete next action.",
     "developerName": "USW contributors",
     "category": "Developer Tools",
     "capabilities": [
       "Write"
     ],
     "defaultPrompt": [
-      "Run /usw-init to initialize USW in this project."
+      "Run /usw-init to create or adopt an OpenSpec workspace, then use /usw-handoff before a pause and /usw-resume in the next task."
     ]
   }
 }

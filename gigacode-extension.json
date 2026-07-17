@@ -1,7 +1,7 @@
 {
   "name": "usw",
   "version": "0.1.0",
-  "description": "Initialize and use the USW harness in any project.",
+  "description": "Initialize an OpenSpec-compatible USW workspace and resume local work across sessions.",
   "skills": "skills",
   "commands": "commands"
 }

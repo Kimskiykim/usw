@@ -1,0 +1,7 @@
+interface:
+  display_name: "USW Small-Step Planner"
+  short_description: "Plan small, executable work steps"
+  default_prompt: "Use $usw-plan-small-steps to turn this task into small, executable steps."
+
+policy:
+  allow_implicit_invocation: true
