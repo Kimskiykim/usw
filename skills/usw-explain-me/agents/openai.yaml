@@ -1,0 +1,7 @@
+interface:
+  display_name: "USW Explain Me"
+  short_description: "Explain coding-agent proposals clearly"
+  default_prompt: "Use $usw-explain-me to explain the agent proposal like I am a beginner."
+
+policy:
+  allow_implicit_invocation: true

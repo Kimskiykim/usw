@@ -2,8 +2,9 @@
 
 ## Контекст
 
-USW должен предоставлять пользователю одинаковые команды `/usw-init` и будущие
-`/usw-*` в Codex и Qwen Code. Отдельный CLI `usw` для этого не нужен.
+USW должен предоставлять пользователю одинаковые команды `/usw-init`,
+`/usw-handoff` и `/usw-resume` в Codex и Qwen Code. Отдельный CLI `usw` для
+этого не нужен.
 
 У команд и skills разные роли:
 
@@ -20,18 +21,35 @@ slash-именем: внутренние skills должны иметь отли
 ```text
 commands/
 ├── usw-init.md
-└── usw-*.md
+├── usw-handoff.md
+└── usw-resume.md
 
 skills/
-└── usw-initialize-project/
+├── usw-initialize-project/
+│   ├── SKILL.md
+│   ├── templates/
+│   │   ├── openspec/
+│   │   ├── change/
+│   │   └── task/
+│   └── scripts/
+│       └── init_usw.py
+└── usw-manage-handoff/
     ├── SKILL.md
     └── scripts/
-        └── init_usw.py
+        └── handoff_state.py
 ```
 
-Публичная команда `/usw-init` должна делегировать выполнение внутреннему skill,
-который создаёт `usw/SYNC.md` и `hello_world.py` в корне текущего Git-проекта и
-не перезаписывает существующие файлы.
+Публичные команды должны делегировать выполнение внутренним skills. `/usw-init`
+создаёт OpenSpec-совместимый workspace, `.usw/HANDOFF.md` и `.usw/.gitignore` в
+корне текущего Git-проекта без перезаписи существующих файлов. Существующий
+`openspec/` принимается как источник истины и дополняется только отсутствующими
+путями.
+
+`/usw-handoff` сохраняет только актуальное developer-local состояние, а
+`/usw-resume` проверяет его и продолжает работу с одного следующего действия.
+Markdown является persistent contract; история и JSON state в этот flow не
+входят. OpenSpec-артефакты являются shared state, а `.usw/` остаётся
+developer-local state.
 
 ## Установка
 
@@ -48,11 +66,19 @@ skills/
 
 - После установки и перезапуска Codex доступна команда `/usw-init`.
 - После установки и перезапуска Qwen Code доступна команда `/usw-init`.
+- В обоих агентах доступны `/usw-handoff` и `/usw-resume`.
 - Команды используют одну реализацию инициализации, а не дублируют файловую
   логику в промптах.
-- `/usw-init` принимает текущий проект как контекст и создаёт `usw/SYNC.md` и
-  `hello_world.py` в ближайшем Git-корне.
-- Существующие `usw/SYNC.md` и `hello_world.py` не изменяются.
+- `/usw-init` принимает текущий проект как контекст и создаёт локальный idle
+  handoff и OpenSpec workspace в ближайшем Git-корне.
+- Существующие OpenSpec-артефакты и handoff не изменяются.
+- Управляемые пути `.usw/` и `openspec/` не могут быть симлинками: оба должны
+  находиться внутри Git-корня. `openspec/` остаётся общим Git-артефактом.
+- Установленный init-skill содержит базовые change- и task-шаблоны.
+- Невалидный кандидат handoff не заменяет текущее состояние.
+- `save` добавляет script-generated source snapshot, а `show` read-only
+  сообщает freshness (`fresh`, `stale` или `unknown`) без перезаписи handoff.
+- Завершение переводит handoff в `idle`, не добавляя историю.
 - Повторная установка не перезаписывает пользовательские файлы без явного
   решения об обновлении.
 - README описывает реальные способы вызова для Codex и Qwen.
@@ -64,3 +90,5 @@ skills/
 - Терминальные команды вида `usw init` или `usw sync`.
 - Публикация npm-пакета.
 - Перенос workflow-логики из skills в command-файлы.
+- SDD resolver и executable provider API.
+- Публичные команды создания, выполнения и архивирования change.

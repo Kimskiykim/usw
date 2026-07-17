@@ -31,11 +31,9 @@ case "$#" in
 esac
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SKILL_NAME="usw-initialize-project"
+SKILL_NAMES="usw-initialize-project usw-manage-handoff usw-brainstorm-solutions usw-plan-small-steps usw-explain-me"
 LEGACY_SKILL_NAME="usw-init"
-COMMAND_NAME="usw-init.md"
-SOURCE_SKILL_DIR="$ROOT_DIR/plugins/usw/skills/$SKILL_NAME"
-SOURCE_COMMAND="$ROOT_DIR/plugins/usw/commands/$COMMAND_NAME"
+COMMAND_NAMES="usw-init.md usw-handoff.md usw-resume.md"
 QWEN_HOME_DIR="${QWEN_HOME:-${HOME}/.qwen}"
 QWEN_SKILLS_DIR="$QWEN_HOME_DIR/skills"
 QWEN_COMMANDS_DIR="$QWEN_HOME_DIR/commands"
@@ -59,44 +57,53 @@ check_target() {
 check_agent_targets() {
   skills_dir="$1"
   commands_dir="$2"
-  check_target "$skills_dir/$SKILL_NAME"
-  check_target "$commands_dir/$COMMAND_NAME"
+  for skill_name in $SKILL_NAMES; do
+    check_target "$skills_dir/$skill_name"
+  done
+  for command_name in $COMMAND_NAMES; do
+    check_target "$commands_dir/$command_name"
+  done
   check_target "$skills_dir/$LEGACY_SKILL_NAME"
 }
 
 install_skill() {
   base_dir="$1"
-  target="$base_dir/$SKILL_NAME"
-  legacy_target="$base_dir/$LEGACY_SKILL_NAME"
+  skill_name="$2"
+  source_skill_dir="$ROOT_DIR/skills/$skill_name"
+  target="$base_dir/$skill_name"
   mkdir -p "$base_dir"
-  if [ "$FORCE" -eq 1 ]; then
-    if [ -e "$target" ]; then
-      rm -rf "$target"
-    fi
-    if [ -e "$legacy_target" ]; then
-      rm -rf "$legacy_target"
-    fi
+  if [ "$FORCE" -eq 1 ] && [ -e "$target" ]; then
+    rm -rf "$target"
   fi
-  cp -R "$SOURCE_SKILL_DIR" "$target"
+  cp -R "$source_skill_dir" "$target"
   echo "Installed USW skill at $target"
 }
 
 install_command() {
   base_dir="$1"
-  target="$base_dir/$COMMAND_NAME"
+  command_name="$2"
+  source_command="$ROOT_DIR/commands/$command_name"
+  target="$base_dir/$command_name"
   mkdir -p "$base_dir"
   if [ "$FORCE" -eq 1 ] && [ -e "$target" ]; then
     rm -f "$target"
   fi
-  cp "$SOURCE_COMMAND" "$target"
+  cp "$source_command" "$target"
   echo "Installed USW command at $target"
 }
 
 install_agent() {
   skills_dir="$1"
   commands_dir="$2"
-  install_skill "$skills_dir"
-  install_command "$commands_dir"
+  if [ "$FORCE" -eq 1 ] && [ -e "$skills_dir/$LEGACY_SKILL_NAME" ]; then
+    rm -rf "$skills_dir/$LEGACY_SKILL_NAME"
+  fi
+  for skill_name in $SKILL_NAMES; do
+    install_skill "$skills_dir" "$skill_name"
+  done
+  for command_name in $COMMAND_NAMES; do
+    install_command "$commands_dir" "$command_name"
+  done
 }
 
 case "$MODE" in
@@ -119,4 +126,4 @@ case "$MODE" in
     ;;
 esac
 
-echo "Start a new agent session to load /usw-init."
+echo "Start a new agent session to load /usw-init, /usw-handoff, and /usw-resume."
