@@ -67,6 +67,28 @@ class PackageLayoutTests(unittest.TestCase):
             self.assertIn(fragment, skill)
         self.assertIn("allow_implicit_invocation: true", metadata)
 
+    def test_refine_task_skill_persists_one_decision_case_per_turn(self):
+        skill_dir = ROOT / "skills" / "usw-refine-task"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        metadata = (skill_dir / "agents" / "openai.yaml").read_text(
+            encoding="utf-8"
+        )
+
+        required_fragments = (
+            "## Артефакты",
+            "## Один ход диалога",
+            "ровно один decision case",
+            "decisions.md",
+            "outcome.md",
+            "## Инварианты",
+        )
+        for fragment in required_fragments:
+            self.assertIn(fragment, skill)
+        for artifact in ("session.md", "decisions.md", "outcome.md"):
+            self.assertTrue((skill_dir / "assets" / artifact).is_file())
+        self.assertIn("$usw-refine-task", metadata)
+        self.assertIn("allow_implicit_invocation: true", metadata)
+
     def test_explain_me_has_levelled_workflow_and_implicit_invocation(self):
         skill_dir = ROOT / "skills" / "usw-explain-me"
         skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
@@ -115,6 +137,7 @@ class PackageLayoutTests(unittest.TestCase):
             (skills_dir / "usw-brainstorm-solutions" / "SKILL.md").is_file()
         )
         self.assertTrue((skills_dir / "usw-plan-small-steps" / "SKILL.md").is_file())
+        self.assertTrue((skills_dir / "usw-refine-task" / "SKILL.md").is_file())
         self.assertTrue(
             (skills_dir / "usw-explain-me" / "SKILL.md").is_file()
         )
@@ -138,6 +161,7 @@ class PackageLayoutTests(unittest.TestCase):
             (skills_dir / "usw-brainstorm-solutions" / "SKILL.md").is_file()
         )
         self.assertTrue((skills_dir / "usw-plan-small-steps" / "SKILL.md").is_file())
+        self.assertTrue((skills_dir / "usw-refine-task" / "SKILL.md").is_file())
         self.assertTrue(
             (skills_dir / "usw-explain-me" / "SKILL.md").is_file()
         )
@@ -171,6 +195,7 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertTrue(
             (ROOT / "skills" / "usw-plan-small-steps" / "SKILL.md").is_file()
         )
+        self.assertTrue((ROOT / "skills" / "usw-refine-task" / "SKILL.md").is_file())
         self.assertTrue(
             (ROOT / "skills" / "usw-explain-me" / "SKILL.md").is_file()
         )
