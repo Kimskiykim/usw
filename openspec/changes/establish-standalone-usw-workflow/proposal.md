@@ -22,16 +22,17 @@ evidence и совместимость зависят от догадок аге
   планирования и предлагать декомпозицию только с подтверждением пользователя.
 - При неоднозначном запросе на продолжение требовать от пользователя выбрать
   scope исполнения вместо применения неявного значения по умолчанию.
-- Назначить один authoritative artifact для статуса change-задачи, контракта
-  задачи, прогресса шагов, verification evidence, reviewer-owned receipts,
-  общего handoff и личной точки возобновления.
+- Назначить один authoritative artifact для статуса change-задачи, устойчивого
+  контракта и milestones задачи, раздельного Development/Testing evidence,
+  reviewer-owned transition receipts и личной точки возобновления с журналом
+  текущей сессии.
 - Определить Delivery как терминальный per-run контракт, принятие которого не
   разрешает автоматически commit, push, pull request, deployment, release или
   другое внешнее действие.
 - Добавить устойчивое пошаговое уточнение задачи: один decision case за ход и
   итог, пригодный для последующих planning flows.
 - Добавить опциональную совместимость с OpenSpec через реальные integration
-  tests: одна закреплённая версия блокирует release, а проверка latest остаётся
+  tests: точная версия `1.6.0` блокирует release, а проверка latest остаётся
   видимой, но неблокирующей.
 - **BREAKING** Изменить общий workspace по умолчанию с обязательных артефактов
   `openspec/` на самостоятельные USW-артефакты под `usw/`.
@@ -45,9 +46,9 @@ evidence и совместимость зависят от догадок аге
 - `flow-orchestration`: общий lifecycle для Analysis, Development и Testing,
   включая выбор scope, права на артефакты, human review gates, возвраты к
   владельцам, терминальный Delivery и условия остановки.
-- `execution-artifacts`: каноническое владение и lifecycle для task, plan,
-  evidence, неизменяемых review receipts, общего handoff и локального состояния
-  возобновления.
+- `execution-artifacts`: каноническое владение и lifecycle для task contract,
+  milestone history, раздельного evidence, неизменяемых review receipts и
+  локального состояния возобновления.
 - `task-refinement`: устойчивое итеративное уточнение по одному decision case за
   ход с переиспользуемым согласованным итогом.
 - `openspec-compatibility`: явный OpenSpec provider и проверяемый контракт

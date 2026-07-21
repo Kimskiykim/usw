@@ -1,14 +1,18 @@
 # Задача 5.2: Добавить release-blocking compatibility suite для pinned версии
 
+## Artifact model
+
+- `legacy`
+
 ## Результат
 
 Development и CI выполняют реальные end-to-end provider scenarios с одной
-записанной версией OpenSpec, ошибка которой блокирует release readiness.
+записанной версией OpenSpec `1.6.0`, ошибка которой блокирует release readiness.
 
 ## Область
 
-- Выбрать и записать initial pinned OpenSpec version в одном source of truth.
-- Добавить isolated test installer/runner для точной версии.
+- Записать OpenSpec `1.6.0` в одном version-controlled source of truth.
+- Добавить isolated test installer/runner для точной версии `1.6.0`.
 - Проверить initialization detection, explicit provider selection, role
   frontier, artifact discovery, change planning, validation, provider-neutral
   review receipts и missing-capability errors.
@@ -32,7 +36,7 @@ Development и CI выполняют реальные end-to-end provider scenar
 
 ## Критерии готовности
 
-- Точная pinned version хранится в version control и показывается test output.
+- Точная pinned version `1.6.0` хранится в version control и показывается test output.
 - Compatibility tests используют реальную isolated OpenSpec installation.
 - Ошибка любого required pinned scenario завершает release-blocking job ошибкой.
 - Standalone tests не зависят от compatibility installation.

@@ -4,6 +4,15 @@
 granular `task.md`. Checkbox в этом файле является единственным источником
 текущего completion state coding task.
 
+## Artifact model registry
+
+- Activation task: `2.1`.
+- Legacy task IDs: `1.1`, `1.2`, `2.1`, `2.2`, `3.1`, `3.2`, `3.3`, `4.1`,
+  `5.1`, `5.2`, `5.3`, `6.1`.
+- После завершения 2.1 legacy list является immutable. Новая task ID, которой
+  нет в этом списке, MUST использовать `Artifact model: v1`; отсутствие model
+  либо попытка добавить новый legacy ID отклоняются validator.
+
 ## 1. Основа workspace
 
 - [ ] 1.1 [Реализовать общий контракт конфигурации v1 и review root](tasks/1.1-config-contract/task.md)

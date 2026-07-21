@@ -1,5 +1,9 @@
 # Задача 6.1: Документировать и проверить workspace modes и Delivery contract
 
+## Artifact model
+
+- `legacy`
+
 ## Результат
 
 Packaging, installation, документация и end-to-end tests согласованно показывают
@@ -11,10 +15,17 @@ standalone USW как default, OpenSpec как явный compatibility provider
 - Обновить README, architecture notes, commands, package manifests и installer
   skill lists.
 - Документировать три role scenarios, human review receipts, owner-routed returns
-  и per-run Delivery owner.
+  как shared transitions, локальный табличный checkpoint и per-run Delivery owner.
 - Добавить clean-project, reinitialization, existing-OpenSpec, explicit-provider,
-  flow-scope, artifact-authority, review-resume, Delivery-permission и handoff
+  flow-scope, artifact-authority, interrupted-session-resume, review-retry,
+  Delivery-permission и local-checkpoint/shared-receipt
   end-to-end scenarios.
+- Покрыть explicit legacy/v1 task boundary, стабильность product-candidate digest
+  при workflow-only writes, его изменение при product writes и conditional
+  internal/transition receipt fields.
+- Покрыть frozen legacy allowlist, legacy human review без v1 backfill,
+  invalidation receipt после planning-artifact change, workflow-only commit,
+  exact manifest serialization и разделение config/runtime provider errors.
 - Удалить или явно пометить superseded documentation об обязательном OpenSpec и
   четвёртом Review flow.
 - Валидировать полный OpenSpec change и запустить full local test suite.

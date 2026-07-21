@@ -1,5 +1,9 @@
 # Задача 4.1: Завершить и упаковать persistent task refinement
 
+## Artifact model
+
+- `legacy`
+
 ## Результат
 
 `usw-refine-task` полностью упакован и проверен как standalone atomic skill,
@@ -9,7 +13,10 @@ outcome.
 ## Область
 
 - Завершить skill, metadata и templates session/decisions/outcome.
-- Разрешать настроенный refinement root через `usw.yaml` с standalone fallback.
+- Разрешать настроенный refinement root через `usw.yaml`; при отсутствующем
+  optional поле использовать нормативный standalone default `usw/refinements`.
+  Не использовать этот default как fallback для неизвестного provider или
+  provider operation, завершившейся ошибкой.
 - Сохранять accepted и superseded decisions со стабильными IDs.
 - Обновлять ready outcome только из актуальных accepted decisions.
 - Добавить installation и behavioral contract coverage.

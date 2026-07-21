@@ -1,5 +1,9 @@
 # Задача 1.2: Переключить инициализацию на standalone default
 
+## Artifact model
+
+- `legacy`
+
 ## Результат
 
 `/usw-init` по умолчанию создаёт standalone shared workspace и воспринимает
@@ -19,6 +23,8 @@
 - Автоматический opt-in в OpenSpec provider.
 - Миграция OpenSpec content в standalone artifacts.
 - Создание change, task или review receipt при initialization.
+- Наполнение `usw/flows` normative scenarios до появления scenario assets в
+  задаче 3.1; эта задача создаёт безопасный пустой flow root.
 
 ## Ссылки
 
@@ -33,6 +39,7 @@
 ## Критерии готовности
 
 - Новый проект получает standalone provider и все default roots.
+- До задачи 3.1 flow root может быть пустым и не использует неявные scenarios.
 - Повторная initialization идемпотентна и не перезаписывает files.
 - Существующий OpenSpec workspace только показывается пользователю.
 - Unsafe paths и tracked developer-local state приводят к отказу без записи.

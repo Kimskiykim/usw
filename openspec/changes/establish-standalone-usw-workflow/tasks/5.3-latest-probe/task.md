@@ -1,5 +1,9 @@
 # Задача 5.3: Добавить видимый неблокирующий latest probe
 
+## Artifact model
+
+- `legacy`
+
 ## Результат
 
 CI выполняет применимые compatibility scenarios с latest OpenSpec и показывает
