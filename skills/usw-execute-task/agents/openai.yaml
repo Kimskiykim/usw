@@ -1,0 +1,6 @@
+interface:
+  display_name: "Execute USW task"
+  short_description: "Perform one bounded Development operation"
+  default_prompt: "Execute one explicitly scoped Development action, verify it, and return control."
+policy:
+  allow_implicit_invocation: false

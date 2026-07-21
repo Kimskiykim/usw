@@ -1,0 +1,6 @@
+interface:
+  display_name: "Verify USW task"
+  short_description: "Run one independent Testing check"
+  default_prompt: "Independently verify one exact source, record Testing evidence, and return control."
+policy:
+  allow_implicit_invocation: false

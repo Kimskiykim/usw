@@ -1,0 +1,29 @@
+name: OpenSpec compatibility
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev/v1]
+
+jobs:
+  openspec-compatibility:
+    name: OpenSpec ${{ matrix.mode }}${{ matrix.experimental && ' (non-blocking probe)' || ' (release-blocking)' }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      matrix:
+        include:
+          - mode: pinned
+            experimental: false
+          - mode: latest
+            experimental: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run OpenSpec compatibility scenarios
+        run: ./tests/run_openspec_compatibility.sh ${{ matrix.mode }}

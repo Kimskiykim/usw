@@ -5,6 +5,10 @@ description: Explain a coding agent's proposed plan, recommendation, status upda
 
 # Explain Me — переводчик предложений агента
 
+Capability boundary: this skill reads the supplied material, writes no project
+artifact, and returns only the explanation. It never selects execution scope or
+invokes another skill. Return point: immediately after the explanation.
+
 Переводить предложение агента в понятное объяснение, сохраняя смысл, границы
 уверенности и важные решения. Отвечать на языке пользователя.
 

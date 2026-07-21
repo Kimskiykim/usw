@@ -1,0 +1,7 @@
+interface:
+  display_name: "Create USW flow"
+  short_description: "Create and validate project-owned USW flows"
+  default_prompt: "Use $usw-create-flow to create a validated custom flow for this project."
+
+policy:
+  allow_implicit_invocation: true

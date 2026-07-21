@@ -10,7 +10,8 @@ Use this directory as the shared specification source of truth.
 - `changes/<change-id>/specs/<capability>/spec.md` contains specification deltas.
 - `changes/<change-id>/tasks.md` is the task index and completion source of truth.
 - `changes/<change-id>/tasks/<task-id>-<slug>/task.md` defines one leaf task.
-- Task `handoff.md` and `evidence.md` record execution state and proof when needed.
+- Task `development-evidence.md` and `testing-evidence.md` record role-owned proof;
+  reviewer decisions live under the configured USW review root.
 
 ## Rules
 

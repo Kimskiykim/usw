@@ -1,7 +1,7 @@
 {
   "name": "usw",
   "version": "0.1.0",
-  "description": "Initialize an OpenSpec-compatible USW workspace and resume local work across sessions.",
+  "description": "Run standalone USW workflows with optional OpenSpec compatibility.",
   "skills": "skills",
   "commands": "commands"
 }

@@ -788,7 +788,7 @@ class HandoffStateTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            self.assertIn("- Status: idle", initial_state.stdout)
+            self.assertIn("| none | none | none | none | idle |", initial_state.stdout)
             self.assertIn("status: idle", initial_state.stderr)
 
             candidate = project / ".usw" / "HANDOFF.next.md"

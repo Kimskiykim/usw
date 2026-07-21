@@ -28,7 +28,7 @@
 
 ## Decision cases
 
-- [ ] `{{case_id}}` — {{case_title}}
+{{case_rows}}
 
 ## Current case
 

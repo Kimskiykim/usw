@@ -11,20 +11,20 @@
 
 ## Agreed model
 
-- {{agreed_result}}
+{{agreed_model}}
 
 ## Constraints
 
-- {{constraint}}
+{{constraints}}
 
 ## Remaining unknowns
 
-- {{unknown_or_none}}
+{{remaining_unknowns}}
 
 ## Decision references
 
-- `{{decision_id}}`
+{{decision_references}}
 
 ## Recommended next flow
 
-{{next_flow_and_input}}
+{{next_flow}}

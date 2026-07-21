@@ -5,6 +5,15 @@ description: Iteratively refine an ambiguous task or design through a questionna
 
 # Итеративное уточнение задачи
 
+## Capability contract
+
+- Inputs: one refinement goal, stable ID, current session artifacts, and at most
+  one decision answer.
+- Permitted writes: configured `refinement-state` only.
+- Outputs: updated session/decisions or one ready outcome reference.
+- Return point: after one decision case; never modify target code/change
+  artifacts or choose/invoke the next skill.
+
 Вести совместное уточнение задачи по одному решению за ход и сохранять результат
 в общих USW-артефактах. Не менять код или целевые change-артефакты.
 

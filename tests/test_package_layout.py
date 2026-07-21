@@ -7,7 +7,7 @@ ROOT = Path(__file__).parents[1]
 
 
 class PackageLayoutTests(unittest.TestCase):
-    def test_initialize_skill_packages_openspec_and_task_templates(self):
+    def test_initialize_skill_packages_standalone_execution_templates(self):
         templates = ROOT / "skills" / "usw-initialize-project" / "templates"
         expected_fragments = {
             "openspec/AGENTS.md": "completion checkboxes only in `tasks.md`",
@@ -15,9 +15,12 @@ class PackageLayoutTests(unittest.TestCase):
             "change/design.md": "## Decisions",
             "change/spec.md": "## ADDED Requirements",
             "change/tasks.md": "tasks/1.1-{{task_slug}}/task.md",
-            "task/task.md": "## Definition of done",
-            "task/handoff.md": "## Next action",
-            "task/evidence.md": "## Checks",
+            "task/task.md": "## Milestone log",
+            "task/development-evidence.md": "Writer authority: Development only.",
+            "task/testing-evidence.md": "Writer authority: Testing only.",
+            "review/receipt.md": "## Reviewed artifact identities",
+            "local/HANDOFF.md": "## Trusted source snapshot",
+            "usw.yaml": "root: usw/reviews",
         }
 
         for relative_path, fragment in expected_fragments.items():
@@ -61,7 +64,7 @@ class PackageLayoutTests(unittest.TestCase):
             "## Проверка качества плана",
             "## Микротаски",
             "## Первый шаг",
-            "Не переходить к следующей микротаске без прямого",
+            "не запускает микротаску и не вызывает",
         )
         for fragment in required_fragments:
             self.assertIn(fragment, skill)
@@ -108,6 +111,25 @@ class PackageLayoutTests(unittest.TestCase):
             self.assertIn(fragment, skill)
         self.assertIn("allow_implicit_invocation: true", metadata)
 
+    def test_create_flow_skill_uses_validated_linear_contract(self):
+        skill_dir = ROOT / "skills" / "usw-create-flow"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        metadata = (skill_dir / "agents" / "openai.yaml").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "## Подготовка",
+            "## Сборка контракта",
+            "## Запись и проверка",
+            "## Граница выполнения",
+            "../usw-run-flow/scripts/run_flow.py",
+            "$usw-run-flow <name>",
+        ):
+            self.assertIn(fragment, skill)
+        self.assertIn("$usw-create-flow", metadata)
+        self.assertIn("allow_implicit_invocation: true", metadata)
+
     def test_public_commands_delegate_to_internal_skills(self):
         expectations = {
             "usw-init.md": "usw-initialize-project",
@@ -141,6 +163,8 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertTrue(
             (skills_dir / "usw-explain-me" / "SKILL.md").is_file()
         )
+        self.assertTrue((skills_dir / "usw-create-flow" / "SKILL.md").is_file())
+        self.assertTrue((skills_dir / "usw-run-flow" / "SKILL.md").is_file())
         for command_name in ("usw-init.md", "usw-handoff.md", "usw-resume.md"):
             self.assertTrue((commands_dir / command_name).is_file())
 
@@ -165,6 +189,8 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertTrue(
             (skills_dir / "usw-explain-me" / "SKILL.md").is_file()
         )
+        self.assertTrue((skills_dir / "usw-create-flow" / "SKILL.md").is_file())
+        self.assertTrue((skills_dir / "usw-run-flow" / "SKILL.md").is_file())
         for command_name in ("usw-init.md", "usw-handoff.md", "usw-resume.md"):
             self.assertTrue((commands_dir / command_name).is_file())
 
@@ -199,6 +225,8 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertTrue(
             (ROOT / "skills" / "usw-explain-me" / "SKILL.md").is_file()
         )
+        self.assertTrue((ROOT / "skills" / "usw-create-flow" / "SKILL.md").is_file())
+        self.assertTrue((ROOT / "skills" / "usw-run-flow" / "SKILL.md").is_file())
         self.assertTrue((ROOT / "commands" / "usw-handoff.md").is_file())
         self.assertTrue((ROOT / "commands" / "usw-resume.md").is_file())
 

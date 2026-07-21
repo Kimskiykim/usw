@@ -45,11 +45,17 @@ description: Turn a large analyst specification or agreed work item into small, 
 
 ## Граница выполнения
 
-Когда пользователь просит выполнить работу по такому плану, брать только одну
-первую готовую микротаску. Перед изменением коротко назвать её границу и
-проверку, выполнить только эту работу, запустить проверку и сообщить
-фактический результат. Не переходить к следующей микротаске без прямого
-запроса пользователя.
+Этот skill только создаёт декомпозицию. Он не выбирает execution scope, не
+создаёт task-level `plan.md`/`handoff.md`, не запускает микротаску и не вызывает
+следующий skill. При использовании внутри scenario он возвращает список задач
+и управление `usw-run-flow`; orchestrator отдельно получает явный scope.
+
+## Capability contract
+
+- Inputs: согласованная спецификация, scope и существующие task references.
+- Permitted writes: только разрешённые scenario task index/contract artifacts.
+- Outputs: dependency-ordered tasks с definition of done и verification.
+- Return point: сразу после декомпозиции, без execution или hidden chaining.
 
 ## Формат ответа
 
