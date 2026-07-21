@@ -16,8 +16,16 @@ OpenSpec поддерживается как явно выбранный compati
     ├── changes/
     ├── templates/
     │   ├── change/
+    │   │   ├── proposal.md
+    │   │   ├── design.md
+    │   │   ├── spec.md
+    │   │   └── tasks.md
     │   ├── task/
+    │   │   ├── task.md
+    │   │   ├── development-evidence.md
+    │   │   └── testing-evidence.md
     │   └── review/
+    │       └── receipt.md
     ├── refinements/
     ├── flows/
     │   ├── flow-scenario-analysis.md
@@ -143,6 +151,13 @@ Runner проверяет весь документ до первого шага
 Legacy `.usw/FLOW.json` не объединяется и не удаляется автоматически. Custom
 flows не поддерживают branches и циклы; стандартные role flows не меняются.
 
+Создание и первый запуск custom flow:
+
+```text
+$usw-create-flow Создай flow plan-check из проверки плана и локального скрипта.
+$usw-run-flow plan-check
+```
+
 Live operation state реализован только Markdown-контрактами skills, templates и
 commands: отдельный Python runtime, dependency или второй state-файл не добавлен.
 
@@ -260,8 +275,11 @@ codex plugin add usw@usw
 Чтобы явно обновить уже установленный skill из текущего checkout, выполните:
 
 ```bash
-./install.sh --force
+./install.sh codex --force
 ```
+
+Для Qwen используйте `./install.sh qwen --force`, а для обоих агентов —
+`./install.sh --force`.
 
 ## Разработка
 
