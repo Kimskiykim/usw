@@ -28,6 +28,29 @@ class PackageLayoutTests(unittest.TestCase):
                 content = (templates / relative_path).read_text(encoding="utf-8")
                 self.assertIn(fragment, content)
 
+    def test_initialize_skill_selects_python_and_has_confirmed_llm_fallback(self):
+        skill_dir = ROOT / "skills" / "usw-initialize-project"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        fallback = (skill_dir / "references" / "llm-fallback.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "Try `python3`, then `python`",
+            "sys.version_info < (3, 10)",
+            "never hide a script or configuration error with fallback",
+            "not write anything until the user explicitly agrees",
+            "references/llm-fallback.md",
+        ):
+            self.assertIn(fragment, skill)
+        for fragment in (
+            "Stop on custom configuration",
+            "Stop if an `openspec/` path exists",
+            "Preserve every existing regular file byte-for-byte",
+            "Never overwrite, merge, delete, chmod, or follow links",
+        ):
+            self.assertIn(fragment, fallback)
+
     def test_brainstorm_skill_has_required_structure_and_implicit_invocation(self):
         skill_dir = ROOT / "skills" / "usw-brainstorm-solutions"
         skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
