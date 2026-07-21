@@ -1,5 +1,9 @@
 # Task {{task_id}}: {{title}}
 
+## Artifact model
+
+- `v1`
+
 ## Result
 
 {{result}}
@@ -30,3 +34,13 @@
 
 - Run: `{{verification_command}}`
 - Expect: {{expected_observation}}
+
+## Contract revision
+
+- `{{contract_revision}}`
+
+## Milestone log
+
+| Attempt | Trigger | Contract | Source | Outcome | References |
+|---|---|---|---|---|---|
+| 1 | task created | `{{contract_revision}}` | {{source_or_pending}} | pending | {{reference_or_none}} |

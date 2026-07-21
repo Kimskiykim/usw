@@ -26,6 +26,14 @@ description: Structure solution brainstorming with an adaptive short or full ana
   можно безопасно продолжить, явно перечислить допущения и дать ответ.
 - Не начинать реализацию, если пользователь попросил только провести брейншторм.
 
+## Capability contract
+
+- Inputs: ограниченная проблема, контекст и уже принятые решения.
+- Permitted writes: none; shared artifacts изменяет provider-aware capability.
+- Outputs: разные solution paths, recommendation и один first step.
+- Return point: вернуть результат вызывающему flow; не выбирать и не вызывать
+  следующий skill.
+
 ## Короткий формат — основной для MVP
 
 Использовать для простых и умеренно сложных вопросов. Масштабировать каждый

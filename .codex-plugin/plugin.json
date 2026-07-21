@@ -1,7 +1,7 @@
 {
   "name": "usw",
   "version": "0.1.0+codex.20260717085420",
-  "description": "Initialize an OpenSpec-compatible USW workspace and resume local work across sessions.",
+  "description": "Run standalone USW workflows with optional OpenSpec compatibility.",
   "author": {
     "name": "USW contributors",
     "url": "https://github.com/Kimskiykim"
@@ -16,15 +16,15 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "USW",
-    "shortDescription": "Initialize OpenSpec and resume local work.",
-    "longDescription": "Initializes an OpenSpec-compatible shared workspace plus developer-local USW state, saves factual Markdown handoffs before pauses, and resumes work from one concrete next action.",
+    "shortDescription": "Run standalone role-based development workflows.",
+    "longDescription": "Initializes a standalone USW workspace, orchestrates Analysis, Development and Testing scenarios, preserves evidence and review receipts, and optionally integrates with OpenSpec through explicit configuration.",
     "developerName": "USW contributors",
     "category": "Developer Tools",
     "capabilities": [
       "Write"
     ],
     "defaultPrompt": [
-      "Run /usw-init to create or adopt an OpenSpec workspace, then use /usw-handoff before a pause and /usw-resume in the next task."
+      "Run /usw-init to create a standalone workspace, use usw-run-flow for explicit role scenarios, and use /usw-handoff before a pause."
     ]
   }
 }

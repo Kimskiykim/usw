@@ -1,4 +1,8 @@
-# Публичные команды USW для Codex и Qwen
+# Публичные команды USW для Codex и Qwen (устаревшая архитектурная заметка)
+
+Текущий нормативный контракт описан в `README.md`, `usw.yaml` и packaged flow
+scenarios. OpenSpec теперь является явно выбранным optional provider, а не
+значением initialization по умолчанию.
 
 ## Контекст
 

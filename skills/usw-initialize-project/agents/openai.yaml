@@ -1,7 +1,7 @@
 interface:
   display_name: "USW Init"
-  short_description: "Initialize OpenSpec and local USW state"
-  default_prompt: "Use $usw-initialize-project to initialize an OpenSpec-compatible USW workspace in this project."
+  short_description: "Initialize USW workspace and artifact templates"
+  default_prompt: "Use $usw-initialize-project to initialize a standalone USW workspace with project-owned artifact templates while preserving existing files."
 
 policy:
   allow_implicit_invocation: false

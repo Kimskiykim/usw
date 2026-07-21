@@ -14,8 +14,14 @@ class InstallTests(unittest.TestCase):
         "usw-initialize-project",
         "usw-manage-handoff",
         "usw-brainstorm-solutions",
+        "usw-refine-task",
         "usw-plan-small-steps",
         "usw-explain-me",
+        "usw-create-flow",
+        "usw-run-flow",
+        "usw-manage-artifacts",
+        "usw-execute-task",
+        "usw-verify-task",
     )
     COMMAND_NAMES = ("usw-init.md", "usw-handoff.md", "usw-resume.md")
 

@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
+import runpy
 import stat
 import subprocess
 import sys
@@ -13,6 +15,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Iterable, Literal
 
 
@@ -31,6 +34,14 @@ _DIGEST_PREFIX = "sha256:"
 _HASH_CHUNK_SIZE = 1024 * 1024
 _HASH_RETRIES = 2
 _RESERVED_EXACT_PATHS = {b".usw/HANDOFF.md", b".usw/HANDOFF.next.md"}
+V1_METADATA_HEADER = "| Subject | Role | Attempt | Current operation | Status | Updated |"
+SKILLS_ROOT = Path(__file__).parents[2]
+CONFIG = SimpleNamespace(**runpy.run_path(str(
+    SKILLS_ROOT / "usw-initialize-project/scripts/init_usw.py"
+)))
+CONTRACT = SimpleNamespace(**runpy.run_path(str(
+    SKILLS_ROOT / "usw-initialize-project/scripts/artifact_contract.py"
+)))
 
 
 class HandoffError(ValueError):
@@ -98,6 +109,14 @@ def handoff_path(project: Path) -> Path:
     return find_project_root(project) / ".usw" / "HANDOFF.md"
 
 
+def _canonical_product_identity(project: Path) -> str:
+    project_root = CONFIG.find_project_root(project)
+    config = CONFIG.load_config(project_root)
+    return CONTRACT.source_identity(
+        project_root, tuple(config.managed_roots.values())
+    )
+
+
 def render_idle(updated_at: datetime | None = None) -> str:
     """Render an idle developer-local handoff."""
     timestamp = updated_at or datetime.now(timezone.utc)
@@ -108,6 +127,57 @@ def render_idle(updated_at: datetime | None = None) -> str:
         "## Active work\n\n"
         "No active work.\n"
     )
+
+
+def render_v1_idle(updated_at: datetime | None = None) -> str:
+    return CONFIG.render_handoff(updated_at)
+
+
+def _v1_table_cells(line: str) -> list[str]:
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def _validate_v1_handoff(content: str) -> str:
+    lines = content.splitlines()
+    try:
+        header_index = lines.index(V1_METADATA_HEADER)
+    except ValueError as error:
+        raise HandoffError("Missing v1 handoff metadata table") from error
+    if header_index + 2 >= len(lines):
+        raise HandoffError("Incomplete v1 handoff metadata table")
+    values = _v1_table_cells(lines[header_index + 2])
+    if len(values) != 6:
+        raise HandoffError("V1 metadata row must contain six fields")
+    subject, role, attempt, operation, status, updated = values
+    if status not in {*ACTIVE_STATUSES, "idle"}:
+        raise HandoffError(f"Unsupported Status '{status}'")
+    _validate_timestamp(updated)
+    if status == "idle":
+        if (subject, role, attempt, operation) != ("none", "none", "none", "none"):
+            raise HandoffError("Idle v1 handoff must not name active work")
+    else:
+        if not re.fullmatch(r"(?:refinement|change)/[^/]+|task/[^/]+/[^/]+", subject):
+            raise HandoffError("Active v1 handoff requires a typed Subject")
+        if role not in {"Analysis", "Development", "Testing"}:
+            raise HandoffError("Active v1 handoff requires a role")
+        if not attempt or not operation:
+            raise HandoffError("Active v1 handoff requires attempt and operation")
+    order, sections = _sections(lines)
+    expected = [
+        "Session journal", "Verification", "Next action", "References",
+        "Trusted source snapshot",
+    ]
+    if order != expected:
+        raise HandoffError("V1 checkpoint sections must appear in normative order")
+    if len(sections["Next action"]) != 1:
+        raise HandoffError("Next action must contain exactly one non-empty line")
+    if not sections["Session journal"] or not sections["Verification"]:
+        raise HandoffError("V1 checkpoint tables must not be empty")
+    identity = [line for line in sections["Trusted source snapshot"] if line.startswith("- Identity: ")]
+    freshness = [line for line in sections["Trusted source snapshot"] if line.startswith("- Freshness: ")]
+    if len(identity) != 1 or len(freshness) != 1:
+        raise HandoffError("Trusted source snapshot requires identity and freshness")
+    return status
 
 
 def _metadata(lines: list[str]) -> dict[str, str]:
@@ -175,7 +245,8 @@ def validate_handoff(content: str) -> str:
         raise HandoffError("Expected '# Developer Handoff' as the first line")
     if any(line.startswith("# ") for line in lines[1:]):
         raise HandoffError("Handoff must contain exactly one top-level heading")
-
+    if V1_METADATA_HEADER in lines:
+        return _validate_v1_handoff(content)
     metadata = _metadata(lines)
     required_metadata = {"Updated", "Status"}
     missing_metadata = required_metadata - metadata.keys()
@@ -958,6 +1029,17 @@ def reconcile_handoff(project: Path, content: str | None = None) -> tuple[str, D
     """Read stored handoff and compare its checkpoint with the current source."""
     if content is None:
         _, content, _ = read_handoff(project)
+    if V1_METADATA_HEADER in content:
+        match = re.search(r"^- Identity: (.+)$", content, re.MULTILINE)
+        saved_identity = match.group(1) if match else "none"
+        if saved_identity == "none":
+            return content, DriftReport("unknown", None, (), "saved snapshot missing")
+        try:
+            current_identity = _canonical_product_identity(project)
+        except (OSError, ValueError) as error:
+            return content, DriftReport("unknown", None, (), str(error))
+        freshness = "fresh" if saved_identity == current_identity else "stale"
+        return content, DriftReport(freshness, None, () if freshness == "fresh" else ("Product tree",), None)
     saved = source_snapshot_from_handoff(content)
     if saved is None:
         return content, DriftReport("unknown", None, (), "saved snapshot missing")
@@ -1000,6 +1082,21 @@ def save_handoff(project: Path, candidate: Path) -> tuple[Path, str]:
         raise HandoffError(f"Candidate handoff must be written to {expected_candidate}")
     _require_regular_file(candidate, "Candidate handoff")
     supplied_content = candidate.read_text(encoding="utf-8")
+    if V1_METADATA_HEADER in supplied_content:
+        status = validate_handoff(supplied_content)
+        identity = _canonical_product_identity(project)
+        saved_content = re.sub(
+            r"^- Identity: .+$", f"- Identity: {identity}", supplied_content,
+            count=1, flags=re.MULTILINE,
+        )
+        saved_content = re.sub(
+            r"^- Freshness: .+$", "- Freshness: fresh", saved_content,
+            count=1, flags=re.MULTILINE,
+        )
+        validate_handoff(saved_content)
+        _atomic_write(target, saved_content)
+        candidate.unlink()
+        return target, status
     candidate_without_snapshot = _strip_candidate_snapshot(supplied_content)
     status = validate_handoff(candidate_without_snapshot)
     snapshot = capture_source_snapshot(project)
@@ -1014,7 +1111,7 @@ def save_handoff(project: Path, candidate: Path) -> tuple[Path, str]:
 def finish_handoff(project: Path) -> Path:
     """Replace initialized handoff state with an idle state."""
     target = require_initialized_handoff(project)
-    _atomic_write(target, render_idle())
+    _atomic_write(target, render_v1_idle())
     return target
 
 

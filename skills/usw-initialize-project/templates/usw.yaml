@@ -1,0 +1,10 @@
+schema_version: 1
+artifacts:
+  provider: standalone
+  root: usw
+refinement:
+  root: usw/refinements
+flows:
+  root: usw/flows
+reviews:
+  root: usw/reviews
