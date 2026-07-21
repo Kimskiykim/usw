@@ -145,9 +145,23 @@ This remains ordinary Markdown.
         self.assertEqual(("1", "2"), flow.actions)
         self.assertEqual((), flow.branches)
         self.assertEqual(frozenset({"task-index"}), flow.artifact_roles)
+        self.assertEqual("shared", flow.origin)
         self.assertEqual("skill", flow.steps[0].kind)
         self.assertEqual(("--strict", "one argument"), flow.steps[1].arguments)
         self.assertTrue(flow.identity.startswith("usw-flow-v1:"))
+
+    def test_local_origin_is_distinct_and_rejects_standard_flows(self):
+        shared = CUSTOM.parse_custom_flow(self.content(), "plan-check")
+        local = CUSTOM.parse_custom_flow(
+            self.content(), "plan-check", origin="local"
+        )
+
+        self.assertEqual("local", local.origin)
+        self.assertNotEqual(shared.identity, local.identity)
+        with self.assertRaisesRegex(
+            CUSTOM.CustomFlowError, "unsupported_local_standard_flow"
+        ):
+            CUSTOM.parse_custom_flow(self.content(), "analysis", origin="local")
 
     def test_rejects_invalid_contract_before_execution(self):
         invalid = {
@@ -178,6 +192,33 @@ This remains ordinary Markdown.
             with self.assertRaisesRegex(CUSTOM.CustomFlowError, "invalid_flow_file"):
                 CUSTOM.load_custom_flow(flow_root, "linked")
 
+    def test_resolves_only_safe_local_flow_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / ".usw").mkdir()
+            flow_root = CUSTOM.local_custom_flow_root(project, create=True)
+            self.assertEqual(project.resolve() / ".usw/flows", flow_root)
+            self.assertTrue(flow_root.is_dir())
+
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            outside = project / "outside"
+            outside.mkdir()
+            (project / ".usw").symlink_to(outside)
+            with self.assertRaisesRegex(CUSTOM.CustomFlowError, "invalid_local_state"):
+                CUSTOM.local_custom_flow_root(project)
+
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            outside = project / "outside"
+            outside.mkdir()
+            (project / ".usw").mkdir()
+            (project / ".usw/flows").symlink_to(outside)
+            with self.assertRaisesRegex(
+                CUSTOM.CustomFlowError, "invalid_local_flow_root"
+            ):
+                CUSTOM.local_custom_flow_root(project)
+
     def test_validation_cli_returns_structured_flow(self):
         with tempfile.TemporaryDirectory() as directory:
             flow_root = Path(directory)
@@ -190,7 +231,38 @@ This remains ordinary Markdown.
             )
             report = json.loads(completed.stdout)
             self.assertEqual("plan-check", report["name"])
+            self.assertEqual("shared", report["origin"])
             self.assertEqual(["skill", "script"], [step["kind"] for step in report["steps"]])
+
+    def test_validation_cli_local_aliases_select_dot_usw(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            flow_root = project / ".usw/flows"
+            flow_root.mkdir(parents=True)
+            (flow_root / "plan-check.md").write_text(
+                self.content(), encoding="utf-8"
+            )
+
+            identities = set()
+            for flag in ("--local", "-l"):
+                with self.subTest(flag=flag):
+                    completed = subprocess.run(
+                        [
+                            sys.executable,
+                            str(CUSTOM_SCRIPT),
+                            "validate",
+                            flag,
+                            str(project),
+                            "plan-check",
+                        ],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                    report = json.loads(completed.stdout)
+                    self.assertEqual("local", report["origin"])
+                    identities.add(report["identity"])
+            self.assertEqual(1, len(identities))
 
 
 if __name__ == "__main__":

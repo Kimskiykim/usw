@@ -1,6 +1,6 @@
 ---
 name: usw-create-flow
-description: Create or revise a validated project-owned USW custom flow as a linear Markdown sequence of exact skill and safe project-local script steps. Use when the user asks to create, compose, describe, or update a named USW flow, workflow, pipeline, or reusable sequence for execution by usw-run-flow. Do not use to execute a flow.
+description: Create or revise a validated shared or developer-local USW custom flow as a linear Markdown sequence of exact skill and safe project-local script steps. Use when the user asks to create, compose, describe, or update a named USW flow, workflow, pipeline, or reusable sequence for execution by usw-run-flow. Do not use to execute a flow.
 ---
 
 # Создание USW flow
@@ -11,21 +11,31 @@ runtime-код.
 
 ## Подготовка
 
-1. Прочитать проектный `usw.yaml` и разрешить `flows.root` относительно корня
-   проекта. Остановиться, если конфигурация отсутствует, невалидна, выходит за
-   корень проекта или проходит через symlink. Не инициализировать USW скрытно;
-   при отсутствии конфигурации предложить пользователю `/usw-init`.
-2. Определить безопасное имя в kebab-case: только строчные латинские буквы,
-   цифры и дефисы. Целевой файл — `<flows.root>/<name>.md`.
-3. Уточнить ожидаемый результат и линейный порядок действий. Если выбор шага
+1. Разобрать необязательный selector `--local` или его точный alias `-l`.
+   Другие флаги отклонить. Selector допустим только для custom flow; не создавать
+   локальные варианты `analysis`, `development` или `testing`.
+2. Выбрать ровно один root без поиска и fallback:
+   - с `--local` или `-l` использовать `<project>/.usw/flows`; проверить через
+     `lstat`, что существующие `.usw` и `flows` являются directories и не
+     symlinks, и создать только отсутствующий каталог `flows`;
+   - без selector прочитать проектный `usw.yaml` и безопасно разрешить
+     `flows.root` относительно корня проекта.
+   Остановиться, если USW не инициализирован, конфигурация или выбранный root
+   невалидны, выходят за проект либо проходят через symlink. Не инициализировать
+   USW скрытно; предложить пользователю `/usw-init`.
+3. Определить безопасное имя в kebab-case: только строчные латинские буквы,
+   цифры и дефисы. Целевой файл — `<selected-flow-root>/<name>.md`; если он
+   существует, через `lstat` потребовать regular file и отклонить symlink либо
+   другой тип до любой записи.
+4. Уточнить ожидаемый результат и линейный порядок действий. Если выбор шага
    существенно меняет поведение, запросить решение до записи.
-4. Для каждого skill использовать точное имя доступного skill и прочитать его
+5. Для каждого skill использовать точное имя доступного skill и прочитать его
    capability contract. Для script использовать существующий исполняемый
    regular file по project-relative пути и отдельные аргументы.
 
-Не перезаписывать существующий flow без явного запроса. Не подменять
-отсутствующий skill похожим и не создавать отсутствующий script в рамках этого
-skill.
+Не искать одно имя во втором root и не перезаписывать существующий flow без
+явного запроса. Не подменять отсутствующий skill похожим и не создавать
+отсутствующий script в рамках этого skill.
 
 ## Сборка контракта
 
@@ -73,20 +83,26 @@ skill.
 
 ## Запись и проверка
 
-1. Создать или изменить только `<flows.root>/<name>.md`.
+1. Создать или изменить только `<selected-flow-root>/<name>.md`.
 2. Разрешить валидатор относительно этого `SKILL.md` как
    `../usw-run-flow/scripts/run_flow.py`.
-3. Запустить `python3 <validator> validate <flows.root> <name>`.
+3. Без local selector запустить
+   `python3 <validator> validate <flows.root> <name>`. Для local flow запустить
+   `python3 <validator> validate --local <project-root> <name>`; `-l` имеет ту
+   же семантику.
 4. При ошибке исправить документ и повторять проверку до успешного результата.
    Структурная валидация не доказывает доступность skill или безопасность
    script, поэтому проверить их отдельно до завершения.
-5. Сообщить имя и путь flow, подтверждённые шаги и полномочия, а также команду
-   запуска `$usw-run-flow <name>`. Сам flow не запускать.
+5. Сообщить имя, origin (`shared` или `local`), путь flow, подтверждённые шаги
+   и полномочия, а также соответствующую команду запуска:
+   `$usw-run-flow <name>` либо `$usw-run-flow --local <name>`. Сам flow не
+   запускать.
 
 ## Граница выполнения
 
 - Inputs: цель, имя, линейные шаги и существующая конфигурация проекта.
-- Permitted writes: только выбранный `<flows.root>/<name>.md`.
+- Permitted writes: выбранный `<selected-flow-root>/<name>.md`; в local-режиме
+  также создание отсутствующего каталога `.usw/flows`.
 - Output: прошедший валидацию custom flow и краткий отчёт о проверке.
 - Return point: сразу после валидации, без исполнения flow или скрытого вызова
   следующего skill.

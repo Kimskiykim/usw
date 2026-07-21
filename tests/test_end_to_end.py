@@ -252,6 +252,49 @@ class EndToEndWorkflowTests(unittest.TestCase):
                 "Analysis", FLOWS.validate_scenario(role_path.read_text()).role
             )
 
+    def test_local_and_shared_custom_flows_keep_distinct_resume_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            INIT.initialize_usw(project)
+            content = """# Flow: personal-check
+
+## Контракт
+
+- Версия: `1`
+
+## Порядок действий
+
+1. Скилл: `first-skill`
+   - Пишет: нет
+
+## Полномочия записи
+
+- Нет.
+"""
+            shared_root = project / "usw/flows"
+            local_root = RUNNER.local_custom_flow_root(project, create=True)
+            for root in (shared_root, local_root):
+                (root / "personal-check.md").write_text(content, encoding="utf-8")
+
+            shared = RUNNER.load_custom_flow(shared_root, "personal-check")
+            local = RUNNER.load_custom_flow(
+                local_root, "personal-check", origin="local"
+            )
+            self.assertNotEqual(shared.identity, local.identity)
+
+            RUNNER.save_custom_checkpoint(
+                project,
+                shared,
+                RUNNER.FlowState(0, "task/x", False),
+                source_identity=None,
+            )
+            with self.assertRaisesRegex(RUNNER.CustomFlowError, "stale_flow"):
+                RUNNER.resume_custom_state(
+                    local,
+                    RUNNER.load_custom_checkpoint(project),
+                    current_source_identity=None,
+                )
+
     def test_package_manifests_all_describe_standalone_default(self):
         descriptions = []
         for path in (".codex-plugin/plugin.json", "qwen-extension.json", "gigacode-extension.json"):

@@ -5,7 +5,7 @@ ACTION_CAPABILITIES = {
     "confirm-scope": "usw-run-flow",
     "propose-handoff": "usw-run-flow",
     "restore-context": "usw-manage-handoff",
-    "clarify-intent": "usw-brainstorm-solutions",
+    "clarify-intent": "usw-refine-intent",
     "select-approach": "usw-brainstorm-solutions",
     "assess-spec-complexity": "usw-plan-small-steps",
     "write-proposal-and-specs": "usw-manage-artifacts",

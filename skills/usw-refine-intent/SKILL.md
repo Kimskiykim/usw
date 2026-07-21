@@ -1,33 +1,45 @@
 ---
-name: usw-refine-task
-description: Iteratively refine an ambiguous task or design through a questionnaire-style dialogue that handles one decision case per turn and persists shared session, decision, and outcome artifacts. Use when the user wants to think through what to do together, resolve open questions sequentially, record decisions as they are made, or prepare an agreed input for a later change-creation or planning flow. Do not implement the target work.
+name: usw-refine-intent
+description: Iteratively clarify an ambiguous idea, problem, request, or decision through a questionnaire-style dialogue that handles one decision case per turn and saves developer-local non-normative notes. Use when the user wants to formulate intent together or resolve open questions sequentially. Do not evaluate solutions, create planning artifacts, or implement work.
 ---
 
-# Итеративное уточнение задачи
+# Итеративное уточнение намерения
 
 ## Capability contract
 
-- Inputs: one refinement goal, stable ID, current session artifacts, and at most
+- Inputs: one clarification goal, stable ID, current local session artifacts, and at most
   one decision answer.
-- Permitted writes: configured `refinement-state` only.
-- Outputs: updated session/decisions or one ready outcome reference.
-- Return point: after one decision case; never modify target code/change
-  artifacts or choose/invoke the next skill.
+- Permitted writes: developer-local `refinement-state` only.
+- Outputs: updated local session/decisions or one optional ready outcome reference.
+- Return point: after one decision case; never modify backlog, specification,
+  planning, task, or implementation artifacts and never choose/invoke the next skill.
 
-Вести совместное уточнение задачи по одному решению за ход и сохранять результат
-в общих USW-артефактах. Не менять код или целевые change-артефакты.
+## Граница capability
+
+У capability ровно три обязанности:
+
+- вести диалог о намерении пользователя;
+- уточнять не более одного decision case за ход;
+- сохранять локальные ненормативные заметки.
+
+Не оценивать решения, не создавать и не продвигать backlog, OpenSpec change,
+provider-owned planning artifacts или executable tasks и не начинать реализацию.
 
 ## Артефакты
 
-Найти ближайший корень Git. Использовать путь из `refinement.root` в
-`usw.yaml`, если он задан; иначе использовать `usw/refinements/`.
-Не хранить общие результаты в локальном `.usw/`.
+Найти ближайший корень Git. Все новые и возобновляемые сессии хранить только в
+`.usw/refinements/`, независимо от provider и `refinement.root` в `usw.yaml`.
+Перед записью подтвердить, что путь безопасен, не проходит через symlink и
+игнорируется Git. Если найдена одноимённая legacy-сессия в настроенном или
+историческом shared root, остановиться и запросить явное решение о миграции,
+ничего не копируя и не изменяя.
 
-Для одной сессии использовать каталог `<refinement-root>/<refinement-id>/`:
+Для одной сессии использовать каталог
+`.usw/refinements/<refinement-id>/`:
 
 - `session.md` — цель, подтверждённый контекст, очередь кейсов и текущий кейс;
 - `decisions.md` — принятые и отменённые решения со стабильными ID;
-- `outcome.md` — согласованный итог для следующего flow; создавать при готовности.
+- `outcome.md` — текущая согласованная формулировка; создавать при готовности.
 
 При создании брать структуру из `assets/session.md`, `assets/decisions.md` и
 `assets/outcome.md`. Не перезаписывать существующую сессию. Возобновлять её,
@@ -36,8 +48,7 @@ description: Iteratively refine an ambiguous task or design through a questionna
 
 ## Начало или возобновление
 
-1. Определить задачу, желаемый результат, scope и ссылки на существующий change
-   или task, если они есть.
+1. Определить идею, проблему, запрос или решение, желаемую формулировку и scope.
 2. Найти активную подходящую сессию либо создать kebab-case `refinement-id`.
 3. Зафиксировать только подтверждённые факты. Пометить догадки как допущения.
 4. Составить короткую очередь независимых decision cases. Не показывать весь
@@ -76,14 +87,14 @@ description: Iteratively refine an ambiguous task or design through a questionna
 - Для согласованного результата создать `outcome.md`, синтезировав актуальные
   решения без хронологического пересказа обсуждения.
 - Указать цель, согласованную модель, ограничения, оставшиеся неизвестные и
-  рекомендуемый следующий flow.
+  необязательный следующий flow; допустимое значение — `none`.
 - Установить `session.md` в `ready`, `paused` или `blocked` и оставить одно
   конкретное следующее действие.
 - Вернуть вызывающему flow пути к `session.md`, `decisions.md` и, если создан,
   `outcome.md`.
 
-Не запускать создание change, детальное планирование или реализацию, если это
-не было разрешено вызывающим flow или отдельным явным запросом пользователя.
+Даже если пользователь позже просит planning, вернуть локальные ссылки и
+оставить provider-owned запись отдельной явно авторизованной capability.
 
 ## Инварианты
 
@@ -92,5 +103,6 @@ description: Iteratively refine an ambiguous task or design through a questionna
 - `decisions.md` является источником принятых решений.
 - `outcome.md` содержит только актуальный согласованный итог.
 - Ни один артефакт не объявляет проверку или работу выполненной заранее.
+- Локальные заметки не являются backlog, спецификацией, planning state или evidence.
 - Решения не изменяют scope молча: расширение задачи становится отдельным
   кейсом.

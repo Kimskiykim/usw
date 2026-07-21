@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Persistent one-case-at-a-time state transitions for usw-refine-task."""
+"""Developer-local one-case-at-a-time state for usw-refine-intent."""
 
 from __future__ import annotations
 
 import re
 import runpy
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,8 @@ INIT_SCRIPT = Path(__file__).parents[2] / "usw-initialize-project/scripts/init_u
 CONFIG = SimpleNamespace(**runpy.run_path(str(INIT_SCRIPT)))
 ASSET_ROOT = Path(__file__).parents[1] / "assets"
 SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+LOCAL_REFINEMENT_ROOT = Path(".usw/refinements")
+HISTORICAL_REFINEMENT_ROOT = Path("usw/refinements")
 
 
 class RefinementError(ValueError):
@@ -36,10 +39,77 @@ class TurnResult(NamedTuple):
     paths: tuple[str, ...]
 
 
+def _git_has_tracked_local_state(project_root: Path) -> bool:
+    result = subprocess.run(
+        ["git", "-C", str(project_root), "ls-files", "--", ".usw/refinements"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return bool(result.stdout.strip())
+
+
+def _legacy_roots(project_root: Path) -> tuple[Path, ...]:
+    configured = CONFIG.load_config(project_root).legacy_refinement_root
+    values = [Path(configured)] if configured else []
+    values.append(HISTORICAL_REFINEMENT_ROOT)
+    roots = []
+    for value in values:
+        if value == LOCAL_REFINEMENT_ROOT or value in roots:
+            continue
+        roots.append(value)
+    return tuple(project_root / value for value in roots)
+
+
+def _reject_legacy_session(project_root: Path, refinement_id: str) -> None:
+    for legacy_root in _legacy_roots(project_root):
+        legacy_session = legacy_root / refinement_id
+        if CONFIG._existing_path_kind(legacy_session) is not None:
+            raise RefinementError(
+                f"legacy shared refinement exists at {legacy_session}; "
+                "copy or import it only after an explicit migration decision"
+            )
+
+
 def refinement_root(project: Path) -> Path:
-    root = CONFIG.find_project_root(project)
-    config = CONFIG.load_config(root)
-    return root / config.refinement_root
+    project_root = CONFIG.find_project_root(project)
+    local_root = project_root / ".usw"
+    if CONFIG._existing_path_kind(local_root) != "directory":
+        raise RefinementError("local .usw state is missing; run /usw-init first")
+    root = project_root / LOCAL_REFINEMENT_ROOT
+    kind = CONFIG._existing_path_kind(root)
+    if kind not in {None, "directory"}:
+        raise RefinementError(f"local refinement root is not a directory: {root}")
+    if CONFIG._git_is_worktree(project_root):
+        if _git_has_tracked_local_state(project_root):
+            raise RefinementError(".usw/refinements contains Git-tracked local state")
+        if not CONFIG._git_path_is_ignored(
+            project_root, ".usw/refinements/.privacy-check"
+        ):
+            raise RefinementError(".usw/refinements is not ignored by Git")
+    return root
+
+
+def _session_directory(project: Path, refinement_id: str) -> tuple[Path, Path]:
+    project_root = CONFIG.find_project_root(project)
+    _reject_legacy_session(project_root, refinement_id)
+    directory = refinement_root(project_root) / refinement_id
+    kind = CONFIG._existing_path_kind(directory)
+    if kind not in {None, "directory"}:
+        raise RefinementError(f"refinement session is not a directory: {directory}")
+    return project_root, directory
+
+
+def _read_regular(path: Path) -> str:
+    if CONFIG._existing_path_kind(path) != "file":
+        raise RefinementError(f"refinement artifact is not a regular file: {path}")
+    return path.read_text(encoding="utf-8")
+
+
+def _write_regular(path: Path, content: str) -> None:
+    if CONFIG._existing_path_kind(path) != "file":
+        raise RefinementError(f"refinement artifact is not a regular file: {path}")
+    path.write_text(content, encoding="utf-8")
 
 
 def _now(timestamp: datetime | None) -> str:
@@ -77,16 +147,17 @@ def start_or_resume(
         _validate_id(case.case_id, "case ID")
         if len(case.options) not in {2, 3}:
             raise RefinementError("each case requires two or three options")
-    directory = refinement_root(project) / refinement_id
+    project_root, directory = _session_directory(project, refinement_id)
     session = directory / "session.md"
     decisions = directory / "decisions.md"
-    if session.exists():
-        content = session.read_text(encoding="utf-8")
+    if CONFIG._existing_path_kind(session) is not None:
+        content = _read_regular(session)
+        _read_regular(decisions)
         if f"- ID: `{refinement_id}`" not in content or f"\n{goal}\n" not in content:
             raise RefinementError("existing refinement ID has a different goal")
         current = re.search(r"^- Current case: `([^`]+)`", content, re.MULTILINE)
         return TurnResult("resumed", current.group(1) if current else None, (session.as_posix(), decisions.as_posix()))
-    directory.mkdir(parents=True, exist_ok=False)
+    CONFIG.create_directory(project_root, directory)
     current = case_list[0]
     case_rows = "\n".join(f"- [ ] `{case.case_id}` — {case.title}" for case in case_list)
     content = _render_asset(
@@ -97,8 +168,10 @@ def start_or_resume(
         impact=current.impact, options_summary=" | ".join(current.options),
         recommendation=current.recommendation,
     )
-    session.write_text(content, encoding="utf-8")
-    decisions.write_text(_render_asset("decisions.md", title=title), encoding="utf-8")
+    CONFIG.create_file(project_root, session, content)
+    CONFIG.create_file(
+        project_root, decisions, _render_asset("decisions.md", title=title)
+    )
     return TurnResult("started", current.case_id, (session.as_posix(), decisions.as_posix()))
 
 
@@ -121,17 +194,19 @@ def decide_current_case(
     confirmed: bool,
     remaining_cases: Iterable[DecisionCase] = (),
     supersedes: str | None = None,
-    next_flow: str = "Use the agreed outcome as input to a separately authorized planning flow.",
+    next_flow: str = "none",
     timestamp: datetime | None = None,
 ) -> TurnResult:
     if not confirmed:
         return TurnResult("confirmation_required", case.case_id, ())
-    directory = refinement_root(project) / _validate_id(refinement_id, "refinement ID")
+    refinement_id = _validate_id(refinement_id, "refinement ID")
+    project_root, directory = _session_directory(project, refinement_id)
     session = directory / "session.md"
     decisions_file = directory / "decisions.md"
-    content = session.read_text(encoding="utf-8")
+    content = _read_regular(session)
+    _read_regular(decisions_file)
     if f"- Current case: `{case.case_id}`" not in content:
-        prior = decisions_file.read_text(encoding="utf-8")
+        prior = _read_regular(decisions_file)
         revisiting = supersedes and re.search(
             rf"## `{re.escape(supersedes)}`.*?^- Case: `{re.escape(case.case_id)}`.*?^- Status: accepted$",
             prior,
@@ -141,7 +216,7 @@ def decide_current_case(
             raise RefinementError("decision does not match current case")
         content = re.sub(r"^- Status: ready$", "- Status: active", content, count=1, flags=re.MULTILINE)
         content = re.sub(r"^- Current case: none$", f"- Current case: `{case.case_id}`", content, count=1, flags=re.MULTILINE)
-    decisions = decisions_file.read_text(encoding="utf-8")
+    decisions = _read_regular(decisions_file)
     blocks = _decision_blocks(decisions)
     decision_id = f"D-{len(blocks) + 1:03d}"
     if supersedes:
@@ -159,7 +234,7 @@ def decide_current_case(
         f"- Basis: {basis}\n- Consequences: {consequences}\n"
         f"- Supersedes: {f'`{supersedes}`' if supersedes else 'none'}\n"
     )
-    decisions_file.write_text(decisions.rstrip() + "\n" + entry, encoding="utf-8")
+    _write_regular(decisions_file, decisions.rstrip() + "\n" + entry)
     content = content.replace(f"- [ ] `{case.case_id}`", f"- [x] `{case.case_id}`", 1)
     remaining = tuple(remaining_cases)
     if remaining:
@@ -172,15 +247,15 @@ def decide_current_case(
             "- User decision: pending\n\n## Next action\n\n"
             f"Ask one question required to resolve `{next_case.case_id}`.\n"
         )
-        session.write_text(content, encoding="utf-8")
+        _write_regular(session, content)
         return TurnResult("active", next_case.case_id, (session.as_posix(), decisions_file.as_posix()))
 
     content = re.sub(r"^- Status: active$", "- Status: ready", content, count=1, flags=re.MULTILINE)
     content = re.sub(r"^- Current case: `[^`]+`$", "- Current case: none", content, count=1, flags=re.MULTILINE)
-    session.write_text(content, encoding="utf-8")
+    _write_regular(session, content)
     accepted = []
     references = []
-    for current_id, block in _decision_blocks(decisions_file.read_text(encoding="utf-8")):
+    for current_id, block in _decision_blocks(_read_regular(decisions_file)):
         if "- Status: accepted" not in block:
             continue
         decided = re.search(r"^- Decision: (.+)$", block, re.MULTILINE)
@@ -188,7 +263,7 @@ def decide_current_case(
             accepted.append(decided.group(1))
             references.append(current_id)
     outcome = directory / "outcome.md"
-    outcome.write_text(_render_asset(
+    rendered_outcome = _render_asset(
         "outcome.md", title=refinement_id, refinement_id=refinement_id,
         updated_at=_now(timestamp), goal=re.search(
             r"## Goal\n\n(.+?)\n\n##", content, re.DOTALL
@@ -197,5 +272,9 @@ def decide_current_case(
         remaining_unknowns="- None within the refinement scope.",
         decision_references="\n".join(f"- `{item}`" for item in references),
         next_flow=next_flow,
-    ), encoding="utf-8")
+    )
+    if CONFIG._existing_path_kind(outcome) is None:
+        CONFIG.create_file(project_root, outcome, rendered_outcome)
+    else:
+        _write_regular(outcome, rendered_outcome)
     return TurnResult("ready", None, (session.as_posix(), decisions_file.as_posix(), outcome.as_posix()))

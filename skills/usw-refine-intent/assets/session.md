@@ -1,4 +1,4 @@
-# Refinement session: {{title}}
+# Intent clarification session: {{title}}
 
 - ID: `{{refinement_id}}`
 - Status: active
@@ -9,6 +9,8 @@
 ## Goal
 
 {{goal}}
+
+> Developer-local non-normative notes; not backlog, specification, planning, or evidence.
 
 ## Scope
 

@@ -27,7 +27,7 @@ class InitializeUswTests(unittest.TestCase):
         self.assertEqual(1, config.schema_version)
         self.assertEqual("standalone", config.provider)
         self.assertEqual("usw", config.artifact_root)
-        self.assertEqual("usw/refinements", config.refinement_root)
+        self.assertIsNone(config.legacy_refinement_root)
         self.assertEqual("usw/flows", config.flow_root)
         self.assertEqual("usw/reviews", config.review_root)
         self.assertEqual(
@@ -35,8 +35,6 @@ class InitializeUswTests(unittest.TestCase):
             "artifacts:\n"
             "  provider: standalone\n"
             "  root: usw\n"
-            "refinement:\n"
-            "  root: usw/refinements\n"
             "flows:\n"
             "  root: usw/flows\n"
             "reviews:\n"
@@ -57,10 +55,37 @@ class InitializeUswTests(unittest.TestCase):
 
         self.assertEqual("openspec", config.provider)
         self.assertEqual("openspec", config.artifact_root)
-        self.assertEqual("usw/refinements", config.refinement_root)
+        self.assertIsNone(config.legacy_refinement_root)
         self.assertEqual("usw/flows", config.flow_root)
         self.assertEqual("usw/reviews", config.review_root)
         self.assertEqual(content, config.raw_content)
+
+    def test_legacy_refinement_root_is_reported_without_mutation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            legacy = project / "shared/refinements/example/session.md"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text("legacy bytes\n", encoding="utf-8")
+            before = legacy.read_bytes()
+            (project / "usw.yaml").write_text(
+                "schema_version: 1\nartifacts:\n  provider: standalone\n"
+                "refinement:\n  root: shared/refinements\n",
+                encoding="utf-8",
+            )
+
+            config = INIT_USW.load_config(project)
+            completed = subprocess.run(
+                ["python3", str(SCRIPT_PATH), str(project)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual("shared/refinements", config.legacy_refinement_root)
+            self.assertIn("Legacy refinement.root detected", completed.stdout)
+            self.assertIn("explicit migration decision", completed.stdout)
+            self.assertEqual(before, legacy.read_bytes())
+            self.assertFalse((project / ".usw/refinements").exists())
 
     def test_rejects_unsupported_schema_and_provider_with_stable_codes(self):
         with self.assertRaises(INIT_USW.ConfigError) as schema_error:
@@ -154,7 +179,6 @@ class InitializeUswTests(unittest.TestCase):
                 (changes_directory, changes_created),
                 (artifact_template_directory, artifact_template_directory_created),
                 *artifact_template_results,
-                (refinement_directory, refinement_created),
                 (flow_directory, flow_created),
                 (review_directory, review_created),
                 (analysis_scenario, analysis_created),
@@ -188,8 +212,8 @@ class InitializeUswTests(unittest.TestCase):
                     INIT_USW.read_template(relative),
                     path.read_text(encoding="utf-8"),
                 )
-            self.assertTrue(refinement_created)
-            self.assertEqual(project.resolve() / "usw/refinements", refinement_directory)
+            self.assertFalse((project / "usw/refinements").exists())
+            self.assertFalse((project / ".usw/refinements").exists())
             self.assertTrue(flow_created)
             self.assertEqual(project.resolve() / "usw/flows", flow_directory)
             self.assertTrue(review_created)
@@ -486,6 +510,15 @@ class InitializeUswTests(unittest.TestCase):
             )
             self.assertNotIn(".usw/", result.stdout)
             self.assertIn("usw.yaml", result.stdout)
+            ignored = subprocess.run(
+                [
+                    "git", "check-ignore", "--quiet", "--no-index", "--",
+                    ".usw/refinements/.privacy-check",
+                ],
+                cwd=project,
+                check=False,
+            )
+            self.assertEqual(0, ignored.returncode)
 
     def test_renders_initial_handoff_with_supplied_timestamp(self):
         updated_at = datetime(2026, 7, 17, 9, 30, tzinfo=timezone.utc)

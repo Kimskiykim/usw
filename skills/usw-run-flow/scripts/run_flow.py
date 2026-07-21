@@ -19,6 +19,8 @@ from typing import Callable, Mapping, NamedTuple
 CUSTOM_FLOW_VERSION = 1
 CUSTOM_FLOW_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REQUIRED_CUSTOM_SECTIONS = ("Контракт", "Порядок действий", "Полномочия записи")
+CUSTOM_FLOW_ORIGINS = frozenset({"shared", "local"})
+STANDARD_FLOW_NAMES = frozenset({"analysis", "development", "testing"})
 
 
 class CustomFlowError(ValueError):
@@ -40,6 +42,7 @@ class CustomFlow(NamedTuple):
     name: str
     steps: tuple[CustomStep, ...]
     artifact_roles: frozenset[str]
+    origin: str
     identity: str
 
     @property
@@ -98,10 +101,19 @@ def _parse_step_fields(lines: list[str], start: int, section_line: int) -> tuple
     return fields, index
 
 
-def parse_custom_flow(content: str, name: str) -> CustomFlow:
+def parse_custom_flow(
+    content: str, name: str, *, origin: str = "shared"
+) -> CustomFlow:
     """Parse the strict executable subset of an otherwise ordinary Markdown file."""
     if not CUSTOM_FLOW_NAME.fullmatch(name):
         raise CustomFlowError("invalid_flow_name", f"unsafe flow name: {name!r}")
+    if origin not in CUSTOM_FLOW_ORIGINS:
+        raise CustomFlowError("invalid_flow_origin", f"unsupported flow origin: {origin!r}")
+    if origin == "local" and name in STANDARD_FLOW_NAMES:
+        raise CustomFlowError(
+            "unsupported_local_standard_flow",
+            f"standard flow cannot be developer-local: {name}",
+        )
     sections = _markdown_sections(content)
     for forbidden in ("Branches", "Ветвления", "Переходы"):
         if forbidden in sections:
@@ -172,11 +184,18 @@ def parse_custom_flow(content: str, name: str) -> CustomFlow:
         raise CustomFlowError("missing_steps", "flow must contain at least one step", actions_line)
 
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    return CustomFlow(name, tuple(steps), artifact_roles, f"usw-flow-v1:{digest}")
+    identity = (
+        f"usw-flow-v1:{digest}"
+        if origin == "shared"
+        else f"usw-flow-v1:local:{digest}"
+    )
+    return CustomFlow(name, tuple(steps), artifact_roles, origin, identity)
 
 
-def load_custom_flow(flow_root: Path, name: str) -> CustomFlow:
-    """Load one project-owned custom flow without interpreting a path selector."""
+def load_custom_flow(
+    flow_root: Path, name: str, *, origin: str = "shared"
+) -> CustomFlow:
+    """Load one selected custom flow without interpreting a path selector."""
     if not CUSTOM_FLOW_NAME.fullmatch(name):
         raise CustomFlowError("invalid_flow_name", f"unsafe flow name: {name!r}")
     path = flow_root / f"{name}.md"
@@ -186,7 +205,35 @@ def load_custom_flow(flow_root: Path, name: str) -> CustomFlow:
         raise CustomFlowError("missing_flow", f"custom flow is missing: {path}") from error
     if not stat.S_ISREG(mode):
         raise CustomFlowError("invalid_flow_file", f"custom flow is not a regular file: {path}")
-    return parse_custom_flow(path.read_text(encoding="utf-8"), name)
+    return parse_custom_flow(path.read_text(encoding="utf-8"), name, origin=origin)
+
+
+def local_custom_flow_root(project_root: Path, *, create: bool = False) -> Path:
+    """Resolve the fixed developer-local flow root without traversing symlinks."""
+    local_root = project_root.resolve() / ".usw"
+    try:
+        local_mode = os.lstat(local_root).st_mode
+    except FileNotFoundError as error:
+        raise CustomFlowError(
+            "missing_local_state", f"local state is missing: {local_root}"
+        ) from error
+    if not stat.S_ISDIR(local_mode) or stat.S_ISLNK(local_mode):
+        raise CustomFlowError(
+            "invalid_local_state", f"unsafe local state directory: {local_root}"
+        )
+
+    flow_root = local_root / "flows"
+    try:
+        flow_mode = os.lstat(flow_root).st_mode
+    except FileNotFoundError:
+        if create:
+            flow_root.mkdir(mode=0o700)
+        return flow_root
+    if not stat.S_ISDIR(flow_mode) or stat.S_ISLNK(flow_mode):
+        raise CustomFlowError(
+            "invalid_local_flow_root", f"unsafe local flow directory: {flow_root}"
+        )
+    return flow_root
 
 
 class ActionOutcome(NamedTuple):
@@ -570,6 +617,7 @@ def main(argv: list[str] | None = None) -> int:
     validate = commands.add_parser("validate")
     validate.add_argument("flow_root", type=Path)
     validate.add_argument("name")
+    validate.add_argument("-l", "--local", action="store_true")
 
     run_script = commands.add_parser("run-script")
     run_script.add_argument("project_root", type=Path)
@@ -577,6 +625,7 @@ def main(argv: list[str] | None = None) -> int:
     run_script.add_argument("name")
     run_script.add_argument("step", type=int)
     run_script.add_argument("--authorized", action="store_true")
+    run_script.add_argument("-l", "--local", action="store_true")
 
     save = commands.add_parser("checkpoint-save")
     save.add_argument("project_root", type=Path)
@@ -585,20 +634,32 @@ def main(argv: list[str] | None = None) -> int:
     save.add_argument("next_action_index", type=int)
     save.add_argument("scope")
     save.add_argument("--source-identity")
+    save.add_argument("-l", "--local", action="store_true")
 
     resume = commands.add_parser("checkpoint-resume")
     resume.add_argument("project_root", type=Path)
     resume.add_argument("flow_root", type=Path)
     resume.add_argument("name")
     resume.add_argument("--source-identity")
+    resume.add_argument("-l", "--local", action="store_true")
 
     args = parser.parse_args(argv)
     try:
-        flow = load_custom_flow(args.flow_root, args.name)
+        flow_root = (
+            local_custom_flow_root(
+                args.project_root if hasattr(args, "project_root") else args.flow_root
+            )
+            if args.local
+            else args.flow_root
+        )
+        flow = load_custom_flow(
+            flow_root, args.name, origin="local" if args.local else "shared"
+        )
         if args.command == "validate":
             _print_json(
                 {
                     "name": flow.name,
+                    "origin": flow.origin,
                     "identity": flow.identity,
                     "write_authority": sorted(flow.artifact_roles),
                     "steps": [

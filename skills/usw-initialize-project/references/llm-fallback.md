@@ -26,7 +26,7 @@ use it after `init_usw.py` started or returned an error.
 Create only missing paths:
 
 - copy packaged `templates/usw.yaml` to `usw.yaml`;
-- create `.usw/`, `usw/changes`, `usw/refinements`, `usw/flows`,
+- create `.usw/`, `usw/changes`, `usw/flows`,
   `usw/reviews`, and `usw/templates/{change,task,review}`;
 - create `.usw/.gitignore` with `*` and a trailing newline;
 - copy the three packaged `templates/flows/flow-scenario-*.md` files to
@@ -47,6 +47,7 @@ configuration or touch OpenSpec.
 ## Verify and report
 
 Read back every created file, confirm that no template placeholders remain in
-`.usw/HANDOFF.md`, and confirm both local handoff paths are ignored in a Git
-worktree. Report that limited LLM fallback was used, list created and preserved
-paths separately, then return without starting a flow.
+`.usw/HANDOFF.md`, and confirm both local handoff paths plus the future
+`.usw/refinements/` namespace are ignored in a Git worktree. Report that limited
+LLM fallback was used, list created and preserved paths separately, then return
+without starting a flow.
