@@ -5,8 +5,23 @@ description: Initialize a standalone USW workspace and developer-local handoff s
 
 # Initialize USW
 
-Resolve `scripts/init_usw.py` relative to this `SKILL.md`, then run it with
-Python 3 and pass the current project root as its only argument.
+Resolve `scripts/init_usw.py` relative to this `SKILL.md`. Select its
+interpreter before making any project write:
+
+1. Try `python3`, then `python`.
+2. For each candidate, run
+   `<candidate> -c 'import sys; raise SystemExit(sys.version_info < (3, 10))'`.
+3. Use the first candidate that exits successfully and pass the current project
+   root as the script's only argument.
+4. Treat any non-zero result from `init_usw.py` as an initialization failure.
+   Report it and stop; never hide a script or configuration error with fallback.
+
+If neither command provides Python 3.10 or newer, ask the user in their language
+whether to continue with limited LLM initialization. Explain that existing
+files will not be overwritten but deterministic safety checks are weaker. Do
+not write anything until the user explicitly agrees. After agreement, read and
+follow [references/llm-fallback.md](references/llm-fallback.md). If the user
+declines, stop without changes.
 
 Report whether `usw.yaml`, configured standalone roots, project-owned artifact
 templates, `.usw/.gitignore`, and `.usw/HANDOFF.md` were created or already
