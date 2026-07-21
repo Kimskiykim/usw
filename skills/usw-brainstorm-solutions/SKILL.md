@@ -1,12 +1,16 @@
 ---
 name: usw-brainstorm-solutions
-description: Structure solution brainstorming with an adaptive short or full analysis covering the task, context, problem, verified or hypothetical causes, distinct solution paths, a recommendation, and one concrete first step. Use when a user asks how to solve a problem, requests approaches or ideas, is stuck choosing what to do, or needs an ambiguous task decomposed before implementation.
+description: Evaluate solutions for an already bounded problem with an adaptive short or full analysis covering context, verified or hypothetical causes, distinct solution paths, a recommendation, and one concrete first step. Use when a user asks how to solve a defined problem, requests approaches, or is choosing what to do. Do not use for stateful intent clarification.
 ---
 
 # Структурный брейншторм решений
 
 Превращать открытый вопрос в ясный, пригодный для принятия решения ответ.
 Сохранять цель и границы задачи пользователя.
+
+Принимать уже ограниченную проблему и существующий контекст. Если намерение
+ещё не сформулировано, вернуть управление вызывающему flow для отдельного
+`clarify-intent`; не начинать и не продолжать clarification dialogue.
 
 ## Правила работы
 

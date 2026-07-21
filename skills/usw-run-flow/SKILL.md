@@ -1,13 +1,16 @@
 ---
 name: usw-run-flow
-description: Run one validated project-owned USW role-flow action or one step of a named custom Markdown flow with observable HANDOFF begin/outcome boundaries.
+description: Run one validated shared role-flow action or one step of a shared or developer-local named custom Markdown flow with observable HANDOFF begin/outcome boundaries.
 ---
 
 # Run a USW flow
 
-Read `usw.yaml` and resolve `flows.root`; when configuration is absent, use the
-documented standalone default `usw/flows`. Load only the selected project-owned
-flow. Never use a packaged template as a runtime fallback.
+Treat `--local` and `-l` as exact aliases. With either selector, accept only a
+named custom flow and use exactly `<project>/.usw/flows`; reject local
+`analysis`, `development`, and `testing`. Without a selector, read `usw.yaml`
+and resolve `flows.root`; when configuration is absent, use the documented
+standalone default `usw/flows`. Load only the explicitly selected root, never
+search the other root, and never use a packaged template as a runtime fallback.
 
 ## Preflight
 
@@ -17,7 +20,8 @@ Before any mutation:
    stop for a user decision.
 2. Resolve every required executor by exact name and compare its declared writes
    with flow Write authority. Missing capability or mismatch stops the flow.
-3. Read `.usw/HANDOFF.md`. A non-idle state permits only the same flow and scope.
+3. Read `.usw/HANDOFF.md`. A non-idle state permits only the same flow origin,
+   identity, and scope.
    If `.usw/FLOW.json` exists, stop for manual recovery; never merge or delete it.
 4. Ask `usw-manage-handoff` to perform Begin. It must write `in_progress` and
    read it back successfully. Without a confirmed Begin, do not invoke executor.
@@ -42,10 +46,10 @@ same invocation.
 
 ## Resume
 
-Read only the HANDOFF summary first. Resume only the same flow identity and
-scope. `in_progress` without result is a possible interruption inside executor:
-inspect current state as needed and never retry mutation automatically. A stale
-or unknown source requires explicit reconciliation.
+Read only the HANDOFF summary first. Resume only the same flow origin, identity,
+and scope. `in_progress` without result is a possible interruption inside
+executor: inspect current state as needed and never retry mutation automatically.
+A stale or unknown source requires explicit reconciliation.
 
 ## Standard role flow
 
@@ -80,12 +84,15 @@ A custom flow is Markdown with three required sections:
 
 Validate the executable subset directly from the document:
 
-- name is kebab-case and maps only to `<flows.root>/<name>.md`;
+- name is kebab-case and maps only to `<flows.root>/<name>.md` without a local
+  selector or `.usw/flows/<name>.md` with `--local`/`-l`;
 - contract version is exactly `1`;
 - steps are consecutive and linear;
 - each target is an exact skill name or safe project-relative executable;
 - arguments are separate literal values with no shell semantics;
 - every declared write is inside `Полномочия записи`.
 
-Execute one numbered step only after the common Preflight and HANDOFF Begin.
-The saved HANDOFF flow cursor replaces any new custom-flow checkpoint file.
+Validate a local flow with `python3 <validator> validate --local <project-root>
+<name>`. Execute one numbered step only after the common Preflight and HANDOFF
+Begin. Persist `shared` or `local` as part of flow identity; the saved HANDOFF
+flow cursor replaces any new custom-flow checkpoint file.

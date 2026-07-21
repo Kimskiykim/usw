@@ -1,1 +1,0 @@
-# Refinement decisions: {{title}}

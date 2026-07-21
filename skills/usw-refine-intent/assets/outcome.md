@@ -1,9 +1,11 @@
-# Refinement outcome: {{title}}
+# Intent clarification outcome: {{title}}
 
 - Refinement: `{{refinement_id}}`
 - Status: ready
 - Updated: {{updated_at}}
 - Target: {{target_or_none}}
+
+> Developer-local non-normative notes; promotion requires a separate explicit action.
 
 ## Goal
 

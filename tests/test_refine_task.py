@@ -1,4 +1,6 @@
 import importlib.util
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -7,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
-SCRIPT = ROOT / "skills/usw-refine-task/scripts/refinement_state.py"
+SCRIPT = ROOT / "skills/usw-refine-intent/scripts/refinement_state.py"
 SPEC = importlib.util.spec_from_file_location("refinement_state", SCRIPT)
 REFINE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -26,14 +28,16 @@ class RefineTaskTests(unittest.TestCase):
             "small",
         )
 
-    def initialize(self, project: Path, root="usw/refinements"):
-        (project / "usw.yaml").write_text(
-            "schema_version: 1\nartifacts:\n  provider: standalone\n"
-            f"refinement:\n  root: {root}\n",
-            encoding="utf-8",
-        )
+    def initialize(self, project: Path, legacy_root: str | None = None):
+        local = project / ".usw"
+        local.mkdir()
+        (local / ".gitignore").write_text("*\n", encoding="utf-8")
+        config = "schema_version: 1\nartifacts:\n  provider: standalone\n"
+        if legacy_root:
+            config += f"refinement:\n  root: {legacy_root}\n"
+        (project / "usw.yaml").write_text(config, encoding="utf-8")
 
-    def test_new_and_resumed_session_use_configured_root(self):
+    def test_new_and_resumed_session_use_only_local_root(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             self.initialize(project, "shared/refinements")
@@ -55,7 +59,8 @@ class RefineTaskTests(unittest.TestCase):
             )
             self.assertEqual("started", first.status)
             self.assertEqual("resumed", second.status)
-            self.assertTrue((project / "shared/refinements/example/session.md").is_file())
+            self.assertTrue((project / ".usw/refinements/example/session.md").is_file())
+            self.assertFalse((project / "shared/refinements").exists())
 
     def test_unconfirmed_answer_does_not_write_decision(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -66,7 +71,7 @@ class RefineTaskTests(unittest.TestCase):
                 project, refinement_id="example", title="Example", goal="Goal",
                 target="none", cases=[case],
             )
-            decisions = project / "usw/refinements/example/decisions.md"
+            decisions = project / ".usw/refinements/example/decisions.md"
             before = decisions.read_bytes()
             result = REFINE.decide_current_case(
                 project, refinement_id="example", case=case, decision="small",
@@ -90,12 +95,12 @@ class RefineTaskTests(unittest.TestCase):
                 basis="user choice", consequences="one package", confirmed=True,
                 remaining_cases=[second],
             )
-            session = (project / "usw/refinements/example/session.md").read_text()
+            session = (project / ".usw/refinements/example/session.md").read_text()
             self.assertEqual("active", result.status)
             self.assertEqual("storage", result.current_case)
             self.assertIn("- [x] `scope`", session)
             self.assertIn("- [ ] `storage`", session)
-            self.assertEqual(1, (project / "usw/refinements/example/decisions.md").read_text().count("## `D-"))
+            self.assertEqual(1, (project / ".usw/refinements/example/decisions.md").read_text().count("## `D-"))
 
     def test_ready_outcome_uses_only_current_accepted_decisions(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -117,8 +122,8 @@ class RefineTaskTests(unittest.TestCase):
                 basis="revised", consequences="broader", confirmed=True,
                 supersedes="D-001",
             )
-            decisions = (project / "usw/refinements/example/decisions.md").read_text()
-            outcome = (project / "usw/refinements/example/outcome.md").read_text()
+            decisions = (project / ".usw/refinements/example/decisions.md").read_text()
+            outcome = (project / ".usw/refinements/example/outcome.md").read_text()
             self.assertEqual("ready", second.status)
             self.assertIn("- Status: superseded", decisions)
             self.assertIn("- Replaced by: `D-002`", decisions)
@@ -126,7 +131,58 @@ class RefineTaskTests(unittest.TestCase):
             self.assertNotIn("- small", outcome)
             self.assertIn("- `D-002`", outcome)
             self.assertNotIn("- `D-001`", outcome)
+            self.assertIn("## Recommended next flow\n\nnone", outcome)
             self.assertFalse((project / "product.py").exists())
+
+    def test_matching_legacy_session_requires_explicit_migration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            self.initialize(project, "shared/refinements")
+            legacy = project / "shared/refinements/example/session.md"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text("legacy bytes\n", encoding="utf-8")
+            before = legacy.read_bytes()
+
+            with self.assertRaisesRegex(REFINE.RefinementError, "explicit migration"):
+                REFINE.start_or_resume(
+                    project, refinement_id="example", title="Example", goal="Goal",
+                    target="none", cases=[self.case()],
+                )
+
+            self.assertEqual(before, legacy.read_bytes())
+            self.assertFalse((project / ".usw/refinements/example").exists())
+
+    def test_rejects_symlinked_local_refinement_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "project"
+            outside = Path(directory) / "outside"
+            project.mkdir()
+            outside.mkdir()
+            self.initialize(project)
+            os.symlink(outside, project / ".usw/refinements")
+
+            with self.assertRaisesRegex(OSError, "symbolic links"):
+                REFINE.start_or_resume(
+                    project, refinement_id="example", title="Example", goal="Goal",
+                    target="none", cases=[self.case()],
+                )
+
+            self.assertEqual([], list(outside.iterdir()))
+
+    def test_rejects_local_state_not_ignored_by_git(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            subprocess.run(["git", "init", "--quiet", str(project)], check=True)
+            self.initialize(project)
+            (project / ".usw/.gitignore").write_text("*.tmp\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(REFINE.RefinementError, "not ignored"):
+                REFINE.start_or_resume(
+                    project, refinement_id="example", title="Example", goal="Goal",
+                    target="none", cases=[self.case()],
+                )
+
+            self.assertFalse((project / ".usw/refinements").exists())
 
     def test_cases_require_two_or_three_options(self):
         with tempfile.TemporaryDirectory() as directory:

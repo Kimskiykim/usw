@@ -1,7 +1,0 @@
-interface:
-  display_name: "USW Refine Task"
-  short_description: "Refine tasks one decision at a time"
-  default_prompt: "Use $usw-refine-task to refine this task one decision at a time and persist the agreed outcome."
-
-policy:
-  allow_implicit_invocation: true

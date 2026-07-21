@@ -14,7 +14,7 @@ class InstallTests(unittest.TestCase):
         "usw-initialize-project",
         "usw-manage-handoff",
         "usw-brainstorm-solutions",
-        "usw-refine-task",
+        "usw-refine-intent",
         "usw-plan-small-steps",
         "usw-explain-me",
         "usw-create-flow",
@@ -114,21 +114,23 @@ class InstallTests(unittest.TestCase):
                 )
                 self.assertEqual(source, installed_path.read_text(encoding="utf-8"))
 
-    def test_force_removes_legacy_skill_name(self):
+    def test_force_removes_legacy_skill_names(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
-            legacy_qwen = home / ".qwen/skills/usw-init"
-            legacy_codex = home / ".agents/skills/usw-init"
-            legacy_qwen.mkdir(parents=True)
-            legacy_codex.mkdir(parents=True)
-            (legacy_qwen / "SKILL.md").write_text("legacy\n", encoding="utf-8")
-            (legacy_codex / "SKILL.md").write_text("legacy\n", encoding="utf-8")
+            legacy_paths = [
+                base / name
+                for base in (home / ".qwen/skills", home / ".agents/skills")
+                for name in ("usw-init", "usw-refine-task")
+            ]
+            for path in legacy_paths:
+                path.mkdir(parents=True)
+                (path / "SKILL.md").write_text("legacy\n", encoding="utf-8")
 
             result = self.run_install(home, "--force")
 
             self.assertEqual(0, result.returncode, result.stderr)
-            self.assertFalse(legacy_qwen.exists())
-            self.assertFalse(legacy_codex.exists())
+            for path in legacy_paths:
+                self.assertFalse(path.exists())
 
 
 if __name__ == "__main__":

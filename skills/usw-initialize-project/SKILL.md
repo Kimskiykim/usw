@@ -27,6 +27,9 @@ Report whether `usw.yaml`, configured standalone roots, project-owned artifact
 templates, `.usw/.gitignore`, and `.usw/HANDOFF.md` were created or already
 existed. Never overwrite an existing file. If an OpenSpec workspace exists,
 report the explicit provider opt-in path and leave every OpenSpec file unchanged.
+New intent clarification sessions create `.usw/refinements/` on first use.
+Treat an existing `refinement.root` as a legacy diagnostic only: report its
+exact path and never create, move, or rewrite it.
 
 Initialize `.usw/HANDOFF.md` with no active work and treat it as the
 developer's entrypoint for resuming work across local sessions. Keep `.usw/`

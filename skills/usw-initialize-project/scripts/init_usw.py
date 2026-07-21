@@ -20,7 +20,6 @@ CONFIG_FILE_NAME = "usw.yaml"
 SUPPORTED_SCHEMA_VERSION = 1
 SUPPORTED_PROVIDERS = frozenset({"standalone", "openspec"})
 DEFAULT_SPECIALIZED_ROOTS = {
-    "refinement": "usw/refinements",
     "flows": "usw/flows",
     "reviews": "usw/reviews",
 }
@@ -51,7 +50,7 @@ class WorkspaceConfig(NamedTuple):
     schema_version: int
     provider: str
     artifact_root: str
-    refinement_root: str
+    legacy_refinement_root: str | None
     flow_root: str
     review_root: str
     raw_content: str | None = None
@@ -60,7 +59,6 @@ class WorkspaceConfig(NamedTuple):
     def managed_roots(self) -> dict[str, str]:
         return {
             "artifacts": self.artifact_root,
-            "refinement": self.refinement_root,
             "flows": self.flow_root,
             "reviews": self.review_root,
         }
@@ -75,7 +73,7 @@ def default_config(provider: str = "standalone") -> WorkspaceConfig:
         schema_version=SUPPORTED_SCHEMA_VERSION,
         provider=provider,
         artifact_root=artifact_root,
-        refinement_root=DEFAULT_SPECIALIZED_ROOTS["refinement"],
+        legacy_refinement_root=None,
         flow_root=DEFAULT_SPECIALIZED_ROOTS["flows"],
         review_root=DEFAULT_SPECIALIZED_ROOTS["reviews"],
     )
@@ -153,11 +151,17 @@ def parse_config(content: str) -> WorkspaceConfig:
             raise ConfigError("invalid_root", f"{name}.root must be a string")
         return value
 
+    legacy_refinement_root = refinement.get("root")
+    if legacy_refinement_root is not None and not isinstance(
+        legacy_refinement_root, str
+    ):
+        raise ConfigError("invalid_root", "refinement.root must be a string")
+
     return WorkspaceConfig(
         schema_version=SUPPORTED_SCHEMA_VERSION,
         provider=provider,
         artifact_root=root_value(artifacts, defaults.artifact_root, "artifacts"),
-        refinement_root=root_value(refinement, defaults.refinement_root, "refinement"),
+        legacy_refinement_root=legacy_refinement_root,
         flow_root=root_value(flows, defaults.flow_root, "flows"),
         review_root=root_value(reviews, defaults.review_root, "reviews"),
         raw_content=content,
@@ -198,6 +202,8 @@ def validate_config(project_root: Path, config: WorkspaceConfig) -> WorkspaceCon
         name: _root_parts(value, name)
         for name, value in config.managed_roots.items()
     }
+    if config.legacy_refinement_root is not None:
+        _root_parts(config.legacy_refinement_root, "refinement")
     reserved = {"git": (".git",), "local": (".usw",)}
     for name, parts in parsed.items():
         _validate_no_symlink_components(project_root, parts, name)
@@ -208,7 +214,7 @@ def validate_config(project_root: Path, config: WorkspaceConfig) -> WorkspaceCon
                     f"{name}.root overlaps reserved {reserved_name} area",
                 )
 
-    specialized_names = ("refinement", "flows", "reviews")
+    specialized_names = ("flows", "reviews")
     for index, first_name in enumerate(specialized_names):
         for second_name in specialized_names[index + 1 :]:
             if _paths_overlap(parsed[first_name], parsed[second_name]):
@@ -431,7 +437,6 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
     """Reject existing managed paths that are symlinks or have the wrong type."""
     expected_paths = [
         (CONFIG_FILE_NAME, "file"),
-        (config.refinement_root, "directory"),
         (config.flow_root, "directory"),
         (config.review_root, "directory"),
         (".usw", "directory"),
@@ -479,7 +484,11 @@ def validate_local_state_git_policy(project_root: Path) -> None:
     if not _git_is_worktree(project_root):
         return
 
-    local_paths = (".usw/HANDOFF.md", ".usw/HANDOFF.next.md")
+    local_paths = (
+        ".usw/HANDOFF.md",
+        ".usw/HANDOFF.next.md",
+        ".usw/refinements/.privacy-check",
+    )
     tracked = [
         relative_path
         for relative_path in local_paths
@@ -518,7 +527,6 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
     artifact_directory = project_root / config.artifact_root
     changes_directory = artifact_directory / "changes"
     artifact_template_directory = artifact_directory / "templates"
-    refinement_directory = project_root / config.refinement_root
     flow_directory = project_root / config.flow_root
     review_directory = project_root / config.review_root
     local_state_ignore_file = project_root / ".usw" / ".gitignore"
@@ -563,10 +571,6 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
         )
     results.extend(
         [
-            (
-                refinement_directory,
-                create_directory(project_root, refinement_directory),
-            ),
             (flow_directory, create_directory(project_root, flow_directory)),
             (review_directory, create_directory(project_root, review_directory)),
         ]
@@ -614,6 +618,7 @@ def main() -> int:
     try:
         project_root = find_project_root(args.project)
         openspec_detected = detect_openspec_workspace(project_root)
+        config = load_config(project_root)
         results = initialize_usw(args.project)
     except OSError as error:
         print(f"USW initialization failed: {error}", file=sys.stderr)
@@ -626,6 +631,13 @@ def main() -> int:
         print(
             "Detected existing OpenSpec workspace; it was left unchanged. "
             "Set artifacts.provider: openspec in usw.yaml to opt in explicitly."
+        )
+    if config.legacy_refinement_root is not None:
+        print(
+            "Legacy refinement.root detected at "
+            f"{config.legacy_refinement_root}; left unchanged. New intent "
+            "clarification sessions use .usw/refinements and require an "
+            "explicit migration decision."
         )
     return 0
 

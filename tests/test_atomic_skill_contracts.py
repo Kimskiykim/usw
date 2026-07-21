@@ -38,10 +38,22 @@ class AtomicSkillContractTests(unittest.TestCase):
                 self.assertTrue((ROOT / "skills" / skill_name / "SKILL.md").is_file())
                 self.assertNotIn("stub", skill_name)
 
+        self.assertEqual(
+            "usw-refine-intent", REGISTRY.ACTION_CAPABILITIES["clarify-intent"]
+        )
+        self.assertEqual(
+            "usw-brainstorm-solutions",
+            REGISTRY.ACTION_CAPABILITIES["select-approach"],
+        )
+        self.assertNotEqual(
+            REGISTRY.ACTION_CAPABILITIES["clarify-intent"],
+            REGISTRY.ACTION_CAPABILITIES["select-approach"],
+        )
+
     def test_atomic_skills_declare_input_write_output_and_return_boundaries(self):
         skills = (
             "usw-initialize-project", "usw-manage-handoff",
-            "usw-brainstorm-solutions", "usw-refine-task",
+            "usw-brainstorm-solutions", "usw-refine-intent",
             "usw-plan-small-steps", "usw-explain-me", "usw-create-flow",
             "usw-run-flow",
             "usw-manage-artifacts", "usw-execute-task", "usw-verify-task",

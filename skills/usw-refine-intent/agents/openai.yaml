@@ -1,0 +1,7 @@
+interface:
+  display_name: "USW Refine Intent"
+  short_description: "Clarify intent one decision at a time"
+  default_prompt: "Use $usw-refine-intent to clarify this intent one decision at a time and save local non-normative notes."
+
+policy:
+  allow_implicit_invocation: true
