@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -16,7 +17,8 @@ from pathlib import Path, PurePosixPath
 from typing import Callable, Mapping, NamedTuple
 
 
-CUSTOM_FLOW_VERSION = 1
+CUSTOM_FLOW_VERSION = "1"
+STRUCTURED_FLOW_VERSION = "version-2"
 CUSTOM_FLOW_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REQUIRED_CUSTOM_SECTIONS = ("Контракт", "Порядок действий")
 CUSTOM_FLOW_ORIGINS = frozenset({"shared", "local"})
@@ -31,11 +33,22 @@ class CustomFlowError(ValueError):
         self.line = line
 
 
+class LoopPolicy(NamedTuple):
+    gate: str
+    expected_outcome: str
+    max_attempts: int
+    exhaustion: str
+
+
 class CustomStep(NamedTuple):
     kind: str
     target: str
     arguments: tuple[str, ...]
     declared_writes: frozenset[str] | None
+    name: str | None = None
+    payload: tuple[CustomStep, ...] = ()
+    gate_outcomes: tuple[str, ...] = ()
+    loop: LoopPolicy | None = None
 
 
 class CustomFlow(NamedTuple):
@@ -44,14 +57,18 @@ class CustomFlow(NamedTuple):
     artifact_roles: frozenset[str] | None
     origin: str
     identity: str
+    version: str = CUSTOM_FLOW_VERSION
+    branch_rules: tuple[tuple[str, str, str], ...] = ()
 
     @property
     def actions(self) -> tuple[str, ...]:
-        return tuple(str(index) for index in range(1, len(self.steps) + 1))
+        return tuple(
+            step.name or str(index) for index, step in enumerate(self.steps, start=1)
+        )
 
     @property
     def branches(self) -> tuple[tuple[str, str, str], ...]:
-        return ()
+        return self.branch_rules
 
 
 def _markdown_sections(content: str) -> dict[str, tuple[int, str]]:
@@ -101,39 +118,18 @@ def _parse_step_fields(lines: list[str], start: int, section_line: int) -> tuple
     return fields, index
 
 
-def parse_custom_flow(
-    content: str, name: str, *, origin: str = "shared"
+def _flow_identity(content: str, version: str, origin: str) -> str:
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    prefix = "usw-flow-v1" if version == CUSTOM_FLOW_VERSION else "usw-flow-v2"
+    return f"{prefix}:{digest}" if origin == "shared" else f"{prefix}:local:{digest}"
+
+
+def _parse_v1_flow(
+    content: str,
+    name: str,
+    origin: str,
+    sections: dict[str, tuple[int, str]],
 ) -> CustomFlow:
-    """Parse the strict executable subset of an otherwise ordinary Markdown file."""
-    if not CUSTOM_FLOW_NAME.fullmatch(name):
-        raise CustomFlowError("invalid_flow_name", f"unsafe flow name: {name!r}")
-    if origin not in CUSTOM_FLOW_ORIGINS:
-        raise CustomFlowError("invalid_flow_origin", f"unsupported flow origin: {origin!r}")
-    if origin == "local" and name in STANDARD_FLOW_NAMES:
-        raise CustomFlowError(
-            "unsupported_local_standard_flow",
-            f"standard flow cannot be developer-local: {name}",
-        )
-    sections = _markdown_sections(content)
-    for forbidden in ("Branches", "Ветвления", "Переходы"):
-        if forbidden in sections:
-            raise CustomFlowError("unsupported_branch", "custom flows are linear", sections[forbidden][0])
-    missing = [section for section in REQUIRED_CUSTOM_SECTIONS if section not in sections]
-    if missing:
-        raise CustomFlowError("missing_section", f"missing sections: {', '.join(missing)}")
-    positions = [sections[section][0] for section in REQUIRED_CUSTOM_SECTIONS]
-    if positions != sorted(positions):
-        raise CustomFlowError("invalid_section_order", "required sections are out of order")
-
-    contract_line, contract = sections["Контракт"]
-    versions = re.findall(r"^- Версия: `([^`]+)`$", contract, re.MULTILINE)
-    if versions != [str(CUSTOM_FLOW_VERSION)]:
-        raise CustomFlowError(
-            "unsupported_flow_schema",
-            f"expected exactly one version {CUSTOM_FLOW_VERSION}",
-            contract_line,
-        )
-
     actions_line, actions = sections["Порядок действий"]
     authority_entry = sections.get("Полномочия записи")
     if authority_entry is None:
@@ -200,13 +196,321 @@ def parse_custom_flow(
     if not steps:
         raise CustomFlowError("missing_steps", "flow must contain at least one step", actions_line)
 
-    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    identity = (
-        f"usw-flow-v1:{digest}"
-        if origin == "shared"
-        else f"usw-flow-v1:local:{digest}"
+    return CustomFlow(
+        name,
+        tuple(steps),
+        artifact_roles,
+        origin,
+        _flow_identity(content, CUSTOM_FLOW_VERSION, origin),
     )
-    return CustomFlow(name, tuple(steps), artifact_roles, origin, identity)
+
+
+def _v2_call(text: str, *, line: int) -> tuple[str, str]:
+    unknown = re.findall(r"\bCALL\s+([A-Z]+)\b", text)
+    allowed = {"SKILL", "SCRIPT", "FLOW", "SUBAGENT", "HUMAN"}
+    if any(kind not in allowed for kind in unknown):
+        raise CustomFlowError("unsupported_call_type", "unsupported CALL type", line)
+    calls = re.findall(
+        r"\bCALL (SKILL|SCRIPT|FLOW|SUBAGENT|HUMAN) `([^`]+)`", text
+    )
+    if len(calls) != 1:
+        raise CustomFlowError("invalid_call", "expected exactly one typed CALL", line)
+    kind, target = calls[0]
+    if kind == "FLOW" and not CUSTOM_FLOW_NAME.fullmatch(target):
+        raise CustomFlowError("invalid_flow_name", f"unsafe nested flow name: {target!r}", line)
+    return kind.casefold(), target
+
+
+def _v2_arguments(lines: list[tuple[int, str]], *, kind: str) -> tuple[str, ...]:
+    matches = [
+        (line, match.group(1))
+        for line, source in lines
+        if (match := re.fullmatch(r"\s+- Аргументы:\s*(.+)", source))
+    ]
+    if len(matches) > 1:
+        raise CustomFlowError("duplicate_step_field", "duplicate field 'Аргументы'", matches[1][0])
+    if not matches:
+        return ()
+    line, value = matches[0]
+    if kind != "script":
+        raise CustomFlowError("invalid_step_field", "only SCRIPT accepts arguments", line)
+    return _code_values(value, line=line, field="Аргументы")
+
+
+def _payload_items(
+    lines: list[tuple[int, str]], marker_index: int, names: set[str]
+) -> tuple[CustomStep, ...]:
+    marker_line, marker = lines[marker_index]
+    marker_indent = len(marker) - len(marker.lstrip())
+    payload_lines = lines[marker_index + 1 :]
+    first = next((item for item in payload_lines if item[1].strip()), None)
+    if first is None:
+        raise CustomFlowError("missing_subagent_payload", "SUBAGENT payload is empty", marker_line)
+    first_match = re.fullmatch(r"(\s+)([0-9]+)\. `([^`]+)` — (.+)", first[1])
+    if first_match is None or len(first_match.group(1)) <= marker_indent:
+        raise CustomFlowError("invalid_subagent_payload", "expected nested numbered actions", first[0])
+    item_indent = len(first_match.group(1))
+    starts: list[int] = []
+    for index, (line, source) in enumerate(payload_lines):
+        match = re.fullmatch(r"(\s+)([0-9]+)\. `([^`]+)` — (.+)", source)
+        if match and len(match.group(1)) == item_indent:
+            starts.append(index)
+        elif source.strip() and len(source) - len(source.lstrip()) <= marker_indent:
+            raise CustomFlowError("invalid_subagent_payload", "unexpected payload field", line)
+    if not starts:
+        raise CustomFlowError("missing_subagent_payload", "SUBAGENT payload is empty", marker_line)
+    result: list[CustomStep] = []
+    for position, start in enumerate(starts):
+        end = starts[position + 1] if position + 1 < len(starts) else len(payload_lines)
+        line, source = payload_lines[start]
+        match = re.fullmatch(r"(\s+)([0-9]+)\. `([^`]+)` — (.+)", source)
+        assert match is not None
+        number, action_name, headline = match.group(2), match.group(3), match.group(4)
+        if int(number) != position + 1:
+            raise CustomFlowError("invalid_step_number", "nested steps must be consecutive", line)
+        if not CUSTOM_FLOW_NAME.fullmatch(action_name) or action_name in names:
+            raise CustomFlowError("invalid_action_name", "action names must be unique kebab-case", line)
+        names.add(action_name)
+        result.append(
+            _parse_v2_call_step(
+                action_name, headline, payload_lines[start + 1 : end], line, names
+            )
+        )
+    return tuple(result)
+
+
+def _parse_v2_call_step(
+    name: str,
+    headline: str,
+    lines: list[tuple[int, str]],
+    line: int,
+    names: set[str],
+) -> CustomStep:
+    kind, target = _v2_call(headline, line=line)
+    markers = [
+        index
+        for index, (_source_line, source) in enumerate(lines)
+        if re.fullmatch(r"\s+- Действия субагента:", source)
+    ]
+    arguments = _v2_arguments(
+        lines[: markers[0]] if markers else lines,
+        kind=kind,
+    )
+    if kind == "subagent":
+        if len(markers) != 1:
+            raise CustomFlowError("missing_subagent_payload", "SUBAGENT requires one payload", line)
+        payload = _payload_items(lines, markers[0], names)
+    else:
+        if markers:
+            raise CustomFlowError("invalid_subagent_payload", "only SUBAGENT accepts nested actions", lines[markers[0]][0])
+        payload = ()
+    return CustomStep(kind, target, arguments, None, name, payload)
+
+
+def _parse_v2_flow(
+    content: str,
+    name: str,
+    origin: str,
+    sections: dict[str, tuple[int, str]],
+) -> CustomFlow:
+    if "Полномочия записи" in sections:
+        raise CustomFlowError(
+            "unsupported_write_metadata",
+            "version-2 does not accept write authority",
+            sections["Полномочия записи"][0],
+        )
+    actions_line, actions = sections["Порядок действий"]
+    sources = actions.splitlines()
+    starts = [index for index, source in enumerate(sources) if re.fullmatch(r"[0-9]+\. `[^`]+` — .+", source)]
+    if not starts:
+        raise CustomFlowError("missing_steps", "flow must contain at least one action", actions_line)
+    first_nonempty = next(index for index, source in enumerate(sources) if source.strip())
+    if starts[0] != first_nonempty:
+        raise CustomFlowError("invalid_step", "expected a named top-level action", actions_line + first_nonempty + 1)
+
+    names: set[str] = set()
+    steps: list[CustomStep] = []
+    branches: list[tuple[str, str, str]] = []
+    gates: dict[str, tuple[str, ...]] = {}
+    for position, start in enumerate(starts):
+        end = starts[position + 1] if position + 1 < len(starts) else len(sources)
+        line = actions_line + start + 1
+        match = re.fullmatch(r"([0-9]+)\. `([^`]+)` — (.+)", sources[start])
+        assert match is not None
+        number, action_name, headline = match.groups()
+        if int(number) != position + 1:
+            raise CustomFlowError("invalid_step_number", "steps must be numbered consecutively", line)
+        if not CUSTOM_FLOW_NAME.fullmatch(action_name) or action_name in names:
+            raise CustomFlowError("invalid_action_name", "action names must be unique kebab-case", line)
+        names.add(action_name)
+        block = [(actions_line + index + 1, sources[index]) for index in range(start + 1, end)]
+
+        if "PARALLEL" in headline:
+            if headline.strip() != "PARALLEL:":
+                raise CustomFlowError("invalid_parallel", "expected canonical PARALLEL block", line)
+            child_starts = [
+                index
+                for index, (_child_line, source) in enumerate(block)
+                if re.fullmatch(r"   - `[^`]+` — .+", source)
+            ]
+            if len(child_starts) < 2:
+                raise CustomFlowError("invalid_parallel", "PARALLEL requires at least two children", line)
+            children: list[CustomStep] = []
+            for child_position, child_start in enumerate(child_starts):
+                child_end = child_starts[child_position + 1] if child_position + 1 < len(child_starts) else len(block)
+                child_line, child_source = block[child_start]
+                child_match = re.fullmatch(r"   - `([^`]+)` — (.+)", child_source)
+                assert child_match is not None
+                child_name, child_headline = child_match.groups()
+                if not CUSTOM_FLOW_NAME.fullmatch(child_name) or child_name in names:
+                    raise CustomFlowError("invalid_action_name", "action names must be unique kebab-case", child_line)
+                names.add(child_name)
+                children.append(
+                    _parse_v2_call_step(
+                        child_name,
+                        child_headline,
+                        block[child_start + 1 : child_end],
+                        child_line,
+                        names,
+                    )
+                )
+            steps.append(CustomStep("parallel", action_name, (), None, action_name, tuple(children)))
+            continue
+
+        if "LOOP" in headline:
+            loop_match = re.fullmatch(
+                r"LOOP не более ([1-9][0-9]*) попыт\w*, пока `([^`]+)` не вернёт `([^`]+)`\.",
+                headline,
+            )
+            if loop_match is None:
+                raise CustomFlowError("invalid_loop", "expected a bounded canonical LOOP", line)
+            maximum, gate, expected = loop_match.groups()
+            attempt = [item for item in block if re.fullmatch(r"   - Каждая попытка .+CALL .+", item[1])]
+            returns = [item for item in block if re.fullmatch(r"   - После попытки: снова `[^`]+`\.", item[1])]
+            exhausted = [item for item in block if re.fullmatch(r"   - При исчерпании: .+", item[1])]
+            if len(attempt) != 1 or len(returns) != 1 or len(exhausted) != 1:
+                raise CustomFlowError("invalid_loop", "LOOP requires attempt, return, and exhaustion fields", line)
+            return_target = re.search(r"`([^`]+)`", returns[0][1])
+            assert return_target is not None
+            if return_target.group(1) != gate:
+                raise CustomFlowError("invalid_loop", "LOOP return must target its gate", returns[0][0])
+            kind, target = _v2_call(attempt[0][1], line=attempt[0][0])
+            if kind == "subagent":
+                raise CustomFlowError(
+                    "invalid_loop",
+                    "SUBAGENT loop attempts require an explicit payload block",
+                    attempt[0][0],
+                )
+            arguments = _v2_arguments(block, kind=kind)
+            exhaustion = exhausted[0][1].split(":", 1)[1].strip()
+            steps.append(
+                CustomStep(
+                    kind,
+                    target,
+                    arguments,
+                    None,
+                    action_name,
+                    (),
+                    (),
+                    LoopPolicy(gate, expected, int(maximum), exhaustion),
+                )
+            )
+            continue
+
+        if "GATE" in headline:
+            gate_match = re.fullmatch(
+                r"(.*CALL HUMAN `[^`]+`); GATE: (.+)", headline
+            )
+            if gate_match is None:
+                raise CustomFlowError("invalid_gate", "GATE must use CALL HUMAN", line)
+            kind, target = _v2_call(gate_match.group(1), line=line)
+            outcomes = tuple(re.findall(r"`([^`]+)`", gate_match.group(2)))
+            if len(outcomes) < 2 or len(set(outcomes)) != len(outcomes):
+                raise CustomFlowError("invalid_gate", "GATE requires unique finite outcomes", line)
+            routes: dict[str, str] = {}
+            has_else = False
+            for child_line, source in block:
+                route = re.fullmatch(
+                    r"   - (IF|ELIF) `([^`]+)`: продолжить (?:к|LOOP) `([^`]+)`\.", source
+                )
+                if route:
+                    outcome, destination = route.group(2), route.group(3)
+                    if outcome in routes:
+                        raise CustomFlowError("invalid_gate", "duplicate gate outcome", child_line)
+                    routes[outcome] = destination
+                elif re.fullmatch(r"   - ELSE: .+", source):
+                    has_else = True
+                elif source.strip():
+                    raise CustomFlowError("invalid_gate", "unexpected GATE field", child_line)
+            if set(routes) != set(outcomes) or not has_else:
+                raise CustomFlowError("invalid_gate", "GATE requires complete routes and ELSE", line)
+            branches.extend((action_name, outcome, routes[outcome]) for outcome in outcomes)
+            gates[action_name] = outcomes
+            steps.append(CustomStep(kind, target, (), None, action_name, (), outcomes))
+            continue
+
+        if any(marker in headline for marker in ("IF", "ELIF", "ELSE")):
+            raise CustomFlowError("invalid_control", "control marker is outside its block", line)
+        steps.append(_parse_v2_call_step(action_name, headline, block, line, names))
+
+    top_names = {step.name for step in steps}
+    for _source, _outcome, target in branches:
+        if target not in top_names:
+            raise CustomFlowError("unknown_action", f"unknown branch target: {target}")
+    for step in steps:
+        if step.loop is None:
+            continue
+        gate_outcomes = gates.get(step.loop.gate)
+        if gate_outcomes is None or step.loop.expected_outcome not in gate_outcomes:
+            raise CustomFlowError("invalid_loop", "LOOP must reference an existing compatible GATE")
+        if not any(source == step.loop.gate and target == step.name for source, _outcome, target in branches):
+            raise CustomFlowError("invalid_loop", "GATE must route an outcome to its LOOP")
+
+    return CustomFlow(
+        name,
+        tuple(steps),
+        None,
+        origin,
+        _flow_identity(content, STRUCTURED_FLOW_VERSION, origin),
+        STRUCTURED_FLOW_VERSION,
+        tuple(branches),
+    )
+
+
+def parse_custom_flow(
+    content: str, name: str, *, origin: str = "shared"
+) -> CustomFlow:
+    """Parse the strict executable subset of an otherwise ordinary Markdown file."""
+    if not CUSTOM_FLOW_NAME.fullmatch(name):
+        raise CustomFlowError("invalid_flow_name", f"unsafe flow name: {name!r}")
+    if origin not in CUSTOM_FLOW_ORIGINS:
+        raise CustomFlowError("invalid_flow_origin", f"unsupported flow origin: {origin!r}")
+    if origin == "local" and name in STANDARD_FLOW_NAMES:
+        raise CustomFlowError(
+            "unsupported_local_standard_flow",
+            f"standard flow cannot be developer-local: {name}",
+        )
+    sections = _markdown_sections(content)
+    missing = [section for section in REQUIRED_CUSTOM_SECTIONS if section not in sections]
+    if missing:
+        raise CustomFlowError("missing_section", f"missing sections: {', '.join(missing)}")
+    positions = [sections[section][0] for section in REQUIRED_CUSTOM_SECTIONS]
+    if positions != sorted(positions):
+        raise CustomFlowError("invalid_section_order", "required sections are out of order")
+    contract_line, contract = sections["Контракт"]
+    versions = re.findall(r"^- Версия: `([^`]+)`$", contract, re.MULTILINE)
+    if versions == [CUSTOM_FLOW_VERSION]:
+        for forbidden in ("Branches", "Ветвления", "Переходы"):
+            if forbidden in sections:
+                raise CustomFlowError("unsupported_branch", "custom flows are linear", sections[forbidden][0])
+        return _parse_v1_flow(content, name, origin, sections)
+    if versions == [STRUCTURED_FLOW_VERSION]:
+        return _parse_v2_flow(content, name, origin, sections)
+    raise CustomFlowError(
+        "unsupported_flow_schema",
+        f"expected exactly one version {CUSTOM_FLOW_VERSION} or {STRUCTURED_FLOW_VERSION}",
+        contract_line,
+    )
 
 
 def load_custom_flow(
@@ -264,6 +568,22 @@ class ActionOutcome(NamedTuple):
 class Executor(NamedTuple):
     declared_writes: frozenset[str]
     invoke: Callable[[str], ActionOutcome]
+    available: bool = True
+    is_stub: bool = False
+
+
+class CallInvocation(NamedTuple):
+    action: str
+    kind: str
+    target: str
+    scope: str
+    arguments: tuple[str, ...] = ()
+    payload: tuple[CustomStep, ...] = ()
+
+
+class TypedExecutor(NamedTuple):
+    declared_writes: frozenset[str]
+    invoke: Callable[[CallInvocation], ActionOutcome]
     available: bool = True
     is_stub: bool = False
 
@@ -334,12 +654,73 @@ def resolve_custom_executors(
     skill_executors: Mapping[str, Executor],
     *,
     project_root: Path,
+    typed_executors: Mapping[tuple[str, str], TypedExecutor] | None = None,
     script_permissions: frozenset[str] = frozenset(),
     script_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> dict[str, Executor]:
     """Resolve every custom step before the first executor can mutate state."""
-    resolved: dict[str, Executor] = {}
-    for index, step in enumerate(flow.steps, start=1):
+    typed_executors = typed_executors or {}
+
+    def resolve(step: CustomStep) -> Executor:
+        if step.kind == "parallel":
+            children = tuple(resolve(child) for child in step.payload)
+
+            def invoke_parallel(scope: str) -> ActionOutcome:
+                with ThreadPoolExecutor(max_workers=len(children)) as pool:
+                    futures = [pool.submit(executor.invoke, scope) for executor in children]
+                    outcomes: list[ActionOutcome] = []
+                    for future in futures:
+                        try:
+                            outcomes.append(future.result())
+                        except Exception as error:  # executor boundary
+                            outcomes.append(
+                                ActionOutcome("failed", "parallel_child_failed", detail=str(error))
+                            )
+                written = frozenset().union(*(outcome.written_roles for outcome in outcomes))
+                references = tuple(
+                    reference
+                    for outcome in outcomes
+                    for reference in outcome.output_references
+                )
+                violation = next(
+                    (
+                        outcome
+                        for executor, outcome in zip(children, outcomes)
+                        if outcome.written_roles - executor.declared_writes
+                    ),
+                    None,
+                )
+                if violation:
+                    return ActionOutcome(
+                        "failed",
+                        "executor_contract_violation",
+                        written,
+                        references,
+                        "A parallel child reported undeclared writes.",
+                    )
+                failed = next(
+                    (outcome for outcome in outcomes if outcome.status != "completed"),
+                    None,
+                )
+                if failed:
+                    return ActionOutcome(
+                        failed.status,
+                        failed.outcome,
+                        written,
+                        references,
+                        failed.detail,
+                    )
+                return ActionOutcome(
+                    "completed", "parallel_completed", written, references
+                )
+
+            return Executor(
+                frozenset().union(*(executor.declared_writes for executor in children)),
+                invoke_parallel,
+                all(executor.available for executor in children),
+                any(executor.is_stub for executor in children),
+            )
+
         if step.kind == "skill":
             executor = skill_executors.get(step.target)
             if executor is None or not executor.available:
@@ -352,14 +733,47 @@ def resolve_custom_executors(
                     "skill_contract_mismatch",
                     f"declared writes for {step.target} do not match its capability contract",
                 )
-            resolved[str(index)] = executor
-            continue
-        resolved[str(index)] = _script_executor(
-            project_root,
-            step,
-            authorized=step.target in script_permissions,
-            runner=script_runner,
+            return executor
+
+        if step.kind == "script":
+            return _script_executor(
+                project_root,
+                step,
+                authorized=step.target in script_permissions,
+                runner=script_runner,
+            )
+
+        executor = typed_executors.get((step.kind, step.target))
+        if executor is None or not executor.available:
+            raise CustomFlowError(
+                "missing_executor",
+                f"{step.kind} executor is unavailable: {step.target}",
+            )
+        for child in step.payload:
+            resolve(child)
+
+        def invoke_typed(scope: str) -> ActionOutcome:
+            return executor.invoke(
+                CallInvocation(
+                    step.name or step.target,
+                    step.kind,
+                    step.target,
+                    scope,
+                    step.arguments,
+                    step.payload,
+                )
+            )
+
+        return Executor(
+            executor.declared_writes,
+            invoke_typed,
+            executor.available,
+            executor.is_stub,
         )
+
+    resolved: dict[str, Executor] = {}
+    for action, step in zip(flow.actions, flow.steps):
+        resolved[action] = resolve(step)
     return resolved
 
 
@@ -367,6 +781,7 @@ class FlowState(NamedTuple):
     action_index: int = 0
     selected_scope: str | None = None
     stopped: bool = False
+    loop_counts: tuple[tuple[str, int], ...] = ()
 
 
 class CustomFlowCheckpoint(NamedTuple):
@@ -376,6 +791,7 @@ class CustomFlowCheckpoint(NamedTuple):
     selected_scope: str
     next_action_index: int
     source_identity: str | None
+    loop_counts: tuple[tuple[str, int], ...] = ()
 
 
 def _custom_checkpoint_path(project_root: Path) -> Path:
@@ -407,15 +823,28 @@ def save_custom_checkpoint(
         raise CustomFlowError("missing_scope", "cannot checkpoint a flow without scope")
     if not 0 <= state.action_index <= len(flow.steps):
         raise CustomFlowError("invalid_checkpoint", "next action index is outside the flow")
+    loop_limits = {
+        step.name: step.loop.max_attempts
+        for step in flow.steps
+        if step.loop is not None and step.name is not None
+    }
+    if any(
+        name not in loop_limits or count < 0 or count > loop_limits[name]
+        for name, count in state.loop_counts
+    ) or (flow.version == CUSTOM_FLOW_VERSION and state.loop_counts):
+        raise CustomFlowError("invalid_checkpoint", "invalid loop counters for flow")
     path = _custom_checkpoint_path(project_root)
-    payload = {
-        "schema_version": 1,
+    schema_version = 2 if flow.version == STRUCTURED_FLOW_VERSION else 1
+    payload: dict[str, object] = {
+        "schema_version": schema_version,
         "flow_name": flow.name,
         "flow_identity": flow.identity,
         "selected_scope": state.selected_scope,
         "next_action_index": state.action_index,
         "source_identity": source_identity,
     }
+    if schema_version == 2:
+        payload["loop_counts"] = [list(item) for item in state.loop_counts]
     temporary_name: str | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -446,17 +875,37 @@ def load_custom_checkpoint(project_root: Path) -> CustomFlowCheckpoint:
         "schema_version", "flow_name", "flow_identity", "selected_scope",
         "next_action_index", "source_identity",
     }
-    if not isinstance(data, dict) or set(data) != expected:
+    if not isinstance(data, dict) or data.get("schema_version") not in {1, 2}:
+        raise CustomFlowError("invalid_checkpoint", "invalid checkpoint values")
+    if data["schema_version"] == 2:
+        expected.add("loop_counts")
+    if set(data) != expected:
         raise CustomFlowError("invalid_checkpoint", "unexpected checkpoint fields")
     if (
-        data["schema_version"] != 1
-        or not isinstance(data["flow_name"], str)
+        not isinstance(data["flow_name"], str)
         or not isinstance(data["flow_identity"], str)
         or not isinstance(data["selected_scope"], str)
         or not isinstance(data["next_action_index"], int)
         or (data["source_identity"] is not None and not isinstance(data["source_identity"], str))
     ):
         raise CustomFlowError("invalid_checkpoint", "invalid checkpoint values")
+    loop_counts: tuple[tuple[str, int], ...] = ()
+    if data["schema_version"] == 2:
+        raw_counts = data["loop_counts"]
+        if (
+            not isinstance(raw_counts, list)
+            or any(
+                not isinstance(item, list)
+                or len(item) != 2
+                or not isinstance(item[0], str)
+                or not isinstance(item[1], int)
+                or item[1] < 0
+                for item in raw_counts
+            )
+            or len({item[0] for item in raw_counts}) != len(raw_counts)
+        ):
+            raise CustomFlowError("invalid_checkpoint", "invalid loop counters")
+        loop_counts = tuple((item[0], item[1]) for item in raw_counts)
     return CustomFlowCheckpoint(
         data["schema_version"],
         data["flow_name"],
@@ -464,6 +913,7 @@ def load_custom_checkpoint(project_root: Path) -> CustomFlowCheckpoint:
         data["selected_scope"],
         data["next_action_index"],
         data["source_identity"],
+        loop_counts,
     )
 
 
@@ -475,6 +925,9 @@ def resume_custom_state(
 ) -> FlowState:
     if checkpoint.flow_name != flow.name or checkpoint.flow_identity != flow.identity:
         raise CustomFlowError("stale_flow", "flow changed after the checkpoint was saved")
+    expected_schema = 2 if flow.version == STRUCTURED_FLOW_VERSION else 1
+    if checkpoint.schema_version != expected_schema:
+        raise CustomFlowError("invalid_checkpoint", "checkpoint schema does not match flow version")
     if not 0 <= checkpoint.next_action_index <= len(flow.steps):
         raise CustomFlowError("invalid_checkpoint", "next action index is outside the flow")
     if checkpoint.source_identity is not None:
@@ -482,7 +935,23 @@ def resume_custom_state(
             raise CustomFlowError("unknown_source_context", "current source identity is unavailable")
         if checkpoint.source_identity != current_source_identity:
             raise CustomFlowError("stale_source_context", "product source changed after checkpoint")
-    return FlowState(checkpoint.next_action_index, checkpoint.selected_scope, False)
+    if flow.version == STRUCTURED_FLOW_VERSION:
+        loop_limits = {
+            step.name: step.loop.max_attempts
+            for step in flow.steps
+            if step.loop is not None and step.name is not None
+        }
+        if any(
+            name not in loop_limits or count > loop_limits[name]
+            for name, count in checkpoint.loop_counts
+        ):
+            raise CustomFlowError("invalid_checkpoint", "invalid loop counters for flow")
+    return FlowState(
+        checkpoint.next_action_index,
+        checkpoint.selected_scope,
+        False,
+        checkpoint.loop_counts,
+    )
 
 
 class FlowResult(NamedTuple):
@@ -499,6 +968,22 @@ def _branch_target(scenario, action: str, outcome: str) -> str | None:
     if len(matches) > 1:
         raise ValueError(f"ambiguous branch for {action}:{outcome}")
     return matches[0] if matches else None
+
+
+def _next_state(
+    previous: FlowState, action_index: int, scope: str, stopped: bool
+) -> FlowState:
+    return FlowState(action_index, scope, stopped, previous.loop_counts)
+
+
+def _loop_count(state: FlowState, action: str) -> int:
+    return dict(state.loop_counts).get(action, 0)
+
+
+def _increment_loop(state: FlowState, action: str) -> tuple[tuple[str, int], ...]:
+    counts = dict(state.loop_counts)
+    counts[action] = counts.get(action, 0) + 1
+    return tuple(sorted(counts.items()))
 
 
 def run_next(
@@ -522,14 +1007,28 @@ def run_next(
     if scope not in allowed_scopes:
         return FlowResult(state, "decision_required", None, (), "invalid_scope", "Choose one of the currently allowed scopes.")
     if state.action_index >= len(scenario.actions):
-        complete = FlowState(state.action_index, scope, True)
+        complete = _next_state(state, state.action_index, scope, True)
         return FlowResult(complete, "completed", None, (), "scope_complete", "Report the scoped result.")
 
     action = scenario.actions[state.action_index]
+    step = (
+        scenario.steps[state.action_index]
+        if getattr(scenario, "version", CUSTOM_FLOW_VERSION) == STRUCTURED_FLOW_VERSION
+        else None
+    )
+    if step is not None and step.loop is not None and _loop_count(state, action) >= step.loop.max_attempts:
+        return FlowResult(
+            _next_state(state, state.action_index, scope, True),
+            "decision_required",
+            action,
+            (),
+            "loop_exhausted",
+            step.loop.exhaustion,
+        )
     executor = executors.get(action)
     if executor is None or not executor.available or (executor.is_stub and not allow_stubs):
         return FlowResult(
-            FlowState(state.action_index, scope, False),
+            _next_state(state, state.action_index, scope, False),
             "blocked",
             action,
             (),
@@ -542,7 +1041,7 @@ def run_next(
     unauthorized = executor.declared_writes - artifact_roles
     if unauthorized:
         return FlowResult(
-            FlowState(state.action_index, scope, False),
+            _next_state(state, state.action_index, scope, False),
             "blocked",
             action,
             (),
@@ -553,7 +1052,7 @@ def run_next(
     outcome = executor.invoke(scope)
     if outcome.written_roles - executor.declared_writes or outcome.written_roles - artifact_roles:
         return FlowResult(
-            FlowState(state.action_index, scope, True),
+            _next_state(state, state.action_index, scope, True),
             "failed",
             action,
             outcome.output_references,
@@ -562,7 +1061,7 @@ def run_next(
         )
     if outcome.status != "completed":
         return FlowResult(
-            FlowState(state.action_index, scope, True),
+            _next_state(state, state.action_index, scope, True),
             outcome.status,
             action,
             outcome.output_references,
@@ -570,20 +1069,40 @@ def run_next(
             outcome.detail or "Resolve the reported boundary before continuing.",
         )
 
+    if step is not None and step.gate_outcomes and outcome.outcome not in step.gate_outcomes:
+        return FlowResult(
+            _next_state(state, state.action_index, scope, True),
+            "decision_required",
+            action,
+            outcome.output_references,
+            "unknown_gate_outcome",
+            f"Choose one declared outcome: {', '.join(step.gate_outcomes)}.",
+        )
+
     target = _branch_target(scenario, action, outcome.outcome)
     if target and target.startswith("stop:"):
         reason = target.removeprefix("stop:")
         return FlowResult(
-            FlowState(state.action_index, scope, True),
+            _next_state(state, state.action_index, scope, True),
             "completed" if reason in {"scope-complete", "delivery"} else "stopped",
             action,
             outcome.output_references,
             reason,
             "Report the scoped result." if reason in {"scope-complete", "delivery"} else "Resolve the stop condition.",
         )
-    next_index = scenario.actions.index(target) if target else state.action_index + 1
+    if step is not None and step.loop is not None:
+        next_index = scenario.actions.index(step.loop.gate)
+        next_state = FlowState(
+            next_index,
+            scope,
+            False,
+            _increment_loop(state, action),
+        )
+    else:
+        next_index = scenario.actions.index(target) if target else state.action_index + 1
+        next_state = _next_state(state, next_index, scope, False)
     return FlowResult(
-        FlowState(next_index, scope, False),
+        next_state,
         "action_completed",
         action,
         outcome.output_references,
@@ -600,6 +1119,7 @@ def run_custom_next(
     project_root: Path,
     allowed_scopes: tuple[str, ...],
     selected_scope: str | None = None,
+    typed_executors: Mapping[tuple[str, str], TypedExecutor] | None = None,
     script_permissions: frozenset[str] = frozenset(),
     script_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> FlowResult:
@@ -607,6 +1127,7 @@ def run_custom_next(
         flow,
         skill_executors,
         project_root=project_root,
+        typed_executors=typed_executors,
         script_permissions=script_permissions,
         script_runner=script_runner,
     )
@@ -634,6 +1155,44 @@ def _print_json(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, sort_keys=True))
 
 
+def _step_report(step: CustomStep, number: int) -> dict[str, object]:
+    return {
+        "number": number,
+        "name": step.name,
+        "kind": step.kind,
+        "target": step.target,
+        "arguments": list(step.arguments),
+        "declared_writes": (
+            None if step.declared_writes is None else sorted(step.declared_writes)
+        ),
+        "gate_outcomes": list(step.gate_outcomes),
+        "loop": None
+        if step.loop is None
+        else {
+            "gate": step.loop.gate,
+            "expected_outcome": step.loop.expected_outcome,
+            "max_attempts": step.loop.max_attempts,
+            "exhaustion": step.loop.exhaustion,
+        },
+        "payload": [
+            _step_report(child, index)
+            for index, child in enumerate(step.payload, start=1)
+        ],
+    }
+
+
+def _cli_loop_counts(values: list[str]) -> tuple[tuple[str, int], ...]:
+    counts: dict[str, int] = {}
+    for value in values:
+        match = re.fullmatch(r"([a-z0-9]+(?:-[a-z0-9]+)*)=([0-9]+)", value)
+        if match is None or match.group(1) in counts:
+            raise CustomFlowError(
+                "invalid_checkpoint", "loop count must be a unique NAME=COUNT"
+            )
+        counts[match.group(1)] = int(match.group(2))
+    return tuple(sorted(counts.items()))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate and support custom USW flows")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -658,6 +1217,7 @@ def main(argv: list[str] | None = None) -> int:
     save.add_argument("next_action_index", type=int)
     save.add_argument("scope")
     save.add_argument("--source-identity")
+    save.add_argument("--loop-count", action="append", default=[])
     save.add_argument("-l", "--local", action="store_true")
 
     resume = commands.add_parser("checkpoint-resume")
@@ -683,23 +1243,15 @@ def main(argv: list[str] | None = None) -> int:
             _print_json(
                 {
                     "name": flow.name,
+                    "version": flow.version,
                     "origin": flow.origin,
                     "identity": flow.identity,
                     "write_authority": (
                         None if flow.artifact_roles is None else sorted(flow.artifact_roles)
                     ),
+                    "branches": [list(branch) for branch in flow.branches],
                     "steps": [
-                        {
-                            "number": index,
-                            "kind": step.kind,
-                            "target": step.target,
-                            "arguments": list(step.arguments),
-                            "declared_writes": (
-                                None
-                                if step.declared_writes is None
-                                else sorted(step.declared_writes)
-                            ),
-                        }
+                        _step_report(step, index)
                         for index, step in enumerate(flow.steps, start=1)
                     ],
                 }
@@ -720,7 +1272,12 @@ def main(argv: list[str] | None = None) -> int:
             path = save_custom_checkpoint(
                 args.project_root,
                 flow,
-                FlowState(args.next_action_index, args.scope, False),
+                FlowState(
+                    args.next_action_index,
+                    args.scope,
+                    False,
+                    _cli_loop_counts(args.loop_count),
+                ),
                 source_identity=args.source_identity,
             )
             _print_json({"checkpoint": str(path)})
@@ -734,6 +1291,7 @@ def main(argv: list[str] | None = None) -> int:
                 "flow": flow.name,
                 "next_action_index": state.action_index,
                 "scope": state.selected_scope,
+                "loop_counts": dict(state.loop_counts),
             }
         )
         return 0

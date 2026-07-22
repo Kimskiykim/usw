@@ -132,10 +132,11 @@ task, evidence или review artifacts.
 capability, blocker, user decision, permission boundary, write mismatch или
 local-state boundary останавливают flow наблюдаемо.
 
-Помимо стандартных role scenarios можно создать линейный custom flow в
-`<flows.root>/<name>.md`. Skill `$usw-create-flow` собирает и валидирует такой
-документ, а `$usw-run-flow <name>` исполняет его. Исполняемая часть остаётся
-обычным Markdown:
+Помимо стандартных role scenarios можно создать custom flow в
+`<flows.root>/<name>.md`. Skill `$usw-create-flow` собирает и валидирует обычный
+Markdown версии `1` или `version-2`, а `$usw-run-flow <name>` исполняет его.
+Без `-s` creator спрашивает версию; `-s`/`--structured` сразу выбирает
+`version-2`.
 
 ```markdown
 ## Контракт
@@ -149,14 +150,22 @@ local-state boundary останавливают flow наблюдаемо.
    - Аргументы: `--strict`
 ```
 
-Runner проверяет весь документ до первого шага, выполняет один skill или script
-за раз, берёт write-contract skill из executor, не использует shell-строки и
-продвигает HANDOFF cursor только после `completed`. Старая форма с `Пишет` и
-разделом полномочий записи также поддерживается. Другой status сохраняет outcome
-на том же шаге и останавливает цепочку. Другой flow/scope блокируется до resume
-либо `/usw-handoff finish`. Legacy `.usw/FLOW.json` не объединяется и не
-удаляется автоматически. Custom flows не поддерживают branches и циклы;
-стандартные role flows не меняются.
+Версия `1` остаётся линейной: runner выполняет один skill или script за раз,
+берёт write-contract skill из executor и не использует shell-строки. Старая
+форма с `Пишет` и разделом полномочий записи также поддерживается.
+
+`version-2` добавляет постоянные имена действий, typed `CALL` для skill,
+script, flow, subagent и human, полные `GATE`, ограниченный `LOOP` и `PARALLEL`.
+Runner исполняет только канонический поднабор, заранее разрешает exact executors
+и выполняет одну top-level boundary за вызов. Вложенные действия передаются
+`SUBAGENT` одним payload; parallel children стартуют вместе после общего
+preflight. Неоднозначный prose отклоняется до executor.
+
+В обеих версиях HANDOFF cursor продвигается только после `completed`. Другой
+status сохраняет outcome на той же boundary и останавливает цепочку. Другой
+flow/scope блокируется до resume либо `/usw-handoff finish`. Legacy
+`.usw/FLOW.json` не объединяется и не удаляется автоматически; стандартные role
+flows не меняются.
 
 Создание и первый запуск custom flow:
 

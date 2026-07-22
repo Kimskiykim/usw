@@ -180,7 +180,7 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertIn(fragment, skill)
 
-    def test_create_flow_structured_contract_is_creation_only(self):
+    def test_create_flow_structured_contract_is_validator_backed(self):
         skill_dir = ROOT / "skills/usw-create-flow"
         skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
         structured = (
@@ -197,9 +197,9 @@ class PackageLayoutTests(unittest.TestCase):
             "LOOP",
             "PARALLEL",
             "Не добавлять маркер",
-            "лёгкую статическую проверку без parser",
-            "runner не поддерживает этот контракт",
-            "не сообщать команду запуска",
+            "До validator выполнить лёгкую статическую проверку",
+            "../usw-run-flow/scripts/run_flow.py",
+            "$usw-run-flow <name>",
         ):
             self.assertIn(fragment, structured)
         self.assertIn("без исполнения flow", skill)
@@ -259,6 +259,31 @@ class PackageLayoutTests(unittest.TestCase):
             "shared` or `local`",
         ):
             self.assertIn(fragment, skill)
+
+    def test_run_flow_loads_structured_runtime_by_progressive_disclosure(self):
+        skill_dir = ROOT / "skills/usw-run-flow"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        structured = (skill_dir / "references/version-2.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "after the\nvalidator selects that exact version",
+            "references/version-2.md",
+            "Do not load the v2 reference",
+        ):
+            self.assertIn(fragment, skill)
+        for fragment in (
+            "CALL SKILL",
+            "CALL SCRIPT",
+            "CALL FLOW",
+            "CALL SUBAGENT",
+            "CALL HUMAN",
+            "один payload",
+            "loop_exhausted",
+            "запустить их одновременно",
+        ):
+            self.assertIn(fragment, structured)
 
     def test_public_commands_delegate_to_internal_skills(self):
         expectations = {

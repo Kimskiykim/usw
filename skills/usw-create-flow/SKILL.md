@@ -1,12 +1,12 @@
 ---
 name: usw-create-flow
-description: Create or revise a shared or developer-local USW custom flow as a linear version-1 sequence or a structured version-2 Markdown contract. Use when the user asks to create, compose, describe, or update a named USW flow, workflow, pipeline, or reusable sequence. Do not execute the flow or claim that the current runner supports version-2.
+description: Create or revise a shared or developer-local USW custom flow as a linear version-1 sequence or an executable structured version-2 Markdown contract. Use when the user asks to create, compose, describe, or update a named USW flow, workflow, pipeline, or reusable sequence. Do not execute the flow.
 ---
 
 # Создание USW flow
 
 Создавать один именованный custom flow и сохранять его обычным Markdown-файлом.
-Поддерживать линейную версию `1` и структурированную creation-only версию
+Поддерживать линейную версию `1` и структурированную исполнимую версию
 `version-2`. Не выполнять действия созданного flow.
 
 ## Подготовка
@@ -59,8 +59,9 @@ description: Create or revise a shared or developer-local USW custom flow as a l
   разрешения и не выводятся из описания flow.
 - При ошибке исправить документ либо запросить недостающую информацию и
   повторить проверку выбранной версии.
-- Не запускать runner, executor, HANDOFF или следующий skill; не вычислять
-  runtime-условия и не выдавать предположение за подтверждённый факт.
+- Запускать только validator выбранной версии. Не исполнять flow, executor,
+  HANDOFF или следующий skill; не вычислять runtime-условия и не выдавать
+  предположение за подтверждённый факт.
 
 ## Граница выполнения
 
