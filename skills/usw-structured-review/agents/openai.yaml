@@ -1,0 +1,4 @@
+interface:
+  display_name: "Структурированное ревью"
+  short_description: "Одно ревью по трём блокам"
+  default_prompt: "Используй $usw-structured-review с моими Scope, Review focus и Output contract."
