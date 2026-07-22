@@ -76,7 +76,7 @@ class EndToEndWorkflowTests(unittest.TestCase):
             self.assertEqual("fresh", report.freshness)
             self.assertIn("usw-source-v1:", content)
 
-            flow = project / "usw/flows/flow-scenario-analysis.md"
+            flow = project / "usw/flows/examples/analysis.md"
             flow.write_text(flow.read_text() + "\n<!-- local policy note -->\n")
             self.assertEqual("fresh", HANDOFF.reconcile_handoff(project)[1].freshness)
             (project / "product.txt").write_text("v2\n", encoding="utf-8")
@@ -115,7 +115,7 @@ class EndToEndWorkflowTests(unittest.TestCase):
 
     def test_scope_authority_and_delivery_permission_boundaries(self):
         scenario = FLOWS.validate_scenario(
-            (ROOT / "skills/usw-initialize-project/templates/flows/flow-scenario-development.md").read_text()
+            (ROOT / "tests/fixtures/flow-scenarios/flow-scenario-development.md").read_text()
         )
         called = []
 
@@ -135,12 +135,12 @@ class EndToEndWorkflowTests(unittest.TestCase):
         )
         self.assertEqual("external_permission_required", denied.stop_reason)
 
-    def test_custom_flow_orders_skill_script_resume_and_preserves_role_flows(self):
+    def test_custom_flow_orders_skill_script_resume_and_preserves_examples(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             INIT.initialize_usw(project)
-            role_path = project / "usw/flows/flow-scenario-analysis.md"
-            role_before = role_path.read_bytes()
+            example_path = project / "usw/flows/examples/analysis.md"
+            example_before = example_path.read_bytes()
             script = project / "scripts/check.py"
             script.parent.mkdir()
             script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
@@ -247,10 +247,8 @@ class EndToEndWorkflowTests(unittest.TestCase):
             )
             self.assertEqual(["first", "script", "script", "last"], calls)
             self.assertEqual(3, last.state.action_index)
-            self.assertEqual(role_before, role_path.read_bytes())
-            self.assertEqual(
-                "Analysis", FLOWS.validate_scenario(role_path.read_text()).role
-            )
+            self.assertEqual(example_before, example_path.read_bytes())
+            self.assertIn("Ненормативный пример", example_path.read_text())
 
     def test_local_and_shared_custom_flows_keep_distinct_resume_identity(self):
         with tempfile.TemporaryDirectory() as directory:

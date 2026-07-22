@@ -28,9 +28,12 @@ OpenSpec поддерживается как явно выбранный compati
     │   └── review/
     │       └── receipt.md
     ├── flows/
-    │   ├── flow-scenario-analysis.md
-    │   ├── flow-scenario-development.md
-    │   └── flow-scenario-testing.md
+    │   └── examples/
+    │       ├── analysis.md
+    │       ├── development.md
+    │       ├── testing.md
+    │       ├── chat-review.md
+    │       └── dev-test.md
     └── reviews/
 ```
 
@@ -39,8 +42,8 @@ OpenSpec поддерживается как явно выбранный compati
 `.usw/.gitignore` с `*` — удобный local default, а решение о tracking остаётся
 за пользователем и не проверяется initializer-ом. `.usw/flows/` создаётся только
 при первом local custom flow, а `.usw/refinements/` — при первом уточнении
-намерения; `/usw-init` эти lazy directories не материализует. Стандартные role
-flows остаются только в shared `flows.root`.
+намерения; `/usw-init` эти lazy directories не материализует. Пять flow
+examples создаются только в shared `<flows.root>/examples/`.
 
 `usw.yaml` версии 1 выбирает provider и project-relative roots. По умолчанию
 используются `standalone`, `usw`, `usw/flows` и `usw/reviews`.
@@ -55,7 +58,7 @@ change, task, evidence и review-артефактов в `<artifacts.root>/templ
 Повторная инициализация не перезаписывает изменённые проектные шаблоны. В режиме
 OpenSpec эти шаблоны не копируются в provider-owned `openspec/`.
 При явно выбранном OpenSpec provider initializer создаёт только configured
-flow/review roots, три standard scenario files, `.usw/.gitignore` и
+flow/review roots, пять flow examples, `.usw/.gitignore` и
 `.usw/HANDOFF.md`; `openspec/**` он не создаёт и не изменяет.
 
 Для детерминированной инициализации skill сначала ищет Python 3.10+ под именем
@@ -85,11 +88,13 @@ artifacts.
 
 ## Lifecycle и артефакты
 
-Три project-owned scenario образуют lifecycle
-`Analysis → Development → Testing → Delivery`. Review — human gate, а не
-четвёртый flow. Internal review сохраняет owner role без передачи
-ответственности; transition review принадлежит принимающей стороне и записывает
-sender/receiver. Rejection возвращается владельцу затронутого артефакта.
+Инициализированные `analysis`, `development`, `testing`, `chat-review` и
+`dev-test` — ненормативные примеры, а не автоматически активные flow. Runner не
+исполняет их на месте. Скопируйте нужный файл из `<flows.root>/examples/` в
+`<flows.root>/<name>.md`, адаптируйте под проект и только затем запускайте.
+Analysis, Development и Testing показывают один возможный lifecycle
+`Analysis → Development → Testing → Delivery`; конкретные gates, writes и
+артефакты определяет скопированный project-owned flow.
 
 `tasks.md` — единственный completion source, `task.md` хранит task contract и
 milestones, `development-evidence.md` и `testing-evidence.md` имеют разных

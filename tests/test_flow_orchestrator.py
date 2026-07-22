@@ -20,7 +20,7 @@ def load(name: str, path: Path):
 
 FLOWS = load("orchestrator_flow_scenario", ROOT / "skills/usw-initialize-project/scripts/flow_scenario.py")
 RUNNER = load("run_flow", ROOT / "skills/usw-run-flow/scripts/run_flow.py")
-TEMPLATES = ROOT / "skills/usw-initialize-project/templates/flows"
+TEMPLATES = ROOT / "tests/fixtures/flow-scenarios"
 
 
 class FlowOrchestratorTests(unittest.TestCase):

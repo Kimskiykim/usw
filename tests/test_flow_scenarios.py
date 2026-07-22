@@ -8,7 +8,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
-TEMPLATES = ROOT / "skills/usw-initialize-project/templates/flows"
+TEMPLATES = ROOT / "tests/fixtures/flow-scenarios"
+EXAMPLES = ROOT / "skills/usw-initialize-project/templates/flows/examples"
 SCRIPT = ROOT / "skills/usw-initialize-project/scripts/flow_scenario.py"
 SPEC = importlib.util.spec_from_file_location("flow_scenario", SCRIPT)
 FLOWS = importlib.util.module_from_spec(SPEC)
@@ -28,7 +29,7 @@ class FlowScenarioTests(unittest.TestCase):
     def content(self, name: str) -> str:
         return (TEMPLATES / f"flow-scenario-{name}.md").read_text(encoding="utf-8")
 
-    def test_exactly_three_initial_role_scenarios_are_valid(self):
+    def test_role_scenario_fixtures_are_valid(self):
         files = sorted(path.name for path in TEMPLATES.glob("flow-scenario-*.md"))
         self.assertEqual(
             [
@@ -110,6 +111,44 @@ class FlowScenarioTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(FLOWS.ScenarioError, "expected Analysis"):
                 FLOWS.load_project_scenario(flow_root, "analysis")
+
+
+class FlowExampleTests(unittest.TestCase):
+    def test_exactly_five_examples_are_non_normative_and_nested(self):
+        self.assertEqual(
+            [
+                "analysis.md",
+                "chat-review.md",
+                "dev-test.md",
+                "development.md",
+                "testing.md",
+            ],
+            sorted(path.name for path in EXAMPLES.glob("*.md")),
+        )
+        for path in EXAMPLES.glob("*.md"):
+            with self.subTest(example=path.name):
+                content = path.read_text(encoding="utf-8")
+                self.assertIn("Ненормативный пример", content)
+                self.assertIn("не запускается на месте", content)
+                self.assertIn("<flows.root>/<name>.md", content)
+
+        for name in ("analysis", "development", "testing"):
+            content = (EXAMPLES / f"{name}.md").read_text(encoding="utf-8")
+            self.assertNotIn("# Flow scenario:", content)
+            self.assertNotIn("## Write authority", content)
+
+        with self.assertRaisesRegex(CUSTOM.CustomFlowError, "missing_flow"):
+            CUSTOM.load_markdown_flow(EXAMPLES.parent, "analysis")
+
+    def test_named_examples_match_current_project_flows_after_notice(self):
+        for name in ("chat-review", "dev-test"):
+            with self.subTest(example=name):
+                example = (EXAMPLES / f"{name}.md").read_text(encoding="utf-8")
+                body_start = example.index(f"# Flow: {name}")
+                source = (ROOT / "usw/flows" / f"{name}.md").read_text(
+                    encoding="utf-8"
+                )
+                self.assertEqual(source, example[body_start:])
 
 
 class CustomFlowTests(unittest.TestCase):

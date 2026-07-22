@@ -67,6 +67,20 @@ class InstallTests(unittest.TestCase):
                         / "usw-initialize-project/references/llm-fallback.md"
                     ).is_file()
                 )
+                for example in (
+                    "analysis.md",
+                    "development.md",
+                    "testing.md",
+                    "chat-review.md",
+                    "dev-test.md",
+                ):
+                    self.assertTrue(
+                        (
+                            skills_dir
+                            / "usw-initialize-project/templates/flows/examples"
+                            / example
+                        ).is_file()
+                    )
             for commands_dir in (home / ".qwen/commands", home / ".codex/prompts"):
                 for command_name in self.COMMAND_NAMES:
                     self.assertTrue((commands_dir / command_name).is_file())
