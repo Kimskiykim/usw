@@ -1,6 +1,7 @@
 # Линейный контракт версии 1
 
-Использовать этот reference только после выбора версии `1`.
+Использовать этот legacy reference только после явного запроса strict версии
+`1`. Ordinary Markdown является default и не использует этот contract.
 
 ## Форма
 
@@ -42,10 +43,10 @@ write-metadata. Не создавать смешанную форму: либо 
 Разрешить validator относительно основного `SKILL.md` как
 `../usw-run-flow/scripts/run_flow.py` и запустить:
 
-- shared root: `python3 <validator> validate <flows.root> <name>`;
-- local root: `python3 <validator> validate --local <project-root> <name>`;
+- shared root: `python3 <validator> validate --experimental-structured <flows.root> <name>`;
+- local root: `python3 <validator> validate --experimental-structured --local <project-root> <name>`;
   `-l` имеет ту же семантику.
 
 Сообщить имя, origin (`shared` или `local`), путь, версию, шаги и точную команду
-запуска: `$usw-run-flow <name>` либо
-`$usw-run-flow --local <name>`.
+запуска: `$usw-run-flow --experimental-structured <name> <task>` либо
+`$usw-run-flow --experimental-structured --local <name> <task>`.

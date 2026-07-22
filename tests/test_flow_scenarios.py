@@ -307,6 +307,109 @@ This remains ordinary Markdown.
             with self.assertRaisesRegex(CUSTOM.CustomFlowError, "invalid_flow_file"):
                 CUSTOM.load_custom_flow(flow_root, "linked")
 
+    def test_default_markdown_run_accepts_plain_content_and_prefers_local(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            local_root = project / ".usw/flows"
+            shared_root = project / "usw/flows"
+            local_root.mkdir(parents=True)
+            shared_root.mkdir(parents=True)
+            local_path = local_root / "review-anything.md"
+            shared_path = shared_root / "review-anything.md"
+            local_path.write_text("# Local\n\nDo the task in two useful steps.\n", encoding="utf-8")
+            shared_path.write_text(
+                "# Shared\n\n- Версия: `unknown`\n\nNo strict schema here.\n",
+                encoding="utf-8",
+            )
+            before = local_path.read_bytes()
+
+            invocation = CUSTOM.prepare_markdown_run(
+                project,
+                shared_root,
+                "review-anything",
+                "Review the current change",
+            )
+            seen = []
+            outcome = CUSTOM.run_markdown_flow(
+                invocation,
+                lambda value: seen.append(value)
+                or CUSTOM.ActionOutcome("completed", "done"),
+            )
+            shared = CUSTOM.resolve_markdown_flow(
+                project, shared_root, "review-anything", origin="shared"
+            )
+            after = local_path.read_bytes()
+
+        self.assertEqual("local", invocation.flow.origin)
+        self.assertEqual("shared", shared.origin)
+        self.assertEqual("Review the current change", invocation.task)
+        self.assertEqual("completed", outcome.status)
+        self.assertEqual([invocation], seen)
+        self.assertEqual(before, after)
+
+    def test_default_markdown_cli_does_not_enable_strict_parser(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            shared_root = project / "flows"
+            shared_root.mkdir()
+            (shared_root / "free-form.md").write_text(
+                "# Anything\n\n- Версия: `version-2`\n\nThis is not the strict contract.\n",
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(CUSTOM_SCRIPT),
+                    "resolve",
+                    str(project),
+                    str(shared_root),
+                    "free-form",
+                    "Do the task",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            report = json.loads(completed.stdout)
+            strict = subprocess.run(
+                [
+                    sys.executable,
+                    str(CUSTOM_SCRIPT),
+                    "validate",
+                    str(shared_root),
+                    "free-form",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual("shared", report["origin"])
+        self.assertEqual("Do the task", report["task"])
+        self.assertEqual(2, strict.returncode)
+        self.assertEqual(
+            "experimental_opt_in_required", json.loads(strict.stderr)["error"]
+        )
+
+    def test_default_markdown_rejects_symlinked_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            real_root = project / "real-flows"
+            real_root.mkdir()
+            (real_root / "unsafe.md").write_text("# Flow\n", encoding="utf-8")
+            linked_root = project / "linked-flows"
+            linked_root.symlink_to(real_root, target_is_directory=True)
+
+            with self.assertRaisesRegex(
+                CUSTOM.CustomFlowError, "invalid_flow_root"
+            ):
+                CUSTOM.resolve_markdown_flow(
+                    project,
+                    linked_root,
+                    "unsafe",
+                    origin="shared",
+                )
+
     def test_resolves_only_safe_local_flow_root(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
@@ -339,7 +442,14 @@ This remains ordinary Markdown.
             flow_root = Path(directory)
             (flow_root / "plan-check.md").write_text(self.content(), encoding="utf-8")
             completed = subprocess.run(
-                [sys.executable, str(CUSTOM_SCRIPT), "validate", str(flow_root), "plan-check"],
+                [
+                    sys.executable,
+                    str(CUSTOM_SCRIPT),
+                    "validate",
+                    "--experimental-structured",
+                    str(flow_root),
+                    "plan-check",
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -360,6 +470,7 @@ This remains ordinary Markdown.
                     sys.executable,
                     str(CUSTOM_SCRIPT),
                     "validate",
+                    "--experimental-structured",
                     str(flow_root),
                     "prepare-and-review",
                 ],
@@ -395,6 +506,7 @@ This remains ordinary Markdown.
                             sys.executable,
                             str(CUSTOM_SCRIPT),
                             "validate",
+                            "--experimental-structured",
                             flag,
                             str(project),
                             "plan-check",

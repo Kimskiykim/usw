@@ -125,62 +125,55 @@ task, evidence или review artifacts.
 
 ## Orchestration и Delivery
 
-`usw-run-flow` валидирует выбранный project scenario, требует явный scope при
-неоднозначности и проверяет write authority до mutation. После preflight он
-сохраняет в HANDOFF `in_progress`, читает запись обратно и только затем вызывает
-один executor. Outcome записывается до выбора следующего шага. Недоступная
-capability, blocker, user decision, permission boundary, write mismatch или
-local-state boundary останавливают flow наблюдаемо.
+По умолчанию `usw-run-flow` принимает задачу и имя flow, ищет обычный
+`<name>.md` сначала в `.usw/flows`, затем в shared `flows.root`, читает документ
+целиком и следует описанному процессу. Версия, DSL, постоянные action names,
+input map и normalized plan не требуются. Весь такой запуск является одной
+HANDOFF begin/outcome boundary; неоднозначность возвращает
+`decision_required`, а внешние действия сохраняют отдельные permissions.
 
-Помимо стандартных role scenarios можно создать custom flow в
-`<flows.root>/<name>.md`. Skill `$usw-create-flow` собирает и валидирует обычный
-Markdown версии `1` или `version-2`, а `$usw-run-flow <name>` исполняет его.
-Без `-s` creator спрашивает версию; `-s`/`--structured` сразу выбирает
-`version-2`.
+`$usw-create-flow` также создаёт ordinary Markdown по умолчанию. Формат может
+быть любым понятным человеку:
 
 ```markdown
-## Контракт
+# Проверка плана
 
-- Версия: `1`
-
-## Порядок действий
-
-1. Скилл: `usw-plan-small-steps`
-2. Скрипт: `scripts/check_plan`
-   - Аргументы: `--strict`
+1. Разбей задачу на небольшие шаги.
+2. Проверь, что каждый шаг можно подтвердить отдельным тестом.
+3. Покажи результат человеку.
 ```
 
-Версия `1` остаётся линейной: runner выполняет один skill или script за раз,
-берёт write-contract skill из executor и не использует shell-строки. Старая
-форма с `Пишет` и разделом полномочий записи также поддерживается.
+Строгие версии `1` и `version-2` сохранены как эксперимент. Только явный
+`--experimental-structured` включает parser, typed executors, gates, bounded
+loops, parallel blocks и per-action cursor/checkpoint. Metadata внутри файла
+сама по себе этот режим не включает. Action-specific binding в experiment
+необязателен: общей задачи достаточно для старта.
 
-`version-2` добавляет постоянные имена действий, typed `CALL` для skill,
-script, flow, subagent и human, полные `GATE`, ограниченный `LOOP` и `PARALLEL`.
-Runner исполняет только канонический поднабор, заранее разрешает exact executors
-и выполняет одну top-level boundary за вызов. Вложенные действия передаются
-`SUBAGENT` одним payload; parallel children стартуют вместе после общего
-preflight. Неоднозначный prose отклоняется до executor.
-
-В обеих версиях HANDOFF cursor продвигается только после `completed`. Другой
-status сохраняет outcome на той же boundary и останавливает цепочку. Другой
-flow/scope блокируется до resume либо `/usw-handoff finish`. Legacy
-`.usw/FLOW.json` не объединяется и не удаляется автоматически; стандартные role
-flows не меняются.
+В обоих режимах сохраняются безопасное разрешение путей, capability contracts,
+HANDOFF и отдельные разрешения на commit, push, PR, deploy и release. Legacy
+`.usw/FLOW.json` не объединяется и не удаляется автоматически.
 
 Создание и первый запуск custom flow:
 
 ```text
-$usw-create-flow Создай flow plan-check из проверки плана и локального скрипта.
-$usw-run-flow plan-check
+$usw-create-flow Создай flow plan-check из проверки плана.
+$usw-run-flow plan-check "Проверь текущий план"
 ```
 
-Флаги `--local` и `-l` явно выбирают developer-local root `.usw/flows` для
-обеих операций. Без флага сохраняется shared `flows.root`; автоматического
-поиска или shadowing между roots нет:
+Для создания `--local`/`-l` явно выбирает developer-local root. Для запуска без
+origin selector local flow имеет приоритет над shared; `--local` и `--shared`
+ограничивают поиск одним root:
 
 ```text
 $usw-create-flow --local Создай flow personal-check из проверки плана.
-$usw-run-flow -l personal-check
+$usw-run-flow personal-check "Проверь мой план"
+```
+
+Экспериментальный strict-запуск включается отдельно:
+
+```text
+$usw-create-flow --structured Создай flow review-gate.
+$usw-run-flow --experimental-structured review-gate "Проверь изменение"
 ```
 
 Live operation state реализован только Markdown-контрактами skills, templates и
@@ -189,10 +182,10 @@ commands: отдельный Python runtime, dependency или второй stat
 Сквозной сценарий одного flow выглядит так:
 
 ```text
-preflight → HANDOFF op-001/in_progress → executor
+resolve Markdown → HANDOFF op-001/in_progress → executor
 interruption → /usw-resume → explicit reconciliation (без retry)
-outcome/completed → HANDOFF cursor на следующий step
-последний outcome → /usw-handoff finish → idle
+outcome/completed → HANDOFF terminal outcome
+/usw-handoff finish → idle
 ```
 
 Delivery — терминальный контракт одного запуска: scope, tested source identity,

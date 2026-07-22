@@ -1,6 +1,7 @@
-# Структурированный контракт version-2
+# Экспериментальный структурированный контракт version-2
 
-Использовать этот reference только после выбора версии `version-2`.
+Использовать этот reference только после явного `--structured`/`-s` opt-in.
+Ordinary Markdown является default и не использует этот contract.
 
 ## Форма
 
@@ -71,6 +72,21 @@ nested flow ради одного вызова.
 `PARALLEL` перечислять именованные дочерние действия; не утверждать фактическую
 независимость будущего исполнения.
 
+## Необязательный binding входов и результатов
+
+Не требовать action-specific input map. Общая задача запуска доступна всему
+flow. Только если пользователь явно просит experimental binding и actions
+действительно требуют разные входы, документировать их отдельным prose-разделом
+`Структурированный вход`: каждый внешний ключ должен точно совпадать с
+постоянным именем action. Не добавлять executable-поля `Вход`, `Выход` или язык
+выражений в `Порядок действий`.
+
+Runner передаёт `HUMAN`, `SUBAGENT` и `FLOW` только input их action name, а
+следующим typed actions — completed результаты предыдущих верхнеуровневых
+boundaries. Для `PARALLEL` результаты children сохраняются под их постоянными
+именами. Учитывать этот binding при описании consumer action, не добавляя
+скрытых переходов.
+
 ## Канонический пример
 
 ```markdown
@@ -105,8 +121,8 @@ nested flow ради одного вызова.
 Разрешить validator относительно основного `SKILL.md` как
 `../usw-run-flow/scripts/run_flow.py` и проверить сохранённый документ:
 
-- shared root: `python3 <validator> validate <flows.root> <name>`;
-- local root: `python3 <validator> validate --local <project-root> <name>`.
+- shared root: `python3 <validator> validate --experimental-structured <flows.root> <name>`;
+- local root: `python3 <validator> validate --experimental-structured --local <project-root> <name>`.
 
 До validator выполнить лёгкую статическую проверку:
 
@@ -126,4 +142,5 @@ nested flow ради одного вызова.
 Не запускать executor и не подтверждать branch feasibility или parallel
 independence. Сообщить имя, origin, путь, версию, постоянные имена, управляющие
 блоки, executors и результат validator. Сообщить точную команду запуска:
-`$usw-run-flow <name>` либо `$usw-run-flow --local <name>`.
+`$usw-run-flow --experimental-structured <name> <task>` либо
+`$usw-run-flow --experimental-structured --local <name> <task>`.

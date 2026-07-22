@@ -136,7 +136,7 @@ class PackageLayoutTests(unittest.TestCase):
             self.assertIn(fragment, skill)
         self.assertIn("allow_implicit_invocation: true", metadata)
 
-    def test_create_flow_skill_uses_validated_linear_contract(self):
+    def test_create_flow_skill_defaults_to_ordinary_markdown(self):
         skill_dir = ROOT / "skills" / "usw-create-flow"
         skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
         version = (skill_dir / "references" / "version-1.md").read_text(
@@ -153,11 +153,14 @@ class PackageLayoutTests(unittest.TestCase):
             "--local",
             "`-l`",
             ".usw/flows",
+            "ordinary Markdown",
+            "Не спрашивать\n   версию",
         ):
             self.assertIn(fragment, skill)
         for fragment in (
             "../usw-run-flow/scripts/run_flow.py",
-            "$usw-run-flow <name>",
+            "--experimental-structured",
+            "$usw-run-flow --experimental-structured <name> <task>",
             "## Проверка и отчёт",
         ):
             self.assertIn(fragment, version)
@@ -175,8 +178,8 @@ class PackageLayoutTests(unittest.TestCase):
             "`--structured`",
             "`-s`",
             "Допускать их вместе в любом порядке",
-            "Если нет `-s` и `--structured`",
-            "не записывать flow до ответа",
+            "Без `-s`/`--structured` сразу выбрать ordinary Markdown",
+            "не читать version-specific references",
         ):
             self.assertIn(fragment, skill)
 
@@ -196,10 +199,12 @@ class PackageLayoutTests(unittest.TestCase):
             "ELSE",
             "LOOP",
             "PARALLEL",
+            "## Необязательный binding входов и результатов",
+            "Не требовать action-specific input map",
             "Не добавлять маркер",
             "До validator выполнить лёгкую статическую проверку",
             "../usw-run-flow/scripts/run_flow.py",
-            "$usw-run-flow <name>",
+            "$usw-run-flow --experimental-structured <name> <task>",
         ):
             self.assertIn(fragment, structured)
         self.assertIn("без исполнения flow", skill)
@@ -240,13 +245,13 @@ class PackageLayoutTests(unittest.TestCase):
             {path.name for path in (skill_dir / "references").glob("*.md")},
         )
         for fragment in (
-            "До выбора версии не читать version-specific reference",
-            "прочитать полностью ровно один файл",
-            "Не загружать оба reference",
+            "не читать version-specific references",
+            "полностью прочитать только",
+            "читать только при явном",
         ):
             self.assertIn(fragment, skill)
 
-    def test_run_flow_skill_selects_local_custom_flows_explicitly(self):
+    def test_run_flow_skill_resolves_local_before_shared_by_default(self):
         skill = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(
             encoding="utf-8"
         )
@@ -254,9 +259,10 @@ class PackageLayoutTests(unittest.TestCase):
         for fragment in (
             "--local",
             "`-l`",
+            "--shared",
             ".usw/flows",
-            "never\nsearch the other root",
-            "shared` or `local`",
+            "Без origin selector искать local flow первым, затем shared flow",
+            "--origin local",
         ):
             self.assertIn(fragment, skill)
 
@@ -268,9 +274,10 @@ class PackageLayoutTests(unittest.TestCase):
         )
 
         for fragment in (
-            "after the\nvalidator selects that exact version",
+            "Только с `--experimental-structured`",
             "references/version-2.md",
-            "Do not load the v2 reference",
+            "Не открывать его для v1",
+            "Default-путь не вызывает strict validator",
         ):
             self.assertIn(fragment, skill)
         for fragment in (
@@ -282,6 +289,8 @@ class PackageLayoutTests(unittest.TestCase):
             "один payload",
             "loop_exhausted",
             "запустить их одновременно",
+            "## Необязательный binding входов и результатов",
+            "Общая задача запуска доступна flow",
         ):
             self.assertIn(fragment, structured)
 

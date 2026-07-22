@@ -430,6 +430,130 @@ class FlowOrchestratorTests(unittest.TestCase):
         self.assertEqual("action_completed", result.status)
         self.assertEqual(("scope.md", "safety.md"), result.output_references)
 
+    def test_structured_binding_isolates_inputs_and_passes_named_parallel_results(self):
+        flow = self.structured(
+            "1. `parallel-reviews` — PARALLEL:\n"
+            "   - `review-a` — CALL SUBAGENT `reviewer-a`.\n"
+            "     - Действия субагента:\n"
+            "       1. `run-review-a` — CALL SKILL `review-skill`.\n"
+            "   - `review-b` — CALL SUBAGENT `reviewer-b`.\n"
+            "     - Действия субагента:\n"
+            "       1. `run-review-b` — CALL SKILL `review-skill`.\n"
+            "2. `prepare-presentation` — CALL HUMAN `owner`."
+        )
+        invocations = {}
+
+        def typed(invocation):
+            invocations[invocation.action] = invocation
+            return RUNNER.ActionOutcome(
+                "completed",
+                "ok",
+                output_references=(f"{invocation.action}.md",),
+                detail=f"{invocation.action} report",
+            )
+
+        typed_executors = {
+            ("subagent", "reviewer-a"): RUNNER.TypedExecutor(frozenset(), typed),
+            ("subagent", "reviewer-b"): RUNNER.TypedExecutor(frozenset(), typed),
+            ("human", "owner"): RUNNER.TypedExecutor(frozenset(), typed),
+        }
+        inputs = {
+            "review-a": "Scope A",
+            "review-b": "Scope B",
+            "prepare-presentation": "Combine both reports",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            first = RUNNER.run_custom_next(
+                flow,
+                RUNNER.FlowState(),
+                {"review-skill": self.executor()},
+                project_root=project,
+                allowed_scopes=("task/x",),
+                typed_executors=typed_executors,
+                action_inputs=inputs,
+                task="Review the change",
+            )
+            second = RUNNER.run_custom_next(
+                flow,
+                first.state,
+                {"review-skill": self.executor()},
+                project_root=project,
+                allowed_scopes=("task/x",),
+                typed_executors=typed_executors,
+            )
+
+        self.assertEqual("Scope A", invocations["review-a"].input)
+        self.assertEqual("Review the change", invocations["review-a"].task)
+        self.assertEqual("Scope B", invocations["review-b"].input)
+        self.assertEqual((), invocations["review-a"].results)
+        presentation = invocations["prepare-presentation"]
+        self.assertEqual("Combine both reports", presentation.input)
+        self.assertEqual(("parallel-reviews",), tuple(name for name, _ in presentation.results))
+        parallel = presentation.results[0][1]
+        self.assertEqual(
+            ("review-a", "review-b"),
+            tuple(name for name, _ in parallel.children),
+        )
+        self.assertEqual("review-a report", parallel.children[0][1].detail)
+        self.assertEqual("action_completed", second.status)
+
+    def test_structured_binding_rejects_unknown_input_before_executor(self):
+        flow = self.structured("1. `review` — CALL HUMAN `owner`.")
+        calls = []
+        owner = RUNNER.TypedExecutor(
+            frozenset(),
+            lambda invocation: calls.append(invocation)
+            or RUNNER.ActionOutcome("completed", "ok"),
+        )
+        with tempfile.TemporaryDirectory() as directory, self.assertRaisesRegex(
+            RUNNER.CustomFlowError, "unknown_action_input"
+        ):
+            RUNNER.run_custom_next(
+                flow,
+                RUNNER.FlowState(),
+                {},
+                project_root=Path(directory),
+                allowed_scopes=("task/x",),
+                typed_executors={("human", "owner"): owner},
+                action_inputs={"missing": "value"},
+            )
+        self.assertEqual([], calls)
+
+    def test_structured_checkpoint_preserves_binding(self):
+        flow = self.structured(
+            "1. `producer` — CALL HUMAN `producer`.\n"
+            "2. `consumer` — CALL HUMAN `consumer`."
+        )
+        outcome = RUNNER.ActionOutcome(
+            "completed",
+            "ok",
+            output_references=("report.md",),
+            detail="report body",
+        )
+        state = RUNNER.FlowState(
+            1,
+            "task/x",
+            False,
+            (),
+            (("consumer", "presentation contract"),),
+            (("producer", outcome),),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / ".usw").mkdir()
+            RUNNER.save_custom_checkpoint(
+                project, flow, state, source_identity="source-1"
+            )
+            checkpoint = RUNNER.load_custom_checkpoint(project)
+            resumed = RUNNER.resume_custom_state(
+                flow, checkpoint, current_source_identity="source-1"
+            )
+
+        self.assertEqual(3, checkpoint.schema_version)
+        self.assertEqual(state.action_inputs, resumed.action_inputs)
+        self.assertEqual(state.results, resumed.results)
+
     def test_structured_checkpoint_preserves_loop_counters(self):
         flow = self.structured(
             "1. `review` — CALL HUMAN `reviewer`; GATE: выбрать `accepted` или `needs-work`.\n"

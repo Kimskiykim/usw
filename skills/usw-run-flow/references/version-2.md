@@ -1,7 +1,8 @@
-# Исполнение structured flow version-2
+# Экспериментальное исполнение structured flow version-2
 
-Использовать этот reference только после того, как validator выбрал точную
-версию `version-2`.
+Использовать этот reference только с явным `--experimental-structured` после
+того, как strict validator выбрал точную версию `version-2`. Default run читает
+тот же файл как обычный Markdown и этот reference не открывает.
 
 ## Executable-поднабор
 
@@ -44,6 +45,20 @@
 Composite executor обязан агрегировать свои actual writes, references и
 verification. Parent cursor продвигается только после его `completed`.
 
+## Необязательный binding входов и результатов
+
+Общая задача запуска доступна flow и не требует action map. Если пользователь
+явно передал structured input, он является конечным отображением action names в
+Markdown-блоки. `CALL HUMAN`, `CALL SUBAGENT` и `CALL FLOW` получают только блок
+своего имени; неизвестный ключ отклоняется до первого executor, отсутствующий
+означает пустой дополнительный input.
+
+Каждый следующий typed invocation получает completed outcomes предыдущих
+верхнеуровневых boundaries под их постоянными именами и в порядке документа.
+Outcome `PARALLEL` сохраняет ordered child outcomes по именам children наряду с
+агрегированными writes/references. Non-completed outcome не публиковать как
+binding для следующего action.
+
 ## Control cursor
 
 После completed обычного action перейти к следующему верхнеуровневому имени.
@@ -57,13 +72,15 @@ outcome оставляет cursor на gate и возвращает `decision_re
 
 Для `PARALLEL` сначала разрешить всех children. Затем запустить их одновременно,
 дождаться всех outcomes и агрегировать writes/references в порядке документа.
+Сохранить каждый child outcome под его постоянным именем.
 Любой non-completed outcome останавливает весь block; следующий top-level
 action недоступен.
 
 ## HANDOFF и возврат
 
-Begin сохраняет exact flow origin/identity, scope, постоянное имя boundary и
-loop counters. Outcome записывается до изменения cursor. Resume с другой
+Begin сохраняет exact flow origin/identity, scope, постоянное имя boundary,
+loop counters, именованные inputs и completed results. Outcome записывается до
+изменения cursor. Resume с другой
 identity, origin или source context считается stale; `in_progress` не
 перезапускается автоматически.
 

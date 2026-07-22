@@ -1,111 +1,113 @@
 ## ADDED Requirements
 
-### Requirement: Детерминированный executable-контракт version-2
-`usw-run-flow` SHALL распознавать точную версию `version-2` и валидировать
-канонический executable-поднабор Markdown до вызова любого executor. Каждый
-верхнеуровневый пункт MUST иметь последовательный номер и глобально уникальное
-постоянное kebab-case имя; неизвестная или неоднозначная форма MUST быть
-отклонена с наблюдаемой причиной и строкой.
+### Requirement: Default run-flow принимает любой Markdown
+`usw-run-flow` SHALL принимать текст задачи и безопасное имя flow, находить
+обычный `.md` и запускать его без обязательной версии, DSL, action names,
+bindings или normalized plan. Наличие metadata версии MUST NOT автоматически
+включать строгий runtime.
 
-#### Scenario: Валидный structured flow
-- **WHEN** документ `version-2` использует канонические typed calls и управляющие маркеры
-- **THEN** runner создаёт валидированное представление с постоянными именами и переходами
+#### Scenario: Запуск plain Markdown
+- **WHEN** найденный flow является обычным Markdown без поля версии
+- **THEN** фасад передаёт исходную задачу и документ default Markdown executor
 
-#### Scenario: Неоднозначный structured flow
-- **WHEN** смысл executor, branch, loop либо nested ownership нельзя получить из канонической формы
-- **THEN** runner останавливается до разрешения или вызова executor и сообщает точную ошибку
+#### Scenario: Structured Markdown без opt-in
+- **WHEN** найденный flow содержит metadata версии `1` или `version-2`, но experimental selector не передан
+- **THEN** фасад запускает его как обычный Markdown и не требует strict validation
 
-### Requirement: Все typed calls разрешаются точно
-Runner SHALL поддерживать `CALL SKILL`, `CALL SCRIPT`, `CALL FLOW`,
-`CALL SUBAGENT` и `CALL HUMAN`. `SKILL`, `FLOW`, `SUBAGENT` и `HUMAN` MUST
-разрешаться по точным type и target; script MUST сохранять безопасный
-project-relative argv contract без shell semantics. `MODEL` MUST быть
-отклонён.
+### Requirement: Фасад разрешает именованный flow в существующих roots
+Без явного origin selector фасад MUST искать безопасное имя сначала в
+`<project>/.usw/flows`, затем в настроенном shared root. Явный selector SHALL
+ограничивать поиск выбранным root. Фасад MUST отклонять path traversal,
+symlinks и non-regular files до исполнения и SHALL сообщать resolved origin.
 
-#### Scenario: Typed executor доступен
-- **WHEN** action ссылается на доступный executor с теми же type и target
-- **THEN** runner передаёт ему scope, literal arguments и применимый nested payload
+#### Scenario: Local flow переопределяет shared
+- **WHEN** flow с одинаковым именем существует в local и shared roots без явного selector
+- **THEN** фасад выбирает local flow и сообщает его origin
 
-#### Scenario: Тип либо target недоступен
-- **WHEN** exact typed executor отсутствует или недоступен
-- **THEN** runner останавливается до mutation и не заменяет его похожим executor
+#### Scenario: Flow отсутствует
+- **WHEN** безопасное имя не найдено ни в одном разрешённом root
+- **THEN** фасад останавливается до executor и сообщает missing flow
 
-### Requirement: Nested actions принадлежат CALL SUBAGENT
-Каждый `CALL SUBAGENT` MUST содержать непустой вложенный нумерованный payload с
-глобально уникальными именами. Runner SHALL передавать этот payload ближайшему
-enclosing subagent как часть одного typed invocation и MUST NOT исполнять его
-как действия родительского flow.
+### Requirement: Default executor следует описанному процессу
+Default Markdown executor SHALL прочитать flow целиком, использовать задачу как
+рабочий вход и выполнить описанные действия через доступные capabilities.
+Неоднозначность, которая требует существенного выбора пользователя, MUST
+вернуть `decision_required`. Внешние или разрушительные действия MUST сохранять
+существующие permission boundaries.
 
-#### Scenario: Subagent получает payload
-- **WHEN** parent action вызывает subagent с двумя nested actions
-- **THEN** subagent executor получает оба действия в документированном порядке, а parent cursor имеет одну boundary
+#### Scenario: Однозначный prose flow
+- **WHEN** Markdown однозначно описывает последовательность доступных действий
+- **THEN** executor выполняет её без преобразования документа в пользовательский DSL
 
-#### Scenario: Payload отсутствует
-- **WHEN** `CALL SUBAGENT` не содержит вложенных действий
-- **THEN** validation отклоняет flow до запуска
+#### Scenario: Неоднозначный prose flow
+- **WHEN** из Markdown нельзя безопасно выбрать одно из существенно разных действий
+- **THEN** executor не угадывает и возвращает `decision_required`
 
-### Requirement: Gate выбирает только объявленный переход
-Action с `GATE` MUST объявлять конечные outcomes, полный `IF`/`ELIF` target для
-каждого outcome и `ELSE`. После completed human outcome runner SHALL перейти к
-точному target. Outcome вне набора SHALL вернуть `decision_required` и MUST NOT
-продвигать cursor.
+### Requirement: Default execution имеет одну operation boundary
+Обычный запуск SHALL фиксировать flow origin, identity, задачу, Begin и Outcome
+через существующий HANDOFF mechanism. Он MUST NOT требовать per-action cursor,
+loop counters, action bindings или отдельный runtime state-файл.
 
-#### Scenario: Объявленный outcome
-- **WHEN** gate executor возвращает один из объявленных outcomes
-- **THEN** следующим доступным action становится соответствующий target
+#### Scenario: Успешный default-запуск
+- **WHEN** Markdown executor завершил описанный flow
+- **THEN** HANDOFF содержит завершённый outcome одной operation boundary
 
-#### Scenario: Неизвестный outcome
-- **WHEN** gate executor возвращает outcome вне объявленного набора
-- **THEN** runner применяет `ELSE`, запрашивает объявленный вариант и не запускает зависимый action
+#### Scenario: Прерывание внутри default executor
+- **WHEN** Begin записан, но terminal outcome отсутствует
+- **THEN** повторный вызов не запускает mutations автоматически и сообщает незавершённую operation
 
-### Requirement: Loop имеет положительный предел и наблюдаемое исчерпание
-`LOOP` MUST ссылаться на существующий gate, expected outcome, положительный
-предел попыток, ровно один typed call на попытку, возврат к gate и явный текст
-исхода при исчерпании. Runner SHALL сохранять число completed attempts и MUST
-остановиться как `loop_exhausted`, если gate снова направляет в loop после
-достижения предела.
+### Requirement: Structured runtime является явным experiment
+Строгий parser/orchestrator SHALL включаться только через явный selector
+`--experimental-structured`. В этом режиме он MUST принимать только
+поддерживаемые v1/v2 контракты, валидировать их до первого executor и исполнять
+не более одной top-level boundary за invocation.
 
-#### Scenario: Loop завершается раньше предела
-- **WHEN** повторная проверка возвращает expected outcome до исчерпания попыток
-- **THEN** runner следует gate target и больше не вызывает loop executor
+#### Scenario: Явный запуск version-2 experiment
+- **WHEN** пользователь передал experimental selector для валидного `version-2` flow
+- **THEN** runner строит `CustomFlow`, выполняет preflight и запускает одну boundary
 
-#### Scenario: Loop исчерпан
-- **WHEN** выполнено максимальное число попыток, а gate снова выбирает loop
-- **THEN** runner останавливается до нового вызова и сообщает объявленный exhaustion outcome
+#### Scenario: Невалидный strict contract
+- **WHEN** experimental selector передан для Markdown, который не соответствует v1 или v2
+- **THEN** strict parser отклоняет документ до первого executor
 
-### Requirement: Parallel block выполняется как одна boundary
-`PARALLEL` MUST содержать не менее двух именованных child calls. Runner MUST
-разрешить всех child executors до первого вызова, затем SHALL запустить их
-concurrently и дождаться всех outcomes. Parent cursor SHALL продвинуться только
-когда все children завершились `completed`; writes и references SHALL быть
-агрегированы в порядке документа.
+### Requirement: Experimental runtime сохраняет typed control flow
+В experimental structured mode runner SHALL поддерживать exact `CALL SKILL`,
+`CALL SCRIPT`, `CALL FLOW`, `CALL SUBAGENT` и `CALL HUMAN`, nested subagent
+payload, complete gates, bounded loops и preflighted parallel blocks. Он MUST
+сохранять cursor/control state через существующий checkpoint/HANDOFF boundary.
 
-#### Scenario: Все parallel children успешны
-- **WHEN** все заранее разрешённые children возвращают completed
-- **THEN** block возвращает completed aggregate и открывает следующий top-level action
+#### Scenario: Experimental control transition
+- **WHEN** completed gate возвращает объявленный outcome
+- **THEN** experimental runner сохраняет outcome и переводит cursor к точному target
 
-#### Scenario: Один parallel child неуспешен
-- **WHEN** любой child возвращает failed, blocked, decision или permission boundary
-- **THEN** block останавливает parent flow и не запускает следующий top-level action
+#### Scenario: Experimental parallel boundary
+- **WHEN** все заранее разрешённые parallel children завершаются успешно
+- **THEN** runner агрегирует outcomes и открывает следующую top-level boundary
 
-### Requirement: Version-2 resume сохраняет управляющее состояние
-Runner SHALL связывать resume с exact flow origin и identity, текущим action и
-loop counters. Он MUST использовать существующую operation-state boundary без
-нового runtime state-файла и SHALL продолжать принимать legacy checkpoint
-schema версии `1` для flow версии `1`.
+### Requirement: Experimental binding необязателен
+Experimental runtime MAY принимать action-specific inputs и передавать
+именованные completed results. Если binding передан, неизвестные action names
+MUST быть отклонены до первого executor, а child outcomes `PARALLEL` SHALL
+сохраняться по постоянным именам. Отсутствие binding MUST NOT препятствовать
+запуску flow.
 
-#### Scenario: Fresh structured resume
-- **WHEN** identity и source context не изменились после остановки structured flow
-- **THEN** runner восстанавливает текущий action и loop counters без повторения completed boundary
+#### Scenario: Запуск без action map
+- **WHEN** валидный experimental flow запущен только с общей задачей
+- **THEN** runner начинает flow без требования action-specific input map
 
-#### Scenario: Structured flow изменился
-- **WHEN** Markdown identity отличается от сохранённой
-- **THEN** runner отклоняет автоматическое resume как stale flow
+#### Scenario: Именованные parallel results
+- **WHEN** experimental binding включён и `review-a` и `review-b` завершились внутри parallel block
+- **THEN** зависимый consumer получает оба результата под постоянными именами
 
-### Requirement: Версия 1 сохраняет прежнее поведение
-Добавление runtime `version-2` MUST сохранять parsing, executor resolution,
-write-contract checks, sequencing, CLI validation и resume flow версии `1`.
+### Requirement: Структурированную форму создаёт create-flow
+`usw-create-flow` SHALL создавать или обновлять v1/v2 executable contract только
+после явного structured/experimental выбора. `usw-run-flow` MUST NOT изменять
+исходный Markdown или требовать такого преобразования для default execution.
 
-#### Scenario: Запуск legacy либо concise version-1 flow
-- **WHEN** runner получает ранее поддерживаемый документ версии `1`
-- **THEN** он выполняет его с прежней линейной семантикой без миграции
+#### Scenario: Создание structured flow
+- **WHEN** пользователь явно выбирает structured mode в `usw-create-flow`
+- **THEN** create-flow формирует валидируемые actions, executors и transitions
+
+#### Scenario: Default run не переписывает flow
+- **WHEN** пользователь запускает plain Markdown обычным `usw-run-flow`
+- **THEN** исходный flow остаётся неизменным
