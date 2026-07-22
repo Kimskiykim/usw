@@ -1,7 +1,7 @@
 interface:
   display_name: "Create USW flow"
-  short_description: "Create shared or local validated USW flows"
-  default_prompt: "Use $usw-create-flow to create a validated custom flow for this project."
+  short_description: "Create linear or structured Markdown flows"
+  default_prompt: "Use $usw-create-flow to create a validated custom flow without executing it."
 
 policy:
   allow_implicit_invocation: true

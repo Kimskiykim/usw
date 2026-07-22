@@ -1,6 +1,7 @@
 import importlib.util
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -53,6 +54,36 @@ class FlowOrchestratorTests(unittest.TestCase):
 {authority}
 """,
             "custom-check",
+        )
+
+    def concise(self, actions: str):
+        return RUNNER.parse_custom_flow(
+            f"""# Flow: custom-check
+
+## Контракт
+
+- Версия: `1`
+
+## Порядок действий
+
+{actions}
+""",
+            "custom-check",
+        )
+
+    def structured(self, actions: str):
+        return RUNNER.parse_custom_flow(
+            f"""# Flow: structured-check
+
+## Контракт
+
+- Версия: `version-2`
+
+## Порядок действий
+
+{actions}
+""",
+            "structured-check",
         )
 
     def test_runs_exactly_one_atomic_action_and_returns_control(self):
@@ -202,6 +233,371 @@ class FlowOrchestratorTests(unittest.TestCase):
         self.assertEqual(["task/x", "task/x"], calls)
         self.assertEqual(2, second.state.action_index)
 
+    def test_structured_typed_executor_receives_subagent_payload(self):
+        flow = self.structured(
+            "1. `delegate` — CALL SUBAGENT `reviewer`.\n"
+            "   - Действия субагента:\n"
+            "     1. `inspect` — CALL SKILL `inspect-skill`.\n"
+            "2. `child` — CALL FLOW `child-flow`.\n"
+            "3. `approve` — CALL HUMAN `owner`."
+        )
+        invocations = []
+
+        def typed(invocation):
+            invocations.append(invocation)
+            return RUNNER.ActionOutcome("completed", "ok")
+
+        typed_executors = {
+            ("subagent", "reviewer"): RUNNER.TypedExecutor(frozenset(), typed),
+            ("flow", "child-flow"): RUNNER.TypedExecutor(frozenset(), typed),
+            ("human", "owner"): RUNNER.TypedExecutor(frozenset(), typed),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            result = RUNNER.run_custom_next(
+                flow,
+                RUNNER.FlowState(),
+                {"inspect-skill": self.executor()},
+                project_root=Path(directory),
+                allowed_scopes=("task/x",),
+                typed_executors=typed_executors,
+            )
+
+        self.assertEqual("action_completed", result.status)
+        self.assertEqual("delegate", invocations[0].action)
+        self.assertEqual("subagent", invocations[0].kind)
+        self.assertEqual(("inspect",), tuple(step.name for step in invocations[0].payload))
+
+    def test_structured_preflight_resolves_later_typed_executor_before_call(self):
+        flow = self.structured(
+            "1. `prepare` — CALL SKILL `prepare-skill`.\n"
+            "2. `approve` — CALL HUMAN `owner`."
+        )
+        calls = []
+        with tempfile.TemporaryDirectory() as directory, self.assertRaisesRegex(
+            RUNNER.CustomFlowError, "missing_executor"
+        ):
+            RUNNER.run_custom_next(
+                flow,
+                RUNNER.FlowState(),
+                {"prepare-skill": self.executor(calls=calls)},
+                project_root=Path(directory),
+                allowed_scopes=("task/x",),
+            )
+        self.assertEqual([], calls)
+
+    def test_structured_gate_rejects_unknown_outcome_without_transition(self):
+        flow = self.structured(
+            "1. `review` — CALL HUMAN `reviewer`; GATE: выбрать `accepted` или `rejected`.\n"
+            "   - IF `accepted`: продолжить к `accepted-end`.\n"
+            "   - ELIF `rejected`: продолжить к `rejected-end`.\n"
+            "   - ELSE: запросить один из объявленных вариантов.\n"
+            "2. `accepted-end` — CALL SKILL `accepted-skill`.\n"
+            "3. `rejected-end` — CALL SKILL `rejected-skill`."
+        )
+        reviewer = RUNNER.TypedExecutor(
+            frozenset(),
+            lambda _invocation: RUNNER.ActionOutcome("completed", "maybe"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            result = RUNNER.run_custom_next(
+                flow,
+                RUNNER.FlowState(),
+                {
+                    "accepted-skill": self.executor(),
+                    "rejected-skill": self.executor(),
+                },
+                project_root=Path(directory),
+                allowed_scopes=("task/x",),
+                typed_executors={("human", "reviewer"): reviewer},
+            )
+
+        self.assertEqual("decision_required", result.status)
+        self.assertEqual("unknown_gate_outcome", result.stop_reason)
+        self.assertEqual(0, result.state.action_index)
+
+    def test_structured_gate_and_loop_route_until_accepted(self):
+        flow = self.structured(
+            "1. `review` — CALL HUMAN `reviewer`; GATE: выбрать `accepted` или `needs-work`.\n"
+            "   - IF `accepted`: продолжить к `done`.\n"
+            "   - ELIF `needs-work`: продолжить LOOP `revise`.\n"
+            "   - ELSE: запросить один из объявленных вариантов.\n"
+            "2. `revise` — LOOP не более 2 попыток, пока `review` не вернёт `accepted`.\n"
+            "   - Каждая попытка исправляет результат: CALL SKILL `revise-skill`.\n"
+            "   - После попытки: снова `review`.\n"
+            "   - При исчерпании: передать решение человеку.\n"
+            "3. `done` — CALL SKILL `done-skill`."
+        )
+        outcomes = iter(("needs-work", "accepted"))
+        reviewer = RUNNER.TypedExecutor(
+            frozenset(),
+            lambda _invocation: RUNNER.ActionOutcome("completed", next(outcomes)),
+        )
+        skills = {
+            "revise-skill": self.executor(),
+            "done-skill": self.executor(),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            first = RUNNER.run_custom_next(
+                flow, RUNNER.FlowState(), skills, project_root=project,
+                allowed_scopes=("task/x",),
+                typed_executors={("human", "reviewer"): reviewer},
+            )
+            revised = RUNNER.run_custom_next(
+                flow, first.state, skills, project_root=project,
+                allowed_scopes=("task/x",),
+                typed_executors={("human", "reviewer"): reviewer},
+            )
+            accepted = RUNNER.run_custom_next(
+                flow, revised.state, skills, project_root=project,
+                allowed_scopes=("task/x",),
+                typed_executors={("human", "reviewer"): reviewer},
+            )
+
+        self.assertEqual(1, dict(revised.state.loop_counts)["revise"])
+        self.assertEqual(2, accepted.state.action_index)
+
+    def test_structured_loop_stops_before_attempt_over_limit(self):
+        flow = self.structured(
+            "1. `review` — CALL HUMAN `reviewer`; GATE: выбрать `accepted` или `needs-work`.\n"
+            "   - IF `accepted`: продолжить к `done`.\n"
+            "   - ELIF `needs-work`: продолжить LOOP `revise`.\n"
+            "   - ELSE: запросить один из объявленных вариантов.\n"
+            "2. `revise` — LOOP не более 2 попыток, пока `review` не вернёт `accepted`.\n"
+            "   - Каждая попытка исправляет результат: CALL SKILL `revise-skill`.\n"
+            "   - После попытки: снова `review`.\n"
+            "   - При исчерпании: передать решение человеку.\n"
+            "3. `done` — CALL SKILL `done-skill`."
+        )
+        attempts = []
+        reviewer = RUNNER.TypedExecutor(
+            frozenset(),
+            lambda _invocation: RUNNER.ActionOutcome("completed", "needs-work"),
+        )
+        skills = {
+            "revise-skill": self.executor(calls=attempts),
+            "done-skill": self.executor(),
+        }
+        state = RUNNER.FlowState()
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            for _ in range(5):
+                state = RUNNER.run_custom_next(
+                    flow, state, skills, project_root=project,
+                    allowed_scopes=("task/x",),
+                    typed_executors={("human", "reviewer"): reviewer},
+                ).state
+            exhausted = RUNNER.run_custom_next(
+                flow, state, skills, project_root=project,
+                allowed_scopes=("task/x",),
+                typed_executors={("human", "reviewer"): reviewer},
+            )
+
+        self.assertEqual(2, len(attempts))
+        self.assertEqual("decision_required", exhausted.status)
+        self.assertEqual("loop_exhausted", exhausted.stop_reason)
+
+    def test_structured_parallel_runs_children_together_and_orders_results(self):
+        flow = self.structured(
+            "1. `checks` — PARALLEL:\n"
+            "   - `scope` — CALL HUMAN `scope-owner`.\n"
+            "   - `safety` — CALL HUMAN `safety-owner`."
+        )
+        barrier = threading.Barrier(2)
+
+        def typed(label):
+            def invoke(_invocation):
+                barrier.wait(timeout=2)
+                return RUNNER.ActionOutcome(
+                    "completed", "ok", frozenset({label}), (f"{label}.md",)
+                )
+
+            return RUNNER.TypedExecutor(frozenset({label}), invoke)
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = RUNNER.run_custom_next(
+                flow,
+                RUNNER.FlowState(),
+                {},
+                project_root=Path(directory),
+                allowed_scopes=("task/x",),
+                typed_executors={
+                    ("human", "scope-owner"): typed("scope"),
+                    ("human", "safety-owner"): typed("safety"),
+                },
+            )
+
+        self.assertEqual("action_completed", result.status)
+        self.assertEqual(("scope.md", "safety.md"), result.output_references)
+
+    def test_structured_binding_isolates_inputs_and_passes_named_parallel_results(self):
+        flow = self.structured(
+            "1. `parallel-reviews` — PARALLEL:\n"
+            "   - `review-a` — CALL SUBAGENT `reviewer-a`.\n"
+            "     - Действия субагента:\n"
+            "       1. `run-review-a` — CALL SKILL `review-skill`.\n"
+            "   - `review-b` — CALL SUBAGENT `reviewer-b`.\n"
+            "     - Действия субагента:\n"
+            "       1. `run-review-b` — CALL SKILL `review-skill`.\n"
+            "2. `prepare-presentation` — CALL HUMAN `owner`."
+        )
+        invocations = {}
+
+        def typed(invocation):
+            invocations[invocation.action] = invocation
+            return RUNNER.ActionOutcome(
+                "completed",
+                "ok",
+                output_references=(f"{invocation.action}.md",),
+                detail=f"{invocation.action} report",
+            )
+
+        typed_executors = {
+            ("subagent", "reviewer-a"): RUNNER.TypedExecutor(frozenset(), typed),
+            ("subagent", "reviewer-b"): RUNNER.TypedExecutor(frozenset(), typed),
+            ("human", "owner"): RUNNER.TypedExecutor(frozenset(), typed),
+        }
+        inputs = {
+            "review-a": "Scope A",
+            "review-b": "Scope B",
+            "prepare-presentation": "Combine both reports",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            first = RUNNER.run_custom_next(
+                flow,
+                RUNNER.FlowState(),
+                {"review-skill": self.executor()},
+                project_root=project,
+                allowed_scopes=("task/x",),
+                typed_executors=typed_executors,
+                action_inputs=inputs,
+                task="Review the change",
+            )
+            second = RUNNER.run_custom_next(
+                flow,
+                first.state,
+                {"review-skill": self.executor()},
+                project_root=project,
+                allowed_scopes=("task/x",),
+                typed_executors=typed_executors,
+            )
+
+        self.assertEqual("Scope A", invocations["review-a"].input)
+        self.assertEqual("Review the change", invocations["review-a"].task)
+        self.assertEqual("Scope B", invocations["review-b"].input)
+        self.assertEqual((), invocations["review-a"].results)
+        presentation = invocations["prepare-presentation"]
+        self.assertEqual("Combine both reports", presentation.input)
+        self.assertEqual(("parallel-reviews",), tuple(name for name, _ in presentation.results))
+        parallel = presentation.results[0][1]
+        self.assertEqual(
+            ("review-a", "review-b"),
+            tuple(name for name, _ in parallel.children),
+        )
+        self.assertEqual("review-a report", parallel.children[0][1].detail)
+        self.assertEqual("action_completed", second.status)
+
+    def test_structured_binding_rejects_unknown_input_before_executor(self):
+        flow = self.structured("1. `review` — CALL HUMAN `owner`.")
+        calls = []
+        owner = RUNNER.TypedExecutor(
+            frozenset(),
+            lambda invocation: calls.append(invocation)
+            or RUNNER.ActionOutcome("completed", "ok"),
+        )
+        with tempfile.TemporaryDirectory() as directory, self.assertRaisesRegex(
+            RUNNER.CustomFlowError, "unknown_action_input"
+        ):
+            RUNNER.run_custom_next(
+                flow,
+                RUNNER.FlowState(),
+                {},
+                project_root=Path(directory),
+                allowed_scopes=("task/x",),
+                typed_executors={("human", "owner"): owner},
+                action_inputs={"missing": "value"},
+            )
+        self.assertEqual([], calls)
+
+    def test_structured_checkpoint_preserves_binding(self):
+        flow = self.structured(
+            "1. `producer` — CALL HUMAN `producer`.\n"
+            "2. `consumer` — CALL HUMAN `consumer`."
+        )
+        outcome = RUNNER.ActionOutcome(
+            "completed",
+            "ok",
+            output_references=("report.md",),
+            detail="report body",
+        )
+        state = RUNNER.FlowState(
+            1,
+            "task/x",
+            False,
+            (),
+            (("consumer", "presentation contract"),),
+            (("producer", outcome),),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / ".usw").mkdir()
+            RUNNER.save_custom_checkpoint(
+                project, flow, state, source_identity="source-1"
+            )
+            checkpoint = RUNNER.load_custom_checkpoint(project)
+            resumed = RUNNER.resume_custom_state(
+                flow, checkpoint, current_source_identity="source-1"
+            )
+
+        self.assertEqual(3, checkpoint.schema_version)
+        self.assertEqual(state.action_inputs, resumed.action_inputs)
+        self.assertEqual(state.results, resumed.results)
+
+    def test_structured_checkpoint_preserves_loop_counters(self):
+        flow = self.structured(
+            "1. `review` — CALL HUMAN `reviewer`; GATE: выбрать `accepted` или `needs-work`.\n"
+            "   - IF `accepted`: продолжить к `done`.\n"
+            "   - ELIF `needs-work`: продолжить LOOP `revise`.\n"
+            "   - ELSE: запросить один из объявленных вариантов.\n"
+            "2. `revise` — LOOP не более 2 попыток, пока `review` не вернёт `accepted`.\n"
+            "   - Каждая попытка исправляет результат: CALL SKILL `revise-skill`.\n"
+            "   - После попытки: снова `review`.\n"
+            "   - При исчерпании: передать решение человеку.\n"
+            "3. `done` — CALL SKILL `done-skill`."
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / ".usw").mkdir()
+            RUNNER.save_custom_checkpoint(
+                project,
+                flow,
+                RUNNER.FlowState(0, "task/x", False, (("revise", 2),)),
+                source_identity="source-1",
+            )
+            checkpoint = RUNNER.load_custom_checkpoint(project)
+            resumed = RUNNER.resume_custom_state(
+                flow, checkpoint, current_source_identity="source-1"
+            )
+
+        self.assertEqual(2, checkpoint.schema_version)
+        self.assertEqual((("revise", 2),), resumed.loop_counts)
+
+    def test_concise_custom_skill_uses_executor_write_contract(self):
+        flow = self.concise("1. Скилл: `writer`")
+        calls = []
+        with tempfile.TemporaryDirectory() as directory:
+            result = RUNNER.run_custom_next(
+                flow,
+                RUNNER.FlowState(),
+                {"writer": self.executor(("task-index",), calls=calls)},
+                project_root=Path(directory),
+                allowed_scopes=("task/x",),
+            )
+
+        self.assertEqual("action_completed", result.status)
+        self.assertEqual(["task/x"], calls)
+
     def test_custom_skill_contract_is_validated_before_any_call(self):
         flow = self.custom(
             "1. Скилл: `first-skill`\n"
@@ -223,10 +619,9 @@ class FlowOrchestratorTests(unittest.TestCase):
         self.assertEqual([], calls)
 
     def test_script_requires_permission_and_uses_argv_without_shell(self):
-        flow = self.custom(
+        flow = self.concise(
             "1. Скрипт: `scripts/check.py`\n"
-            "   - Аргументы: `--quick` `one argument`\n"
-            "   - Пишет: нет"
+            "   - Аргументы: `--quick` `one argument`"
         )
         calls = []
 

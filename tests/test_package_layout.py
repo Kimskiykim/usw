@@ -10,7 +10,6 @@ class PackageLayoutTests(unittest.TestCase):
     def test_initialize_skill_packages_standalone_execution_templates(self):
         templates = ROOT / "skills" / "usw-initialize-project" / "templates"
         expected_fragments = {
-            "openspec/AGENTS.md": "completion checkboxes only in `tasks.md`",
             "change/proposal.md": "## Why",
             "change/design.md": "## Decisions",
             "change/spec.md": "## ADDED Requirements",
@@ -27,6 +26,7 @@ class PackageLayoutTests(unittest.TestCase):
             with self.subTest(template=relative_path):
                 content = (templates / relative_path).read_text(encoding="utf-8")
                 self.assertIn(fragment, content)
+        self.assertFalse((templates / "openspec/AGENTS.md").exists())
 
     def test_initialize_skill_selects_python_and_has_confirmed_llm_fallback(self):
         skill_dir = ROOT / "skills" / "usw-initialize-project"
@@ -44,12 +44,21 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertIn(fragment, skill)
         for fragment in (
-            "Stop on custom configuration",
-            "Stop if an `openspec/` path exists",
+            "accept only providers `standalone` and `openspec`",
+            "accept safe custom artifact, flow and review roots",
+            "Treat a real `openspec/` directory only as a provider hint",
+            "repository tracking policy belongs to the\nuser",
+            "for provider `openspec`, do not create or modify",
             "Preserve every existing regular file byte-for-byte",
             "Never overwrite, merge, delete, chmod, or follow links",
         ):
             self.assertIn(fragment, fallback)
+        for obsolete in (
+            "Stop on custom configuration",
+            "Stop if an `openspec/` path exists",
+            "git check-ignore",
+        ):
+            self.assertNotIn(obsolete, fallback)
 
     def test_brainstorm_skill_has_required_structure_and_implicit_invocation(self):
         skill_dir = ROOT / "skills" / "usw-brainstorm-solutions"
@@ -136,29 +145,122 @@ class PackageLayoutTests(unittest.TestCase):
             self.assertIn(fragment, skill)
         self.assertIn("allow_implicit_invocation: true", metadata)
 
-    def test_create_flow_skill_uses_validated_linear_contract(self):
+    def test_create_flow_skill_defaults_to_ordinary_markdown(self):
         skill_dir = ROOT / "skills" / "usw-create-flow"
         skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        version = (skill_dir / "references" / "version-1.md").read_text(
+            encoding="utf-8"
+        )
         metadata = (skill_dir / "agents" / "openai.yaml").read_text(
             encoding="utf-8"
         )
 
         for fragment in (
             "## Подготовка",
-            "## Сборка контракта",
-            "## Запись и проверка",
+            "## Общие гарантии",
             "## Граница выполнения",
-            "../usw-run-flow/scripts/run_flow.py",
-            "$usw-run-flow <name>",
             "--local",
             "`-l`",
             ".usw/flows",
+            "ordinary Markdown",
+            "Не спрашивать\n   версию",
         ):
             self.assertIn(fragment, skill)
+        for fragment in (
+            "../usw-run-flow/scripts/run_flow.py",
+            "--experimental-structured",
+            "$usw-run-flow --experimental-structured <name> <task>",
+            "## Проверка и отчёт",
+        ):
+            self.assertIn(fragment, version)
+        self.assertNotIn("   - Пишет:", version)
+        self.assertNotIn("\n## Полномочия записи\n", version)
         self.assertIn("$usw-create-flow", metadata)
         self.assertIn("allow_implicit_invocation: true", metadata)
 
-    def test_run_flow_skill_selects_local_custom_flows_explicitly(self):
+    def test_create_flow_skill_selects_structured_contract_explicitly(self):
+        skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "`--structured`",
+            "`-s`",
+            "Допускать их вместе в любом порядке",
+            "Без `-s`/`--structured` сразу выбрать ordinary Markdown",
+            "не читать version-specific references",
+        ):
+            self.assertIn(fragment, skill)
+
+    def test_create_flow_structured_contract_is_validator_backed(self):
+        skill_dir = ROOT / "skills/usw-create-flow"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        structured = (
+            skill_dir / "references" / "version-2.md"
+        ).read_text(encoding="utf-8")
+
+        for fragment in (
+            "`version-2`",
+            "CALL",
+            "GATE",
+            "IF",
+            "ELIF",
+            "ELSE",
+            "LOOP",
+            "PARALLEL",
+            "## Необязательный binding входов и результатов",
+            "Не требовать action-specific input map",
+            "Не добавлять маркер",
+            "До validator выполнить лёгкую статическую проверку",
+            "../usw-run-flow/scripts/run_flow.py",
+            "$usw-run-flow --experimental-structured <name> <task>",
+        ):
+            self.assertIn(fragment, structured)
+        self.assertIn("без исполнения flow", skill)
+        self.assertNotIn("USING", structured)
+        for fragment in ("   - После:", "   - Пишет:", "## Полномочия записи"):
+            self.assertNotIn(fragment, structured)
+        self.assertFalse((skill_dir / "scripts").exists())
+
+    def test_create_flow_version_2_uses_typed_calls_and_nested_subagent_work(self):
+        structured = (
+            ROOT / "skills/usw-create-flow/references/version-2.md"
+        ).read_text(encoding="utf-8")
+
+        for fragment in (
+            "CALL SKILL",
+            "CALL SCRIPT",
+            "CALL FLOW",
+            "CALL SUBAGENT",
+            "CALL HUMAN",
+            "тип `MODEL` не разрешать",
+            "точная цель в backticks",
+            "Действия субагента",
+            "ближайшему enclosing subagent",
+            "глобально уникальное постоянное имя",
+            "не родительскому",
+        ):
+            self.assertIn(fragment, structured)
+
+    def test_create_flow_loads_only_the_selected_version_reference(self):
+        skill_dir = ROOT / "skills/usw-create-flow"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+
+        for name in ("version-1.md", "version-2.md"):
+            self.assertTrue((skill_dir / "references" / name).is_file())
+            self.assertIn(f"references/{name}", skill)
+        self.assertEqual(
+            {"version-1.md", "version-2.md"},
+            {path.name for path in (skill_dir / "references").glob("*.md")},
+        )
+        for fragment in (
+            "не читать version-specific references",
+            "полностью прочитать только",
+            "читать только при явном",
+        ):
+            self.assertIn(fragment, skill)
+
+    def test_run_flow_skill_resolves_local_before_shared_by_default(self):
         skill = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(
             encoding="utf-8"
         )
@@ -166,11 +268,40 @@ class PackageLayoutTests(unittest.TestCase):
         for fragment in (
             "--local",
             "`-l`",
+            "--shared",
             ".usw/flows",
-            "never\nsearch the other root",
-            "shared` or `local`",
+            "Без origin selector искать local flow первым, затем shared flow",
+            "--origin local",
         ):
             self.assertIn(fragment, skill)
+
+    def test_run_flow_loads_structured_runtime_by_progressive_disclosure(self):
+        skill_dir = ROOT / "skills/usw-run-flow"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        structured = (skill_dir / "references/version-2.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "Только с `--experimental-structured`",
+            "references/version-2.md",
+            "Не открывать его для v1",
+            "Default-путь не вызывает strict validator",
+        ):
+            self.assertIn(fragment, skill)
+        for fragment in (
+            "CALL SKILL",
+            "CALL SCRIPT",
+            "CALL FLOW",
+            "CALL SUBAGENT",
+            "CALL HUMAN",
+            "один payload",
+            "loop_exhausted",
+            "запустить их одновременно",
+            "## Необязательный binding входов и результатов",
+            "Общая задача запуска доступна flow",
+        ):
+            self.assertIn(fragment, structured)
 
     def test_public_commands_delegate_to_internal_skills(self):
         expectations = {

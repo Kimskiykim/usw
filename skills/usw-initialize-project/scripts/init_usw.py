@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Initialize the USW OpenSpec workspace without overwriting project files."""
+"""Initialize the configured USW workspace without overwriting project files."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import argparse
 import os
 import re
 import stat
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -50,7 +49,6 @@ class WorkspaceConfig(NamedTuple):
     schema_version: int
     provider: str
     artifact_root: str
-    legacy_refinement_root: str | None
     flow_root: str
     review_root: str
     raw_content: str | None = None
@@ -73,7 +71,6 @@ def default_config(provider: str = "standalone") -> WorkspaceConfig:
         schema_version=SUPPORTED_SCHEMA_VERSION,
         provider=provider,
         artifact_root=artifact_root,
-        legacy_refinement_root=None,
         flow_root=DEFAULT_SPECIALIZED_ROOTS["flows"],
         review_root=DEFAULT_SPECIALIZED_ROOTS["reviews"],
     )
@@ -129,12 +126,10 @@ def parse_config(content: str) -> WorkspaceConfig:
             f"expected {SUPPORTED_SCHEMA_VERSION}, got {schema_version!r}",
         )
     artifacts = data.get("artifacts", {})
-    refinement = data.get("refinement", {})
     flows = data.get("flows", {})
     reviews = data.get("reviews", {})
     for name, section in (
         ("artifacts", artifacts),
-        ("refinement", refinement),
         ("flows", flows),
         ("reviews", reviews),
     ):
@@ -151,17 +146,10 @@ def parse_config(content: str) -> WorkspaceConfig:
             raise ConfigError("invalid_root", f"{name}.root must be a string")
         return value
 
-    legacy_refinement_root = refinement.get("root")
-    if legacy_refinement_root is not None and not isinstance(
-        legacy_refinement_root, str
-    ):
-        raise ConfigError("invalid_root", "refinement.root must be a string")
-
     return WorkspaceConfig(
         schema_version=SUPPORTED_SCHEMA_VERSION,
         provider=provider,
         artifact_root=root_value(artifacts, defaults.artifact_root, "artifacts"),
-        legacy_refinement_root=legacy_refinement_root,
         flow_root=root_value(flows, defaults.flow_root, "flows"),
         review_root=root_value(reviews, defaults.review_root, "reviews"),
         raw_content=content,
@@ -202,8 +190,6 @@ def validate_config(project_root: Path, config: WorkspaceConfig) -> WorkspaceCon
         name: _root_parts(value, name)
         for name, value in config.managed_roots.items()
     }
-    if config.legacy_refinement_root is not None:
-        _root_parts(config.legacy_refinement_root, "refinement")
     reserved = {"git": (".git",), "local": (".usw",)}
     for name, parts in parsed.items():
         _validate_no_symlink_components(project_root, parts, name)
@@ -352,8 +338,15 @@ def create_file(project_root: Path, path: Path, content: str) -> bool:
         if existing_kind == "directory":
             raise IsADirectoryError(f"Project path is a directory, not a file: {path}")
         raise
-    with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write(content)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+    except BaseException:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise
     return True
 
 
@@ -380,57 +373,6 @@ def create_directory(project_root: Path, path: Path) -> bool:
 def read_template(relative_path: str) -> str:
     """Read a template distributed with the initialization skill."""
     return (TEMPLATE_ROOT / relative_path).read_text(encoding="utf-8")
-
-
-def _git_is_worktree(project_root: Path) -> bool:
-    """Return whether project_root is a usable Git worktree."""
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(project_root), "rev-parse", "--is-inside-work-tree"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    except OSError:
-        return False
-    return result.returncode == 0 and result.stdout.strip() == "true"
-
-
-def _git_path_is_ignored(project_root: Path, relative_path: str) -> bool:
-    result = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(project_root),
-            "check-ignore",
-            "--quiet",
-            "--no-index",
-            "--",
-            relative_path,
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
-
-
-def _git_path_is_tracked(project_root: Path, relative_path: str) -> bool:
-    result = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(project_root),
-            "ls-files",
-            "--error-unmatch",
-            "--",
-            relative_path,
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
 
 
 def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> None:
@@ -478,44 +420,8 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
                 raise IsADirectoryError(f"Project path is a directory, not a file: {current}")
 
 
-def validate_local_state_git_policy(project_root: Path) -> None:
-    """Ensure existing local USW state will remain local in a Git worktree."""
-    local_ignore_file = project_root / ".usw" / ".gitignore"
-    if not _git_is_worktree(project_root):
-        return
-
-    local_paths = (
-        ".usw/HANDOFF.md",
-        ".usw/HANDOFF.next.md",
-        ".usw/refinements/.privacy-check",
-    )
-    tracked = [
-        relative_path
-        for relative_path in local_paths
-        if _git_path_is_tracked(project_root, relative_path)
-    ]
-    if tracked:
-        rendered = ", ".join(tracked)
-        raise OSError(
-            f"USW local state is tracked by Git: {rendered}; run "
-            "'git rm --cached <path>' before initializing"
-        )
-    if _existing_path_kind(local_ignore_file) is None:
-        return
-    unignored = [
-        relative_path
-        for relative_path in local_paths
-        if not _git_path_is_ignored(project_root, relative_path)
-    ]
-    if unignored:
-        rendered = ", ".join(unignored)
-        raise OSError(
-            f"Existing {local_ignore_file} does not ignore USW local state: {rendered}"
-        )
-
-
 def detect_openspec_workspace(project_root: Path) -> bool:
-    """Return whether an OpenSpec workspace exists, without inspecting its content."""
+    """Return whether a real OpenSpec directory exists, without inspecting it."""
     return _existing_path_kind(project_root / "openspec") == "directory"
 
 
@@ -533,7 +439,6 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
     handoff_file = project_root / ".usw" / "HANDOFF.md"
 
     validate_workspace_paths(project_root, config)
-    validate_local_state_git_policy(project_root)
 
     results = [
         (
@@ -599,8 +504,8 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Create a standalone USW workspace, project-owned artifact templates, "
-            "and developer-local .usw/HANDOFF.md without overwriting existing files."
+            "Create the configured USW workspace and developer-local state "
+            "without overwriting existing files."
         )
     )
     parser.add_argument(
@@ -622,23 +527,27 @@ def main() -> int:
         results = initialize_usw(args.project)
     except OSError as error:
         print(f"USW initialization failed: {error}", file=sys.stderr)
+        print(
+            "The workspace may be partially initialized. Fix the cause and rerun "
+            "/usw-init; existing files will be preserved.",
+            file=sys.stderr,
+        )
         return 1
 
     for path, created in results:
         status = "Created" if created else "Already exists"
         print(f"{status}: {path}")
     if openspec_detected:
-        print(
-            "Detected existing OpenSpec workspace; it was left unchanged. "
-            "Set artifacts.provider: openspec in usw.yaml to opt in explicitly."
-        )
-    if config.legacy_refinement_root is not None:
-        print(
-            "Legacy refinement.root detected at "
-            f"{config.legacy_refinement_root}; left unchanged. New intent "
-            "clarification sessions use .usw/refinements and require an "
-            "explicit migration decision."
-        )
+        if config.provider == "openspec":
+            print(
+                "Detected existing OpenSpec directory; the OpenSpec provider is "
+                "already active and the directory was left unchanged."
+            )
+        else:
+            print(
+                "Detected existing OpenSpec directory; it was left unchanged. "
+                "Set artifacts.provider: openspec in usw.yaml to opt in explicitly."
+            )
     return 0
 
 

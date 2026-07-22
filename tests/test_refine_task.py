@@ -134,7 +134,7 @@ class RefineTaskTests(unittest.TestCase):
             self.assertIn("## Recommended next flow\n\nnone", outcome)
             self.assertFalse((project / "product.py").exists())
 
-    def test_matching_legacy_session_requires_explicit_migration(self):
+    def test_matching_legacy_session_is_preserved_and_does_not_block_local_session(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             self.initialize(project, "shared/refinements")
@@ -143,14 +143,14 @@ class RefineTaskTests(unittest.TestCase):
             legacy.write_text("legacy bytes\n", encoding="utf-8")
             before = legacy.read_bytes()
 
-            with self.assertRaisesRegex(REFINE.RefinementError, "explicit migration"):
-                REFINE.start_or_resume(
-                    project, refinement_id="example", title="Example", goal="Goal",
-                    target="none", cases=[self.case()],
-                )
+            result = REFINE.start_or_resume(
+                project, refinement_id="example", title="Example", goal="Goal",
+                target="none", cases=[self.case()],
+            )
 
+            self.assertEqual("started", result.status)
             self.assertEqual(before, legacy.read_bytes())
-            self.assertFalse((project / ".usw/refinements/example").exists())
+            self.assertTrue((project / ".usw/refinements/example/session.md").is_file())
 
     def test_rejects_symlinked_local_refinement_root(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -169,20 +169,30 @@ class RefineTaskTests(unittest.TestCase):
 
             self.assertEqual([], list(outside.iterdir()))
 
-    def test_rejects_local_state_not_ignored_by_git(self):
+    def test_tracked_or_unignored_local_state_does_not_block_refinement(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             subprocess.run(["git", "init", "--quiet", str(project)], check=True)
             self.initialize(project)
             (project / ".usw/.gitignore").write_text("*.tmp\n", encoding="utf-8")
+            tracked = project / ".usw/refinements/tracked.md"
+            tracked.parent.mkdir()
+            tracked.write_text("user-owned tracking\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "--force", ".usw/refinements/tracked.md"],
+                cwd=project,
+                check=True,
+                capture_output=True,
+            )
 
-            with self.assertRaisesRegex(REFINE.RefinementError, "not ignored"):
-                REFINE.start_or_resume(
-                    project, refinement_id="example", title="Example", goal="Goal",
-                    target="none", cases=[self.case()],
-                )
+            result = REFINE.start_or_resume(
+                project, refinement_id="example", title="Example", goal="Goal",
+                target="none", cases=[self.case()],
+            )
 
-            self.assertFalse((project / ".usw/refinements").exists())
+            self.assertEqual("started", result.status)
+            self.assertEqual("user-owned tracking\n", tracked.read_text(encoding="utf-8"))
+            self.assertTrue((project / ".usw/refinements/example/session.md").is_file())
 
     def test_cases_require_two_or_three_options(self):
         with tempfile.TemporaryDirectory() as directory:

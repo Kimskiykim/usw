@@ -19,11 +19,14 @@ turn, and save local non-normative notes.
   open case without starting planning or implementation
 
 ### Requirement: Clarification artifacts are local and non-normative
-USW MUST store clarification sessions under
-`.usw/refinements/<refinement-id>/` with `session.md`, `decisions.md`, and an
-optional `outcome.md`. These artifacts MUST remain under the developer-local
-ignored `.usw/` namespace and MUST NOT be treated as backlog, specification,
+USW MUST store clarification sessions under `.usw/refinements/<refinement-id>/`
+with `session.md`, `decisions.md`, and an optional `outcome.md`. These artifacts
+MUST remain developer-local and MUST NOT be treated as backlog, specification,
 provider-owned planning state, or evidence of completed work.
+
+The clarification capability MUST reject unsafe or symlinked local paths, but
+MUST NOT inspect or enforce Git tracked/ignore state. Repository tracking policy
+belongs to the user.
 
 #### Scenario: New clarification starts
 - **WHEN** no matching local session exists
@@ -35,9 +38,15 @@ provider-owned planning state, or evidence of completed work.
 - **THEN** USW resumes from the saved local current case without reconstructing
   accepted decisions from conversation history
 
-#### Scenario: Local state is not safely ignored
-- **WHEN** `.usw/refinements/` could be tracked or resolved through an unsafe path
-- **THEN** the capability stops before writing and reports a privacy or path error
+#### Scenario: Local path is unsafe
+- **WHEN** `.usw/refinements/` resolves through a symbolic link or outside the
+  project
+- **THEN** the capability stops before writing and reports a path error
+
+#### Scenario: Local clarification state is tracked
+- **WHEN** `.usw/refinements/` contains a Git-tracked entry
+- **THEN** the capability leaves tracking unchanged and continues according to
+  the local artifact contract
 
 ### Requirement: A clarification may end without downstream work
 `usw-refine-intent` SHALL allow a session to finish with a standalone formulated
@@ -70,13 +79,16 @@ without writing clarification state.
   continuing the clarification dialogue implicitly
 
 ### Requirement: Existing shared refinement data is preserved
-The change MUST NOT automatically move, merge, delete, or rewrite existing
-sessions under configured or historical shared refinement roots.
+USW MUST NOT automatically discover, read, move, merge, delete, or rewrite
+existing sessions under configured or historical shared refinement roots.
+Historical data MUST NOT block creation or resumption of local clarification
+state, including a local session with the same refinement ID.
 
-#### Scenario: Legacy shared session exists
-- **WHEN** USW detects an existing `usw/refinements/<refinement-id>/` session
-- **THEN** it leaves the session byte-for-byte unchanged and requires an explicit
-  user-directed migration before using it as local clarification state
+#### Scenario: Legacy shared session has the same ID
+- **WHEN** a historical shared session and a requested local clarification use
+  the same refinement ID
+- **THEN** USW leaves the shared session byte-for-byte unchanged and creates or
+  resumes only the local session without requiring migration
 
 ### Requirement: Public skill identity reflects intent clarification
 The packaged capability SHALL be named `usw-refine-intent`; public metadata,

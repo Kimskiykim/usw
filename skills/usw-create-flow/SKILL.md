@@ -1,108 +1,63 @@
 ---
 name: usw-create-flow
-description: Create or revise a validated shared or developer-local USW custom flow as a linear Markdown sequence of exact skill and safe project-local script steps. Use when the user asks to create, compose, describe, or update a named USW flow, workflow, pipeline, or reusable sequence for execution by usw-run-flow. Do not use to execute a flow.
+description: Create or revise a named shared or developer-local Markdown flow. Ordinary Markdown is the default; executable version-2 structure is experimental and created only with explicit --structured opt-in. Do not execute the flow.
 ---
 
 # Создание USW flow
 
-Создавать один именованный custom flow для последующего исполнения через
-`usw-run-flow`. Сохранять flow обычным Markdown-файлом и не добавлять новый
-runtime-код.
+Создавать один именованный flow как Markdown-файл. По умолчанию не требовать
+версию или DSL. Структурированный executable contract создавать только после
+явного opt-in. Никогда не выполнять созданный flow.
 
 ## Подготовка
 
-1. Разобрать необязательный selector `--local` или его точный alias `-l`.
-   Другие флаги отклонить. Selector допустим только для custom flow; не создавать
-   локальные варианты `analysis`, `development` или `testing`.
-2. Выбрать ровно один root без поиска и fallback:
-   - с `--local` или `-l` использовать `<project>/.usw/flows`; проверить через
-     `lstat`, что существующие `.usw` и `flows` являются directories и не
-     symlinks, и создать только отсутствующий каталог `flows`;
-   - без selector прочитать проектный `usw.yaml` и безопасно разрешить
-     `flows.root` относительно корня проекта.
-   Остановиться, если USW не инициализирован, конфигурация или выбранный root
-   невалидны, выходят за проект либо проходят через symlink. Не инициализировать
-   USW скрытно; предложить пользователю `/usw-init`.
-3. Определить безопасное имя в kebab-case: только строчные латинские буквы,
-   цифры и дефисы. Целевой файл — `<selected-flow-root>/<name>.md`; если он
-   существует, через `lstat` потребовать regular file и отклонить symlink либо
-   другой тип до любой записи.
-4. Уточнить ожидаемый результат и линейный порядок действий. Если выбор шага
-   существенно меняет поведение, запросить решение до записи.
-5. Для каждого skill использовать точное имя доступного skill и прочитать его
-   capability contract. Для script использовать существующий исполняемый
-   regular file по project-relative пути и отдельные аргументы.
+1. Независимо разобрать selectors:
+   - `--local` или точный alias `-l` выбирает developer-local root;
+   - `--structured` или точный alias `-s` включает экспериментальный
+     `version-2` contract.
+   Допускать их вместе в любом порядке. Повторённый или неизвестный selector
+   отклонить.
+2. Без `-s`/`--structured` сразу выбрать ordinary Markdown. Не спрашивать
+   версию и не читать version-specific references.
+3. С structured selector полностью прочитать только
+   [references/version-2.md](references/version-2.md). Legacy
+   [references/version-1.md](references/version-1.md) читать только при явном
+   запросе создать или сохранить strict version `1`.
+4. Выбрать ровно один root без поиска и fallback:
+   - local: `<project>/.usw/flows`;
+   - shared: безопасно разрешённый `flows.root` из `usw.yaml`.
+5. Потребовать безопасное kebab-case имя и regular `<name>.md`; отклонить
+   traversal, symlink или другой filesystem type.
+6. Уточнить задачу, ожидаемый результат и важные ограничения. В default mode
+   записать понятный человеку порядок без обязательных headings, metadata или
+   executor syntax.
+7. При редактировании сначала прочитать существующий flow. Не переписывать его
+   в strict format без явного structured запроса.
 
-Не искать одно имя во втором root и не перезаписывать существующий flow без
-явного запроса. Не подменять отсутствующий skill похожим и не создавать
-отсутствующий script в рамках этого skill.
+## Общие гарантии
 
-## Сборка контракта
+- Изменять только выбранный `<flow-root>/<name>.md`; в local mode разрешено
+  создать отсутствующий каталог `.usw/flows`.
+- Ordinary Markdown может использовать любой ясный формат. Не добавлять поле
+  версии, action names, bindings или control DSL ради validator.
+- Structured mode создаёт постоянные имена, exact executors и transitions по
+  version-2 reference, затем вызывает validator только с
+  `--experimental-structured`.
+- Commit, push, PR, deployment и release требуют отдельного разрешения.
+- Не исполнять flow, executors или HANDOFF.
 
-Создать документ по форме:
+## Проверка и отчёт
 
-```markdown
-# Flow: plan-check
+Default mode проверяет только безопасный путь, сохранение Markdown и отсутствие
+непреднамеренного изменения других файлов. Structured mode дополнительно
+запускает strict validator.
 
-<краткая цель и важные условия; необязательно>
-
-## Контракт
-
-- Версия: `1`
-
-## Порядок действий
-
-1. Скилл: `usw-plan-small-steps`
-   - Пишет: `task-index`
-2. Скрипт: `scripts/check_plan.py`
-   - Аргументы: `--strict`
-   - Пишет: нет
-
-## Полномочия записи
-
-- `task-index`
-```
-
-Соблюдать правила:
-
-- Оставлять обязательные секции ровно в указанном порядке.
-- Нумеровать шаги подряд с `1`.
-- Указывать у каждого шага `Пишет`; использовать `нет`, если записи нет.
-- Указывать `Аргументы` только у script. Каждое значение заключать в отдельные
-  backticks; не использовать shell-строки, substitution, redirection или pipes.
-- Формировать `Полномочия записи` как объединение ролей из всех `Пишет`.
-  Использовать `- Нет.`, если объединение пусто.
-- Не добавлять branches, loops, retries, параллельность или произвольные
-  переходы. Если они нужны, сообщить об ограничении и предложить линейные
-  точки остановки/возобновления либо отдельные flows.
-- Не включать commit, push, pull request, deployment или release как неявно
-  разрешённые действия: для них всё равно требуется отдельное разрешение.
-
-Свободный Markdown допустим вне обязательных секций, но не должен менять
-исполняемую семантику.
-
-## Запись и проверка
-
-1. Создать или изменить только `<selected-flow-root>/<name>.md`.
-2. Разрешить валидатор относительно этого `SKILL.md` как
-   `../usw-run-flow/scripts/run_flow.py`.
-3. Без local selector запустить
-   `python3 <validator> validate <flows.root> <name>`. Для local flow запустить
-   `python3 <validator> validate --local <project-root> <name>`; `-l` имеет ту
-   же семантику.
-4. При ошибке исправить документ и повторять проверку до успешного результата.
-   Структурная валидация не доказывает доступность skill или безопасность
-   script, поэтому проверить их отдельно до завершения.
-5. Сообщить имя, origin (`shared` или `local`), путь flow, подтверждённые шаги
-   и полномочия, а также соответствующую команду запуска:
-   `$usw-run-flow <name>` либо `$usw-run-flow --local <name>`. Сам flow не
-   запускать.
+Сообщить имя, origin, путь и точную команду запуска с задачей:
+`$usw-run-flow <name> <task>`. Для local добавить `--local`; для строгого
+runtime — `--experimental-structured`.
 
 ## Граница выполнения
 
-- Inputs: цель, имя, линейные шаги и существующая конфигурация проекта.
-- Permitted writes: выбранный `<selected-flow-root>/<name>.md`; в local-режиме
-  также создание отсутствующего каталога `.usw/flows`.
-- Output: прошедший валидацию custom flow и краткий отчёт о проверке.
-- Return point: сразу после валидации, без исполнения flow или скрытого вызова
-  следующего skill.
+- Inputs: цель, имя, описание, optional local/structured selectors и project config.
+- Output: один созданный или обновлённый Markdown-flow и краткий отчёт.
+- Return point: сразу после проверки и записи, без исполнения flow.

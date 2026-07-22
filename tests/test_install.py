@@ -49,7 +49,7 @@ class InstallTests(unittest.TestCase):
             for skills_dir in (home / ".qwen/skills", home / ".agents/skills"):
                 for skill_name in self.SKILL_NAMES:
                     self.assertTrue((skills_dir / skill_name / "SKILL.md").is_file())
-                self.assertTrue(
+                self.assertFalse(
                     (
                         skills_dir
                         / "usw-initialize-project/templates/openspec/AGENTS.md"
