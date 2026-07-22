@@ -55,6 +55,21 @@ class FlowOrchestratorTests(unittest.TestCase):
             "custom-check",
         )
 
+    def concise(self, actions: str):
+        return RUNNER.parse_custom_flow(
+            f"""# Flow: custom-check
+
+## Контракт
+
+- Версия: `1`
+
+## Порядок действий
+
+{actions}
+""",
+            "custom-check",
+        )
+
     def test_runs_exactly_one_atomic_action_and_returns_control(self):
         scenario = self.scenario()
         calls = []
@@ -202,6 +217,21 @@ class FlowOrchestratorTests(unittest.TestCase):
         self.assertEqual(["task/x", "task/x"], calls)
         self.assertEqual(2, second.state.action_index)
 
+    def test_concise_custom_skill_uses_executor_write_contract(self):
+        flow = self.concise("1. Скилл: `writer`")
+        calls = []
+        with tempfile.TemporaryDirectory() as directory:
+            result = RUNNER.run_custom_next(
+                flow,
+                RUNNER.FlowState(),
+                {"writer": self.executor(("task-index",), calls=calls)},
+                project_root=Path(directory),
+                allowed_scopes=("task/x",),
+            )
+
+        self.assertEqual("action_completed", result.status)
+        self.assertEqual(["task/x"], calls)
+
     def test_custom_skill_contract_is_validated_before_any_call(self):
         flow = self.custom(
             "1. Скилл: `first-skill`\n"
@@ -223,10 +253,9 @@ class FlowOrchestratorTests(unittest.TestCase):
         self.assertEqual([], calls)
 
     def test_script_requires_permission_and_uses_argv_without_shell(self):
-        flow = self.custom(
+        flow = self.concise(
             "1. Скрипт: `scripts/check.py`\n"
-            "   - Аргументы: `--quick` `one argument`\n"
-            "   - Пишет: нет"
+            "   - Аргументы: `--quick` `one argument`"
         )
         calls = []
 

@@ -145,22 +145,18 @@ local-state boundary останавливают flow наблюдаемо.
 ## Порядок действий
 
 1. Скилл: `usw-plan-small-steps`
-   - Пишет: нет
 2. Скрипт: `scripts/check_plan`
    - Аргументы: `--strict`
-   - Пишет: нет
-
-## Полномочия записи
-
-- Нет.
 ```
 
 Runner проверяет весь документ до первого шага, выполняет один skill или script
-за раз, не использует shell-строки и продвигает HANDOFF cursor только после
-`completed`. Другой status сохраняет outcome на том же шаге и останавливает
-цепочку. Другой flow/scope блокируется до resume либо `/usw-handoff finish`.
-Legacy `.usw/FLOW.json` не объединяется и не удаляется автоматически. Custom
-flows не поддерживают branches и циклы; стандартные role flows не меняются.
+за раз, берёт write-contract skill из executor, не использует shell-строки и
+продвигает HANDOFF cursor только после `completed`. Старая форма с `Пишет` и
+разделом полномочий записи также поддерживается. Другой status сохраняет outcome
+на том же шаге и останавливает цепочку. Другой flow/scope блокируется до resume
+либо `/usw-handoff finish`. Legacy `.usw/FLOW.json` не объединяется и не
+удаляется автоматически. Custom flows не поддерживают branches и циклы;
+стандартные role flows не меняются.
 
 Создание и первый запуск custom flow:
 

@@ -21,8 +21,8 @@ SPEC.loader.exec_module(ARTIFACTS)
 
 
 class ArtifactContractTests(unittest.TestCase):
-    def test_active_change_has_only_explicit_frozen_legacy_tasks(self):
-        change = ROOT / "openspec/changes/establish-standalone-usw-workflow"
+    def test_archived_change_has_only_explicit_frozen_legacy_tasks(self):
+        change = ROOT / "openspec/changes/archive/2026-07-21-establish-standalone-usw-workflow"
         legacy = {
             "1.1", "1.2", "2.1", "2.2", "3.1", "3.2", "3.3",
             "4.1", "5.1", "5.2", "5.3", "6.1",

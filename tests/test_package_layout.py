@@ -139,24 +139,112 @@ class PackageLayoutTests(unittest.TestCase):
     def test_create_flow_skill_uses_validated_linear_contract(self):
         skill_dir = ROOT / "skills" / "usw-create-flow"
         skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        version = (skill_dir / "references" / "version-1.md").read_text(
+            encoding="utf-8"
+        )
         metadata = (skill_dir / "agents" / "openai.yaml").read_text(
             encoding="utf-8"
         )
 
         for fragment in (
             "## Подготовка",
-            "## Сборка контракта",
-            "## Запись и проверка",
+            "## Общие гарантии",
             "## Граница выполнения",
-            "../usw-run-flow/scripts/run_flow.py",
-            "$usw-run-flow <name>",
             "--local",
             "`-l`",
             ".usw/flows",
         ):
             self.assertIn(fragment, skill)
+        for fragment in (
+            "../usw-run-flow/scripts/run_flow.py",
+            "$usw-run-flow <name>",
+            "## Проверка и отчёт",
+        ):
+            self.assertIn(fragment, version)
+        self.assertNotIn("   - Пишет:", version)
+        self.assertNotIn("\n## Полномочия записи\n", version)
         self.assertIn("$usw-create-flow", metadata)
         self.assertIn("allow_implicit_invocation: true", metadata)
+
+    def test_create_flow_skill_selects_structured_contract_explicitly(self):
+        skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "`--structured`",
+            "`-s`",
+            "Допускать их вместе в любом порядке",
+            "Если нет `-s` и `--structured`",
+            "не записывать flow до ответа",
+        ):
+            self.assertIn(fragment, skill)
+
+    def test_create_flow_structured_contract_is_creation_only(self):
+        skill_dir = ROOT / "skills/usw-create-flow"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        structured = (
+            skill_dir / "references" / "version-2.md"
+        ).read_text(encoding="utf-8")
+
+        for fragment in (
+            "`version-2`",
+            "CALL",
+            "GATE",
+            "IF",
+            "ELIF",
+            "ELSE",
+            "LOOP",
+            "PARALLEL",
+            "Не добавлять маркер",
+            "лёгкую статическую проверку без parser",
+            "runner не поддерживает этот контракт",
+            "не сообщать команду запуска",
+        ):
+            self.assertIn(fragment, structured)
+        self.assertIn("без исполнения flow", skill)
+        self.assertNotIn("USING", structured)
+        for fragment in ("   - После:", "   - Пишет:", "## Полномочия записи"):
+            self.assertNotIn(fragment, structured)
+        self.assertFalse((skill_dir / "scripts").exists())
+
+    def test_create_flow_version_2_uses_typed_calls_and_nested_subagent_work(self):
+        structured = (
+            ROOT / "skills/usw-create-flow/references/version-2.md"
+        ).read_text(encoding="utf-8")
+
+        for fragment in (
+            "CALL SKILL",
+            "CALL SCRIPT",
+            "CALL FLOW",
+            "CALL SUBAGENT",
+            "CALL HUMAN",
+            "тип `MODEL` не разрешать",
+            "точная цель в backticks",
+            "Действия субагента",
+            "ближайшему enclosing subagent",
+            "глобально уникальное постоянное имя",
+            "не родительскому",
+        ):
+            self.assertIn(fragment, structured)
+
+    def test_create_flow_loads_only_the_selected_version_reference(self):
+        skill_dir = ROOT / "skills/usw-create-flow"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+
+        for name in ("version-1.md", "version-2.md"):
+            self.assertTrue((skill_dir / "references" / name).is_file())
+            self.assertIn(f"references/{name}", skill)
+        self.assertEqual(
+            {"version-1.md", "version-2.md"},
+            {path.name for path in (skill_dir / "references").glob("*.md")},
+        )
+        for fragment in (
+            "До выбора версии не читать version-specific reference",
+            "прочитать полностью ровно один файл",
+            "Не загружать оба reference",
+        ):
+            self.assertIn(fragment, skill)
 
     def test_run_flow_skill_selects_local_custom_flows_explicitly(self):
         skill = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(

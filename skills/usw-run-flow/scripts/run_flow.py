@@ -18,7 +18,7 @@ from typing import Callable, Mapping, NamedTuple
 
 CUSTOM_FLOW_VERSION = 1
 CUSTOM_FLOW_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-REQUIRED_CUSTOM_SECTIONS = ("Контракт", "Порядок действий", "Полномочия записи")
+REQUIRED_CUSTOM_SECTIONS = ("Контракт", "Порядок действий")
 CUSTOM_FLOW_ORIGINS = frozenset({"shared", "local"})
 STANDARD_FLOW_NAMES = frozenset({"analysis", "development", "testing"})
 
@@ -35,13 +35,13 @@ class CustomStep(NamedTuple):
     kind: str
     target: str
     arguments: tuple[str, ...]
-    declared_writes: frozenset[str]
+    declared_writes: frozenset[str] | None
 
 
 class CustomFlow(NamedTuple):
     name: str
     steps: tuple[CustomStep, ...]
-    artifact_roles: frozenset[str]
+    artifact_roles: frozenset[str] | None
     origin: str
     identity: str
 
@@ -134,19 +134,27 @@ def parse_custom_flow(
             contract_line,
         )
 
-    authority_line, authority = sections["Полномочия записи"]
-    authority_lines = [line for line in authority.splitlines() if line.strip()]
-    if authority_lines == ["- Нет."] or authority_lines == ["- Нет"]:
-        artifact_roles = frozenset()
-    else:
-        roles = [re.fullmatch(r"- `([^`]+)`", line) for line in authority_lines]
-        if not roles or any(match is None for match in roles):
-            raise CustomFlowError(
-                "invalid_write_authority", "expected '- `role`' entries or '- Нет.'", authority_line
-            )
-        artifact_roles = frozenset(match.group(1) for match in roles if match)
-
     actions_line, actions = sections["Порядок действий"]
+    authority_entry = sections.get("Полномочия записи")
+    if authority_entry is None:
+        artifact_roles = None
+    else:
+        authority_line, authority = authority_entry
+        if authority_line < actions_line:
+            raise CustomFlowError(
+                "invalid_section_order", "write authority must follow actions", authority_line
+            )
+        authority_lines = [line for line in authority.splitlines() if line.strip()]
+        if authority_lines == ["- Нет."] or authority_lines == ["- Нет"]:
+            artifact_roles = frozenset()
+        else:
+            roles = [re.fullmatch(r"- `([^`]+)`", line) for line in authority_lines]
+            if not roles or any(match is None for match in roles):
+                raise CustomFlowError(
+                    "invalid_write_authority", "expected '- `role`' entries or '- Нет.'", authority_line
+                )
+            artifact_roles = frozenset(match.group(1) for match in roles if match)
+
     lines = actions.splitlines()
     steps: list[CustomStep] = []
     index = 0
@@ -162,11 +170,20 @@ def parse_custom_flow(
         if int(number) != len(steps) + 1:
             raise CustomFlowError("invalid_step_number", "steps must be numbered consecutively", line_number)
         fields, index = _parse_step_fields(lines, index + 1, actions_line)
-        if "Пишет" not in fields:
-            raise CustomFlowError("missing_step_field", "step is missing 'Пишет'", line_number)
-        writes_line, writes_value = fields["Пишет"]
-        writes = frozenset(_code_values(writes_value, line=writes_line, field="Пишет"))
-        if not writes <= artifact_roles:
+        if artifact_roles is None:
+            if "Пишет" in fields:
+                raise CustomFlowError(
+                    "partial_write_contract",
+                    "step write metadata requires a write authority section",
+                    fields["Пишет"][0],
+                )
+            writes = None
+        else:
+            if "Пишет" not in fields:
+                raise CustomFlowError("missing_step_field", "step is missing 'Пишет'", line_number)
+            writes_line, writes_value = fields["Пишет"]
+            writes = frozenset(_code_values(writes_value, line=writes_line, field="Пишет"))
+        if writes is not None and artifact_roles is not None and not writes <= artifact_roles:
             raise CustomFlowError(
                 "authority_mismatch", "step writes exceed flow write authority", writes_line
             )
@@ -281,6 +298,7 @@ def _script_executor(
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> Executor:
     script = _resolve_project_script(project_root, step.target)
+    declared_writes = step.declared_writes or frozenset()
 
     def invoke(_scope: str) -> ActionOutcome:
         if not authorized:
@@ -299,16 +317,16 @@ def _script_executor(
             )
         except OSError as error:
             return ActionOutcome(
-                "failed", "script_failed", step.declared_writes, detail=str(error)
+                "failed", "script_failed", declared_writes, detail=str(error)
             )
         detail = (completed.stderr or completed.stdout or "").strip() or None
         if completed.returncode:
             return ActionOutcome(
-                "failed", "script_failed", step.declared_writes, detail=detail
+                "failed", "script_failed", declared_writes, detail=detail
             )
-        return ActionOutcome("completed", "passed", step.declared_writes, detail=detail)
+        return ActionOutcome("completed", "passed", declared_writes, detail=detail)
 
-    return Executor(step.declared_writes, invoke)
+    return Executor(declared_writes, invoke)
 
 
 def resolve_custom_executors(
@@ -326,7 +344,10 @@ def resolve_custom_executors(
             executor = skill_executors.get(step.target)
             if executor is None or not executor.available:
                 raise CustomFlowError("missing_skill", f"skill is unavailable: {step.target}")
-            if executor.declared_writes != step.declared_writes:
+            if (
+                step.declared_writes is not None
+                and executor.declared_writes != step.declared_writes
+            ):
                 raise CustomFlowError(
                     "skill_contract_mismatch",
                     f"declared writes for {step.target} do not match its capability contract",
@@ -515,7 +536,10 @@ def run_next(
             "missing_executor",
             f"Install or connect capability executor: {action}.",
         )
-    unauthorized = executor.declared_writes - scenario.artifact_roles
+    artifact_roles = scenario.artifact_roles
+    if artifact_roles is None:
+        artifact_roles = executor.declared_writes
+    unauthorized = executor.declared_writes - artifact_roles
     if unauthorized:
         return FlowResult(
             FlowState(state.action_index, scope, False),
@@ -527,7 +551,7 @@ def run_next(
         )
 
     outcome = executor.invoke(scope)
-    if outcome.written_roles - executor.declared_writes or outcome.written_roles - scenario.artifact_roles:
+    if outcome.written_roles - executor.declared_writes or outcome.written_roles - artifact_roles:
         return FlowResult(
             FlowState(state.action_index, scope, True),
             "failed",
@@ -661,14 +685,20 @@ def main(argv: list[str] | None = None) -> int:
                     "name": flow.name,
                     "origin": flow.origin,
                     "identity": flow.identity,
-                    "write_authority": sorted(flow.artifact_roles),
+                    "write_authority": (
+                        None if flow.artifact_roles is None else sorted(flow.artifact_roles)
+                    ),
                     "steps": [
                         {
                             "number": index,
                             "kind": step.kind,
                             "target": step.target,
                             "arguments": list(step.arguments),
-                            "declared_writes": sorted(step.declared_writes),
+                            "declared_writes": (
+                                None
+                                if step.declared_writes is None
+                                else sorted(step.declared_writes)
+                            ),
                         }
                         for index, step in enumerate(flow.steps, start=1)
                     ],

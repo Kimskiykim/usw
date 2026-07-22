@@ -113,6 +113,20 @@ class FlowScenarioTests(unittest.TestCase):
 
 
 class CustomFlowTests(unittest.TestCase):
+    def concise_content(self) -> str:
+        return """# Flow: plan-check
+
+## Контракт
+
+- Версия: `1`
+
+## Порядок действий
+
+1. Скилл: `usw-plan-small-steps`
+2. Скрипт: `scripts/check_plan.py`
+   - Аргументы: `--strict` `one argument`
+"""
+
     def content(self) -> str:
         return """# Flow: plan-check
 
@@ -150,6 +164,13 @@ This remains ordinary Markdown.
         self.assertEqual(("--strict", "one argument"), flow.steps[1].arguments)
         self.assertTrue(flow.identity.startswith("usw-flow-v1:"))
 
+    def test_parses_concise_contract_without_write_metadata(self):
+        flow = CUSTOM.parse_custom_flow(self.concise_content(), "plan-check")
+
+        self.assertIsNone(flow.artifact_roles)
+        self.assertTrue(all(step.declared_writes is None for step in flow.steps))
+        self.assertEqual(("--strict", "one argument"), flow.steps[1].arguments)
+
     def test_local_origin_is_distinct_and_rejects_standard_flows(self):
         shared = CUSTOM.parse_custom_flow(self.content(), "plan-check")
         local = CUSTOM.parse_custom_flow(
@@ -171,6 +192,9 @@ This remains ordinary Markdown.
             "step gap": self.content().replace("2. Скрипт", "3. Скрипт"),
             "unknown step": self.content().replace("1. Скилл", "1. Команда"),
             "excess writes": self.content().replace("- Пишет: нет", "- Пишет: `implementation`"),
+            "partial write contract": self.concise_content().replace(
+                "2. Скрипт:", "   - Пишет: нет\n2. Скрипт:"
+            ),
         }
         for label, content in invalid.items():
             with self.subTest(label=label), self.assertRaises(CUSTOM.CustomFlowError):
