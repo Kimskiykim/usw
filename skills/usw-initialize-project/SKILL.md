@@ -24,7 +24,7 @@ After agreement, read and follow
 [references/llm-fallback.md](references/llm-fallback.md). If the user declines,
 stop without changes.
 
-Report whether `usw.yaml`, configured USW roots, standard flow scenarios,
+Report whether `usw.yaml`, configured USW roots, the five nested flow examples,
 standalone project-owned artifact templates, `.usw/.gitignore`, and
 `.usw/HANDOFF.md` were created or already existed. Never overwrite an existing
 file. Treat a real `openspec/` directory only as a hint: detection alone never
@@ -46,7 +46,7 @@ root. Reject symbolic links and conflicting roots before any managed write.
 
 Capability boundary: inputs are a project root and existing configuration;
 permitted writes are initialization configuration, missing managed roots,
-standalone artifact templates, standard scenario seeds, and developer-local
+standalone artifact templates, non-normative flow examples, and developer-local
 initial state. Return the created or existing paths to the caller. Return point:
 after initialization reporting. Do not start a role flow or call another skill.
 If initialization fails after a partial write, report the possible partial
@@ -58,3 +58,9 @@ the artifact contract for future change and granular task creation. For the
 standalone provider, copy every missing change, task, evidence, and review
 template to `<artifacts.root>/templates/`. Preserve existing project-owned
 templates byte-for-byte. Do not copy templates into an OpenSpec artifact root.
+
+The bundled files under `templates/flows/examples/` are guidance, not runtime
+fallbacks or normative flow contracts. Copy exactly `analysis.md`,
+`development.md`, `testing.md`, `chat-review.md`, and `dev-test.md` to
+`<flows.root>/examples/`. Never create, migrate, or delete legacy
+`flow-scenario-*.md` files.

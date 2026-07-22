@@ -49,8 +49,9 @@ Create only missing paths:
   `usw.yaml`;
 - create configured flow and review roots;
 - create `.usw/.gitignore` with `*` and a trailing newline;
-- copy the three packaged `templates/flows/flow-scenario-*.md` files to
-  the configured flow root;
+- create `<flows.root>/examples/` and copy exactly the five packaged examples
+  `analysis.md`, `development.md`, `testing.md`, `chat-review.md`, and
+  `dev-test.md` there;
 - for provider `standalone`, create the configured artifact root with
   `changes/` and `templates/{change,task,review}` and copy every packaged
   `templates/change/*.md`, `templates/task/*.md`, and `templates/review/*.md`
@@ -66,6 +67,9 @@ Set `status` to `idle`, `updated_at` to the current ISO 8601 timestamp,
 
 Never overwrite, merge, delete, chmod, or follow links. Do not create
 `.usw/flows/`, `.usw/refinements/`, or any provider-owned OpenSpec artifact.
+Do not create, migrate, or remove legacy `flow-scenario-*.md` files. Every
+installed example is non-normative and must remain nested under `examples/` so
+the runner cannot select it directly by a flat flow name.
 
 ## Verify and report
 

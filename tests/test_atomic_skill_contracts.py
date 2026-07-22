@@ -26,8 +26,8 @@ TESTING = load("atomic_testing", "skills/usw-verify-task/scripts/verify_scope.py
 
 
 class AtomicSkillContractTests(unittest.TestCase):
-    def test_all_scenario_actions_resolve_to_packaged_production_capabilities(self):
-        templates = ROOT / "skills/usw-initialize-project/templates/flows"
+    def test_all_role_scenario_actions_resolve_to_production_capabilities(self):
+        templates = ROOT / "tests/fixtures/flow-scenarios"
         actions = set()
         for path in templates.glob("flow-scenario-*.md"):
             actions.update(FLOWS.validate_scenario(path.read_text(encoding="utf-8")).actions)

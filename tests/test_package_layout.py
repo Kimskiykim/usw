@@ -18,6 +18,11 @@ class PackageLayoutTests(unittest.TestCase):
             "task/development-evidence.md": "Writer authority: Development only.",
             "task/testing-evidence.md": "Writer authority: Testing only.",
             "review/receipt.md": "## Reviewed artifact identities",
+            "flows/examples/analysis.md": "Ненормативный пример",
+            "flows/examples/development.md": "Ненормативный пример",
+            "flows/examples/testing.md": "Ненормативный пример",
+            "flows/examples/chat-review.md": "# Flow: chat-review",
+            "flows/examples/dev-test.md": "# Flow: dev-test",
             "local/HANDOFF.md": "## Trusted source snapshot",
             "usw.yaml": "root: usw/reviews",
         }
@@ -27,6 +32,10 @@ class PackageLayoutTests(unittest.TestCase):
                 content = (templates / relative_path).read_text(encoding="utf-8")
                 self.assertIn(fragment, content)
         self.assertFalse((templates / "openspec/AGENTS.md").exists())
+        self.assertEqual(
+            set(),
+            {path.name for path in (templates / "flows").glob("flow-scenario-*.md")},
+        )
 
     def test_initialize_skill_selects_python_and_has_confirmed_llm_fallback(self):
         skill_dir = ROOT / "skills" / "usw-initialize-project"
@@ -51,6 +60,8 @@ class PackageLayoutTests(unittest.TestCase):
             "for provider `openspec`, do not create or modify",
             "Preserve every existing regular file byte-for-byte",
             "Never overwrite, merge, delete, chmod, or follow links",
+            "the five packaged examples",
+            "Do not create, migrate, or remove legacy `flow-scenario-*.md` files",
         ):
             self.assertIn(fragment, fallback)
         for obsolete in (

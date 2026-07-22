@@ -22,7 +22,13 @@ DEFAULT_SPECIALIZED_ROOTS = {
     "flows": "usw/flows",
     "reviews": "usw/reviews",
 }
-STANDARD_SCENARIOS = ("analysis", "development", "testing")
+FLOW_EXAMPLE_PATHS = (
+    "analysis.md",
+    "development.md",
+    "testing.md",
+    "chat-review.md",
+    "dev-test.md",
+)
 ARTIFACT_TEMPLATE_PATHS = (
     "change/proposal.md",
     "change/design.md",
@@ -380,6 +386,7 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
     expected_paths = [
         (CONFIG_FILE_NAME, "file"),
         (config.flow_root, "directory"),
+        (f"{config.flow_root}/examples", "directory"),
         (config.review_root, "directory"),
         (".usw", "directory"),
         (".usw/.gitignore", "file"),
@@ -387,10 +394,10 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
     ]
     expected_paths.extend(
         (
-            f"{config.flow_root}/flow-scenario-{scenario}.md",
+            f"{config.flow_root}/examples/{example}",
             "file",
         )
-        for scenario in STANDARD_SCENARIOS
+        for example in FLOW_EXAMPLE_PATHS
     )
     if config.provider == "standalone":
         expected_paths.extend(
@@ -434,6 +441,7 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
     changes_directory = artifact_directory / "changes"
     artifact_template_directory = artifact_directory / "templates"
     flow_directory = project_root / config.flow_root
+    flow_example_directory = flow_directory / "examples"
     review_directory = project_root / config.review_root
     local_state_ignore_file = project_root / ".usw" / ".gitignore"
     handoff_file = project_root / ".usw" / "HANDOFF.md"
@@ -477,19 +485,23 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
     results.extend(
         [
             (flow_directory, create_directory(project_root, flow_directory)),
+            (
+                flow_example_directory,
+                create_directory(project_root, flow_example_directory),
+            ),
             (review_directory, create_directory(project_root, review_directory)),
         ]
     )
     results.extend(
         (
-            flow_directory / f"flow-scenario-{scenario}.md",
+            flow_example_directory / example,
             create_file(
                 project_root,
-                flow_directory / f"flow-scenario-{scenario}.md",
-                read_template(f"flows/flow-scenario-{scenario}.md"),
+                flow_example_directory / example,
+                read_template(f"flows/examples/{example}"),
             ),
         )
-        for scenario in STANDARD_SCENARIOS
+        for example in FLOW_EXAMPLE_PATHS
     )
     results.extend([
         (

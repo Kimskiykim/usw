@@ -209,75 +209,71 @@ class InitializeUswTests(unittest.TestCase):
             project = Path(directory)
 
             results = INIT_USW.initialize_usw(project)
-            (
-                (config_file, config_created),
-                (artifact_directory, artifact_created),
-                (changes_directory, changes_created),
-                (artifact_template_directory, artifact_template_directory_created),
-                *artifact_template_results,
-                (flow_directory, flow_created),
-                (review_directory, review_created),
-                (analysis_scenario, analysis_created),
-                (development_scenario, development_created),
-                (testing_scenario, testing_created),
-                (local_ignore_file, local_ignore_created),
-                (handoff_file, handoff_created),
-            ) = results
+            expected_files = {
+                ".usw/.gitignore",
+                ".usw/HANDOFF.md",
+                "usw.yaml",
+                "usw/templates/change/proposal.md",
+                "usw/templates/change/design.md",
+                "usw/templates/change/spec.md",
+                "usw/templates/change/tasks.md",
+                "usw/templates/task/task.md",
+                "usw/templates/task/development-evidence.md",
+                "usw/templates/task/testing-evidence.md",
+                "usw/templates/review/receipt.md",
+                "usw/flows/examples/analysis.md",
+                "usw/flows/examples/development.md",
+                "usw/flows/examples/testing.md",
+                "usw/flows/examples/chat-review.md",
+                "usw/flows/examples/dev-test.md",
+            }
+            actual_files = {
+                path.relative_to(project).as_posix()
+                for path in project.rglob("*")
+                if path.is_file()
+            }
 
-            self.assertTrue(config_created)
-            self.assertEqual(project.resolve() / "usw.yaml", config_file)
-            self.assertEqual(INIT_USW.render_default_config(), config_file.read_text())
-            self.assertTrue(artifact_created)
-            self.assertEqual(project.resolve() / "usw", artifact_directory)
-            self.assertTrue(changes_created)
-            self.assertEqual(artifact_directory / "changes", changes_directory)
-            self.assertTrue(artifact_template_directory_created)
-            self.assertEqual(artifact_directory / "templates", artifact_template_directory)
+            self.assertTrue(all(created for _, created in results))
+            self.assertEqual(expected_files, actual_files)
             self.assertEqual(
-                {
-                    "change/proposal.md",
-                    "change/design.md",
-                    "change/spec.md",
-                    "change/tasks.md",
-                    "task/task.md",
-                    "task/development-evidence.md",
-                    "task/testing-evidence.md",
-                    "review/receipt.md",
-                },
-                {
-                    path.relative_to(artifact_template_directory).as_posix()
-                    for path, created in artifact_template_results
-                    if created
-                },
+                INIT_USW.render_default_config(),
+                (project / "usw.yaml").read_text(encoding="utf-8"),
             )
-            for path, created in artifact_template_results:
-                self.assertTrue(created)
-                relative = path.relative_to(artifact_template_directory).as_posix()
+            for relative in (
+                "change/proposal.md",
+                "change/design.md",
+                "change/spec.md",
+                "change/tasks.md",
+                "task/task.md",
+                "task/development-evidence.md",
+                "task/testing-evidence.md",
+                "review/receipt.md",
+            ):
                 self.assertEqual(
                     INIT_USW.read_template(relative),
-                    path.read_text(encoding="utf-8"),
+                    (project / "usw/templates" / relative).read_text(encoding="utf-8"),
+                )
+            for name in (
+                "analysis.md",
+                "development.md",
+                "testing.md",
+                "chat-review.md",
+                "dev-test.md",
+            ):
+                example = project / "usw/flows/examples" / name
+                self.assertIn("Ненормативный пример", example.read_text(encoding="utf-8"))
+                self.assertEqual(
+                    INIT_USW.read_template(f"flows/examples/{name}"),
+                    example.read_text(encoding="utf-8"),
                 )
             self.assertFalse((project / "usw/refinements").exists())
             self.assertFalse((project / ".usw/refinements").exists())
-            self.assertTrue(flow_created)
-            self.assertEqual(project.resolve() / "usw/flows", flow_directory)
-            self.assertTrue(review_created)
-            self.assertEqual(project.resolve() / "usw/reviews", review_directory)
-            for scenario, created in (
-                (analysis_scenario, analysis_created),
-                (development_scenario, development_created),
-                (testing_scenario, testing_created),
-            ):
-                self.assertTrue(created)
-                self.assertEqual(flow_directory, scenario.parent)
-                self.assertTrue(scenario.read_text(encoding="utf-8").startswith("# Flow scenario:"))
-
-            self.assertTrue(local_ignore_created)
-            self.assertEqual(project.resolve() / ".usw" / ".gitignore", local_ignore_file)
-            self.assertEqual("*\n", local_ignore_file.read_text(encoding="utf-8"))
-            self.assertTrue(handoff_created)
-            self.assertEqual(project.resolve() / ".usw" / "HANDOFF.md", handoff_file)
-            handoff_content = handoff_file.read_text(encoding="utf-8")
+            self.assertTrue((project / "usw/changes").is_dir())
+            self.assertTrue((project / "usw/reviews").is_dir())
+            self.assertEqual(
+                "*\n", (project / ".usw/.gitignore").read_text(encoding="utf-8")
+            )
+            handoff_content = (project / ".usw/HANDOFF.md").read_text(encoding="utf-8")
             self.assertIn("# Developer Handoff\n", handoff_content)
             self.assertIn("| Subject | Role | Attempt | Current operation | Status | Updated |", handoff_content)
             self.assertIn("## Session journal\n", handoff_content)
@@ -399,9 +395,11 @@ class InitializeUswTests(unittest.TestCase):
                     ".usw/.gitignore",
                     ".usw/HANDOFF.md",
                     "usw.yaml",
-                    "usw/flows/flow-scenario-analysis.md",
-                    "usw/flows/flow-scenario-development.md",
-                    "usw/flows/flow-scenario-testing.md",
+                    "usw/flows/examples/analysis.md",
+                    "usw/flows/examples/development.md",
+                    "usw/flows/examples/testing.md",
+                    "usw/flows/examples/chat-review.md",
+                    "usw/flows/examples/dev-test.md",
                 },
                 {
                     path.relative_to(project).as_posix()
@@ -447,25 +445,34 @@ class InitializeUswTests(unittest.TestCase):
             self.assertEqual([], list(outside.iterdir()))
             self.assertFalse((project / "usw.yaml").exists())
 
-    def test_reinitialization_adds_only_missing_standard_scenario(self):
+    def test_reinitialization_restores_example_and_preserves_legacy_scenarios(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             INIT_USW.initialize_usw(project)
             flow_root = project / "usw/flows"
-            analysis = flow_root / "flow-scenario-analysis.md"
-            development = flow_root / "flow-scenario-development.md"
-            testing = flow_root / "flow-scenario-testing.md"
+            examples = flow_root / "examples"
+            analysis = examples / "analysis.md"
+            development = examples / "development.md"
+            testing = examples / "testing.md"
             analysis.write_text("custom analysis\n", encoding="utf-8")
             development.unlink()
             testing_before = testing.read_bytes()
+            legacy = flow_root / "flow-scenario-analysis.md"
+            legacy.write_text("legacy project scenario\n", encoding="utf-8")
+            legacy_before = legacy.read_bytes()
 
             results = INIT_USW.initialize_usw(project)
 
             self.assertEqual("custom analysis\n", analysis.read_text(encoding="utf-8"))
             self.assertTrue(development.is_file())
             self.assertEqual(testing_before, testing.read_bytes())
-            created = {path.name for path, was_created in results if was_created}
-            self.assertEqual({"flow-scenario-development.md"}, created)
+            self.assertEqual(legacy_before, legacy.read_bytes())
+            created = {
+                path.relative_to(project.resolve()).as_posix()
+                for path, was_created in results
+                if was_created
+            }
+            self.assertEqual({"usw/flows/examples/development.md"}, created)
 
     def test_does_not_overwrite_existing_local_state(self):
         with tempfile.TemporaryDirectory() as directory:
