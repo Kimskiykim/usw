@@ -1,10 +1,14 @@
 import importlib.util
+import io
 import os
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 SCRIPT_PATH = (
@@ -27,7 +31,6 @@ class InitializeUswTests(unittest.TestCase):
         self.assertEqual(1, config.schema_version)
         self.assertEqual("standalone", config.provider)
         self.assertEqual("usw", config.artifact_root)
-        self.assertIsNone(config.legacy_refinement_root)
         self.assertEqual("usw/flows", config.flow_root)
         self.assertEqual("usw/reviews", config.review_root)
         self.assertEqual(
@@ -55,12 +58,11 @@ class InitializeUswTests(unittest.TestCase):
 
         self.assertEqual("openspec", config.provider)
         self.assertEqual("openspec", config.artifact_root)
-        self.assertIsNone(config.legacy_refinement_root)
         self.assertEqual("usw/flows", config.flow_root)
         self.assertEqual("usw/reviews", config.review_root)
         self.assertEqual(content, config.raw_content)
 
-    def test_legacy_refinement_root_is_reported_without_mutation(self):
+    def test_legacy_refinement_root_is_ignored_without_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             legacy = project / "shared/refinements/example/session.md"
@@ -81,9 +83,8 @@ class InitializeUswTests(unittest.TestCase):
                 text=True,
             )
 
-            self.assertEqual("shared/refinements", config.legacy_refinement_root)
-            self.assertIn("Legacy refinement.root detected", completed.stdout)
-            self.assertIn("explicit migration decision", completed.stdout)
+            self.assertFalse(hasattr(config, "legacy_refinement_root"))
+            self.assertNotIn("refinement.root", completed.stdout)
             self.assertEqual(before, legacy.read_bytes())
             self.assertFalse((project / ".usw/refinements").exists())
 
@@ -168,6 +169,41 @@ class InitializeUswTests(unittest.TestCase):
             self.assertEqual(content, config.raw_content)
             self.assertEqual(content, config_path.read_text(encoding="utf-8"))
 
+    def test_partial_new_file_is_removed_and_retry_creates_complete_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            destination = project / "generated.md"
+            real_fdopen = INIT_USW.os.fdopen
+
+            class PartialWriter:
+                def __init__(self, descriptor, *args, **kwargs):
+                    self.handle = real_fdopen(descriptor, *args, **kwargs)
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc_value, traceback):
+                    self.handle.close()
+
+                def write(self, content):
+                    self.handle.write(content[:4])
+                    self.handle.flush()
+                    raise OSError("simulated write failure")
+
+            with (
+                mock.patch.object(INIT_USW.os, "fdopen", side_effect=PartialWriter),
+                self.assertRaisesRegex(OSError, "simulated write failure"),
+            ):
+                INIT_USW.create_file(project, destination, "complete content\n")
+
+            self.assertFalse(destination.exists())
+            self.assertTrue(
+                INIT_USW.create_file(project, destination, "complete content\n")
+            )
+            self.assertEqual(
+                "complete content\n", destination.read_text(encoding="utf-8")
+            )
+
     def test_creates_standalone_workspace_and_local_state(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
@@ -198,7 +234,16 @@ class InitializeUswTests(unittest.TestCase):
             self.assertTrue(artifact_template_directory_created)
             self.assertEqual(artifact_directory / "templates", artifact_template_directory)
             self.assertEqual(
-                set(INIT_USW.ARTIFACT_TEMPLATE_PATHS),
+                {
+                    "change/proposal.md",
+                    "change/design.md",
+                    "change/spec.md",
+                    "change/tasks.md",
+                    "task/task.md",
+                    "task/development-evidence.md",
+                    "task/testing-evidence.md",
+                    "review/receipt.md",
+                },
                 {
                     path.relative_to(artifact_template_directory).as_posix()
                     for path, created in artifact_template_results
@@ -287,6 +332,7 @@ class InitializeUswTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
+            self.assertIn("OpenSpec directory", completed.stdout)
             self.assertIn("left unchanged", completed.stdout)
             self.assertIn("artifacts.provider: openspec", completed.stdout)
 
@@ -337,10 +383,54 @@ class InitializeUswTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            INIT_USW.initialize_usw(project)
+            completed = subprocess.run(
+                ["python3", str(SCRIPT_PATH), str(project)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
 
             self.assertFalse((project / "openspec/templates").exists())
             self.assertFalse((project / "usw/templates").exists())
+            self.assertIn("OpenSpec provider is already active", completed.stdout)
+            self.assertNotIn("opt in explicitly", completed.stdout)
+            self.assertEqual(
+                {
+                    ".usw/.gitignore",
+                    ".usw/HANDOFF.md",
+                    "usw.yaml",
+                    "usw/flows/flow-scenario-analysis.md",
+                    "usw/flows/flow-scenario-development.md",
+                    "usw/flows/flow-scenario-testing.md",
+                },
+                {
+                    path.relative_to(project).as_posix()
+                    for path in project.rglob("*")
+                    if path.is_file()
+                },
+            )
+            self.assertTrue((project / "usw/reviews").is_dir())
+
+    def test_explicit_standalone_root_under_openspec_is_honored(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            openspec = project / "openspec"
+            openspec.mkdir()
+            existing = openspec / "existing.txt"
+            existing.write_text("user content\n", encoding="utf-8")
+            (project / "usw.yaml").write_text(
+                "schema_version: 1\n"
+                "artifacts:\n"
+                "  provider: standalone\n"
+                "  root: openspec\n",
+                encoding="utf-8",
+            )
+
+            INIT_USW.initialize_usw(project)
+
+            self.assertEqual("user content\n", existing.read_text(encoding="utf-8"))
+            self.assertTrue((openspec / "changes").is_dir())
+            self.assertTrue((openspec / "templates/change/proposal.md").is_file())
 
     def test_rejects_symlinked_artifact_template_root_before_writes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -426,7 +516,7 @@ class InitializeUswTests(unittest.TestCase):
             self.assertFalse((outside / "changes").exists())
             self.assertTrue((project / "usw").is_dir())
 
-    def test_rejects_existing_ignore_that_exposes_local_state(self):
+    def test_preserves_existing_ignore_without_enforcing_git_policy(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             subprocess.run(
@@ -439,10 +529,13 @@ class InitializeUswTests(unittest.TestCase):
             local_state.mkdir()
             (local_state / ".gitignore").write_text("*.tmp\n", encoding="utf-8")
 
-            with self.assertRaisesRegex(OSError, "does not ignore USW local state"):
-                INIT_USW.initialize_usw(project)
+            INIT_USW.initialize_usw(project)
 
-            self.assertFalse((local_state / "HANDOFF.md").exists())
+            self.assertEqual(
+                "*.tmp\n",
+                (local_state / ".gitignore").read_text(encoding="utf-8"),
+            )
+            self.assertTrue((local_state / "HANDOFF.md").exists())
             self.assertFalse((project / "openspec").exists())
 
     def test_accepts_existing_ignore_that_keeps_local_state_private(self):
@@ -462,7 +555,7 @@ class InitializeUswTests(unittest.TestCase):
 
             self.assertTrue((local_state / "HANDOFF.md").is_file())
 
-    def test_rejects_tracked_local_handoff(self):
+    def test_preserves_tracked_local_handoff_without_enforcing_git_policy(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             subprocess.run(
@@ -484,10 +577,34 @@ class InitializeUswTests(unittest.TestCase):
                 text=True,
             )
 
-            with self.assertRaisesRegex(OSError, "local state is tracked by Git"):
-                INIT_USW.initialize_usw(project)
+            INIT_USW.initialize_usw(project)
 
+            self.assertEqual("existing handoff\n", handoff.read_text(encoding="utf-8"))
             self.assertFalse((project / "openspec").exists())
+
+    def test_cli_failure_reports_partial_workspace_retry_guidance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            stderr = io.StringIO()
+            with (
+                mock.patch.object(
+                    INIT_USW,
+                    "parse_args",
+                    return_value=SimpleNamespace(project=project),
+                ),
+                mock.patch.object(
+                    INIT_USW,
+                    "initialize_usw",
+                    side_effect=OSError("disk full"),
+                ),
+                redirect_stderr(stderr),
+            ):
+                return_code = INIT_USW.main()
+
+            self.assertEqual(1, return_code)
+            self.assertIn("may be partially initialized", stderr.getvalue())
+            self.assertIn("rerun /usw-init", stderr.getvalue())
+            self.assertIn("existing files will be preserved", stderr.getvalue())
 
     def test_local_state_is_ignored_but_standalone_config_is_visible_to_git(self):
         with tempfile.TemporaryDirectory() as directory:

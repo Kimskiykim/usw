@@ -10,7 +10,8 @@ Use this directory as the shared specification source of truth.
 - `changes/<change-id>/specs/<capability>/spec.md` contains specification deltas.
 - `changes/<change-id>/tasks.md` is the task index and completion source of truth.
 - `changes/<change-id>/tasks/<task-id>-<slug>/task.md` defines one leaf task.
-- Task `handoff.md` and `evidence.md` record execution state and proof when needed.
+- Task `development-evidence.md` and `testing-evidence.md` record role-owned proof;
+  reviewer decisions live under the configured USW review root.
 
 ## Rules
 
@@ -23,5 +24,7 @@ Use this directory as the shared specification source of truth.
 6. Merge only specification deltas into master specs when archiving a change.
 7. Keep developer-local state in `.usw/`; do not copy it into shared artifacts.
 
-Do not overwrite existing artifacts during initialization. Adopt an existing
-OpenSpec workspace and add only missing USW files.
+Directory detection and OpenSpec-provider initialization never create or modify
+provider-owned `openspec/**`. An explicit standalone custom root remains a
+user-selected writable namespace. Provider operations may validate and update
+required OpenSpec artifacts only within their own scope.

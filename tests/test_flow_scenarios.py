@@ -194,6 +194,28 @@ This remains ordinary Markdown.
         self.assertEqual(("--strict", "one argument"), flow.steps[1].arguments)
         self.assertTrue(flow.identity.startswith("usw-flow-v1:"))
 
+    def test_chat_review_defaults_to_whole_markdown_input(self):
+        content = (ROOT / "usw/flows/chat-review.md").read_text(encoding="utf-8")
+        flow = CUSTOM.parse_custom_flow(content, "chat-review")
+
+        self.assertEqual(
+            ("parallel-reviews", "prepare-presentation", "handle-follow-up"),
+            flow.actions,
+        )
+        self.assertEqual(
+            (
+                ("prepare-presentation", "iterate-findings", "handle-follow-up"),
+                ("prepare-presentation", "show-proposal", "handle-follow-up"),
+                ("prepare-presentation", "make-decision", "handle-follow-up"),
+            ),
+            flow.branches,
+        )
+        self.assertIn("Reviewer A:", content)
+        self.assertIn("Reviewer B:", content)
+        self.assertIn("## Режим запуска", content)
+        self.assertIn("без action map", content)
+        self.assertIn("--experimental-structured", content)
+
     def test_parses_concise_contract_without_write_metadata(self):
         flow = CUSTOM.parse_custom_flow(self.concise_content(), "plan-check")
 

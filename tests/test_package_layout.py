@@ -10,7 +10,6 @@ class PackageLayoutTests(unittest.TestCase):
     def test_initialize_skill_packages_standalone_execution_templates(self):
         templates = ROOT / "skills" / "usw-initialize-project" / "templates"
         expected_fragments = {
-            "openspec/AGENTS.md": "completion checkboxes only in `tasks.md`",
             "change/proposal.md": "## Why",
             "change/design.md": "## Decisions",
             "change/spec.md": "## ADDED Requirements",
@@ -27,6 +26,7 @@ class PackageLayoutTests(unittest.TestCase):
             with self.subTest(template=relative_path):
                 content = (templates / relative_path).read_text(encoding="utf-8")
                 self.assertIn(fragment, content)
+        self.assertFalse((templates / "openspec/AGENTS.md").exists())
 
     def test_initialize_skill_selects_python_and_has_confirmed_llm_fallback(self):
         skill_dir = ROOT / "skills" / "usw-initialize-project"
@@ -44,12 +44,21 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertIn(fragment, skill)
         for fragment in (
-            "Stop on custom configuration",
-            "Stop if an `openspec/` path exists",
+            "accept only providers `standalone` and `openspec`",
+            "accept safe custom artifact, flow and review roots",
+            "Treat a real `openspec/` directory only as a provider hint",
+            "repository tracking policy belongs to the\nuser",
+            "for provider `openspec`, do not create or modify",
             "Preserve every existing regular file byte-for-byte",
             "Never overwrite, merge, delete, chmod, or follow links",
         ):
             self.assertIn(fragment, fallback)
+        for obsolete in (
+            "Stop on custom configuration",
+            "Stop if an `openspec/` path exists",
+            "git check-ignore",
+        ):
+            self.assertNotIn(obsolete, fallback)
 
     def test_brainstorm_skill_has_required_structure_and_implicit_invocation(self):
         skill_dir = ROOT / "skills" / "usw-brainstorm-solutions"

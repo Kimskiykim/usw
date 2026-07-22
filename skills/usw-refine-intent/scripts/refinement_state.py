@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import re
 import runpy
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,7 +16,6 @@ CONFIG = SimpleNamespace(**runpy.run_path(str(INIT_SCRIPT)))
 ASSET_ROOT = Path(__file__).parents[1] / "assets"
 SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 LOCAL_REFINEMENT_ROOT = Path(".usw/refinements")
-HISTORICAL_REFINEMENT_ROOT = Path("usw/refinements")
 
 
 class RefinementError(ValueError):
@@ -39,38 +37,6 @@ class TurnResult(NamedTuple):
     paths: tuple[str, ...]
 
 
-def _git_has_tracked_local_state(project_root: Path) -> bool:
-    result = subprocess.run(
-        ["git", "-C", str(project_root), "ls-files", "--", ".usw/refinements"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return bool(result.stdout.strip())
-
-
-def _legacy_roots(project_root: Path) -> tuple[Path, ...]:
-    configured = CONFIG.load_config(project_root).legacy_refinement_root
-    values = [Path(configured)] if configured else []
-    values.append(HISTORICAL_REFINEMENT_ROOT)
-    roots = []
-    for value in values:
-        if value == LOCAL_REFINEMENT_ROOT or value in roots:
-            continue
-        roots.append(value)
-    return tuple(project_root / value for value in roots)
-
-
-def _reject_legacy_session(project_root: Path, refinement_id: str) -> None:
-    for legacy_root in _legacy_roots(project_root):
-        legacy_session = legacy_root / refinement_id
-        if CONFIG._existing_path_kind(legacy_session) is not None:
-            raise RefinementError(
-                f"legacy shared refinement exists at {legacy_session}; "
-                "copy or import it only after an explicit migration decision"
-            )
-
-
 def refinement_root(project: Path) -> Path:
     project_root = CONFIG.find_project_root(project)
     local_root = project_root / ".usw"
@@ -80,19 +46,11 @@ def refinement_root(project: Path) -> Path:
     kind = CONFIG._existing_path_kind(root)
     if kind not in {None, "directory"}:
         raise RefinementError(f"local refinement root is not a directory: {root}")
-    if CONFIG._git_is_worktree(project_root):
-        if _git_has_tracked_local_state(project_root):
-            raise RefinementError(".usw/refinements contains Git-tracked local state")
-        if not CONFIG._git_path_is_ignored(
-            project_root, ".usw/refinements/.privacy-check"
-        ):
-            raise RefinementError(".usw/refinements is not ignored by Git")
     return root
 
 
 def _session_directory(project: Path, refinement_id: str) -> tuple[Path, Path]:
     project_root = CONFIG.find_project_root(project)
-    _reject_legacy_session(project_root, refinement_id)
     directory = refinement_root(project_root) / refinement_id
     kind = CONFIG._existing_path_kind(directory)
     if kind not in {None, "directory"}:
