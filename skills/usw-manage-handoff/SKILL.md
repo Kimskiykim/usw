@@ -32,7 +32,7 @@ flow step is enough; do not log tool calls, reads, or separate begin/end events.
 ```markdown
 | Operation | Actor | Executor | Flow cursor | Intent | Declared writes | Status | Result | Actual areas | Started |
 |---|---|---|---|---|---|---|---|---|---|
-| op-001 | codex | skill:usw-execute-task | dev-test:1/2 | Implement the selected task. | implementation, implementation-tests, development-evidence | in_progress | none | none | 2026-07-21T18:00:00+03:00 |
+| op-001 | codex | agent:main | dev-test:1/2 | Implement the selected task. | implementation, implementation-tests | in_progress | none | none | 2026-07-21T18:00:00+03:00 |
 ```
 
 Use `Verification`, `Next action`, `References`, and `Trusted source snapshot`

@@ -21,8 +21,6 @@ def load(name: str, relative: str):
 FLOWS = load("atomic_flows", "skills/usw-initialize-project/scripts/flow_scenario.py")
 REGISTRY = load("atomic_registry", "skills/usw-run-flow/scripts/capability_registry.py")
 ARTIFACTS = load("atomic_artifacts", "skills/usw-manage-artifacts/scripts/artifact_writer.py")
-DEVELOPMENT = load("atomic_development", "skills/usw-execute-task/scripts/execute_scope.py")
-TESTING = load("atomic_testing", "skills/usw-verify-task/scripts/verify_scope.py")
 
 
 class AtomicSkillContractTests(unittest.TestCase):
@@ -56,7 +54,7 @@ class AtomicSkillContractTests(unittest.TestCase):
             "usw-refine-intent",
             "usw-plan-small-steps", "usw-explain-me", "usw-create-flow",
             "usw-run-flow",
-            "usw-manage-artifacts", "usw-execute-task", "usw-verify-task",
+            "usw-manage-artifacts",
         )
         for skill_name in skills:
             with self.subTest(skill=skill_name):
@@ -83,71 +81,6 @@ class AtomicSkillContractTests(unittest.TestCase):
             self.assertEqual("completed", outcome.status)
             self.assertEqual(frozenset({"proposal"}), outcome.written_roles)
             self.assertEqual("proposal\n", (project / "usw/changes/example/proposal.md").read_text())
-
-    def test_development_and_testing_append_only_their_own_evidence(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            task = project / "usw/changes/example/tasks/1-test"
-            task.mkdir(parents=True)
-            (task / "task.md").write_text("task\n", encoding="utf-8")
-            development_file = task / "development-evidence.md"
-            testing_file = task / "testing-evidence.md"
-            dev = DEVELOPMENT.append_development_evidence(
-                project,
-                task,
-                evidence_id="dev-1",
-                contract_revision="c1",
-                source_identity="usw-source-v1:" + "a" * 64,
-                command="unit-test",
-                result="passed",
-                timestamp="2026-07-21T12:00:00Z",
-            )
-            test = TESTING.append_testing_evidence(
-                project,
-                task,
-                evidence_id="test-1",
-                contract_revision="c1",
-                source_identity="usw-source-v1:" + "a" * 64,
-                command="acceptance-test",
-                result="failed",
-                finding="F-1",
-                timestamp="2026-07-21T12:01:00Z",
-            )
-            self.assertEqual(frozenset({"development-evidence"}), dev.written_roles)
-            self.assertEqual(frozenset({"testing-evidence"}), test.written_roles)
-            self.assertIn("dev-1", development_file.read_text())
-            self.assertNotIn("test-1", development_file.read_text())
-            self.assertIn("test-1", testing_file.read_text())
-            self.assertNotIn("dev-1", testing_file.read_text())
-
-            wrong_role = DEVELOPMENT.append_development_evidence(
-                project,
-                testing_file,
-                evidence_id="dev-2",
-                contract_revision="c1",
-                source_identity="usw-source-v1:" + "a" * 64,
-                command="unit-test",
-                result="passed",
-                timestamp="2026-07-21T12:02:00Z",
-            )
-            self.assertEqual("invalid_evidence_path", wrong_role.outcome)
-
-    def test_evidence_writer_rejects_task_root_outside_project(self):
-        with tempfile.TemporaryDirectory() as project_dir, tempfile.TemporaryDirectory() as other_dir:
-            project = Path(project_dir)
-            task = Path(other_dir)
-            (task / "task.md").write_text("task\n", encoding="utf-8")
-            outcome = DEVELOPMENT.append_development_evidence(
-                project,
-                task,
-                evidence_id="dev-1",
-                contract_revision="c1",
-                source_identity="usw-source-v1:" + "a" * 64,
-                command="unit-test",
-                result="passed",
-                timestamp="2026-07-21T12:00:00Z",
-            )
-            self.assertEqual("invalid_evidence_path", outcome.outcome)
 
     def test_writer_rejects_symlinked_managed_path(self):
         with tempfile.TemporaryDirectory() as directory:

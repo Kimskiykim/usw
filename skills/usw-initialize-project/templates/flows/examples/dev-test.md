@@ -18,12 +18,12 @@
    снимок текущего рабочего дерева: status, изменённые файлы и существующий
    diff. Снимок нужен только для отделения уже имевшихся пользовательских
    изменений от изменений, внесённых этим flow.
-2. Скилл: `usw-execute-task`
-   - Пишет: `implementation` `implementation-tests` `development-evidence`
-     `local-checkpoint`
+2. `implement-and-check` — основной чат реализует выбранную задачу в
+   согласованном scope и запускает названные локальные проверки.
+   - Пишет: `implementation` `implementation-tests`
 3. `critical-result-review` — передать независимому SUBAGENT
-   `critical-reviewer` task contract, результат реализации, evidence и
-   baseline. Reviewer выполняет одно read-only ревью через скилл
+   `critical-reviewer` task contract, результат реализации, результаты
+   проверок и baseline. Reviewer выполняет одно read-only ревью через скилл
    `usw-structured-review`:
    - Scope: только изменения, внесённые flow после baseline, в сопоставлении с
      принятыми требованиями и checks выбранной задачи.
@@ -55,7 +55,5 @@
 
 - `implementation`
 - `implementation-tests`
-- `development-evidence`
-- `local-checkpoint`
 
 Reviewer и Ponytail не имеют полномочий записи.

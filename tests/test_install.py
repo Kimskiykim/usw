@@ -19,8 +19,6 @@ class InstallTests(unittest.TestCase):
         "usw-create-flow",
         "usw-run-flow",
         "usw-manage-artifacts",
-        "usw-execute-task",
-        "usw-verify-task",
     )
     COMMAND_NAMES = ("usw-init.md", "usw-handoff.md", "usw-resume.md")
 
@@ -124,7 +122,12 @@ class InstallTests(unittest.TestCase):
             legacy_paths = [
                 base / name
                 for base in (home / ".qwen/skills", home / ".agents/skills")
-                for name in ("usw-init", "usw-refine-task")
+                for name in (
+                    "usw-init",
+                    "usw-refine-task",
+                    "usw-execute-task",
+                    "usw-verify-task",
+                )
             ]
             for path in legacy_paths:
                 path.mkdir(parents=True)
