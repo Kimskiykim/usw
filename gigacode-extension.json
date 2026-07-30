@@ -1,7 +1,7 @@
 {
   "name": "usw",
   "version": "0.1.0",
-  "description": "Run standalone USW workflows with optional OpenSpec compatibility.",
+  "description": "Run standalone USW workflows.",
   "skills": "skills",
   "commands": "commands"
 }

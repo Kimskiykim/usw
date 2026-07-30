@@ -24,40 +24,33 @@ After agreement, read and follow
 [references/llm-fallback.md](references/llm-fallback.md). If the user declines,
 stop without changes.
 
-Report whether `usw.yaml`, configured USW roots, the two nested flow examples,
-standalone project-owned artifact templates, `.usw/.gitignore`, and
-`.usw/HANDOFF.md` were created or already existed. Never overwrite an existing
-file. Treat a real `openspec/` directory only as a hint: detection alone never
-authorizes writes. Honor any safe standalone custom root explicitly configured
-under `openspec/**`; for the OpenSpec provider, leave provider-owned files
-unchanged. For standalone, report the explicit provider opt-in path; when the
-OpenSpec provider is already selected, report it as active without another
-opt-in suggestion. New local flows and intent clarification sessions create
+Report whether `usw.yaml`, the configured flow root, the two nested flow
+examples, `.usw/.gitignore`, and `.usw/HANDOFF.md` were created or already
+existed. Never overwrite an existing file. New local flows and intent
+clarification sessions create
 `.usw/flows/` and `.usw/refinements/` only on first use.
 
 Initialize `.usw/HANDOFF.md` with no active work and treat it as the
 developer's entrypoint for resuming work across local sessions. Generate
 `.usw/.gitignore` as a convenience, but do not inspect or enforce Git tracking
-state; repository tracking policy belongs to the user. Treat `openspec/` as
-shared, version-controlled project state.
+state; repository tracking policy belongs to the user.
 
 All configured roots and `.usw/` must be real directories inside the project
 root. Reject symbolic links and conflicting roots before any managed write.
 
 Capability boundary: inputs are a project root and existing configuration;
-permitted writes are initialization configuration, missing managed roots,
-standalone artifact templates, non-normative flow examples, and developer-local
-initial state. Return the created or existing paths to the caller. Return point:
-after initialization reporting. Do not start a role flow or call another skill.
+permitted writes are initialization configuration, the missing flow root,
+non-normative flow examples, and developer-local initial state. Return the
+created or existing paths to the caller. Return point: after initialization
+reporting. Do not start a role flow or call another skill.
 If initialization fails after a partial write, report the possible partial
 workspace and recommend fixing the cause and rerunning; create-only behavior
 preserves existing files on retry.
 
-The bundled templates under `templates/change/` and `templates/task/` define
-the artifact contract for future change and granular task creation. For the
-standalone provider, copy every missing change, task, evidence, and review
-template to `<artifacts.root>/templates/`. Preserve existing project-owned
-templates byte-for-byte. Do not copy templates into an OpenSpec artifact root.
+Do not pre-create artifact storage. In particular, initialization does not
+create `<artifacts.root>/changes/`, `<artifacts.root>/templates/`, or
+`<reviews.root>/`; the capability that needs an artifact creates its exact
+destination on first use.
 
 The bundled files under `templates/flows/examples/` are guidance, not runtime
 fallbacks or normative flow contracts. Copy exactly `chat-review.md` and

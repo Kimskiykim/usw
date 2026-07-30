@@ -20,7 +20,7 @@ def load(name: str, relative: str):
 
 FLOWS = load("atomic_flows", "skills/usw-initialize-project/scripts/flow_scenario.py")
 REGISTRY = load("atomic_registry", "skills/usw-run-flow/scripts/capability_registry.py")
-PROVIDERS = load("atomic_providers", "skills/usw-manage-artifacts/scripts/provider_artifacts.py")
+ARTIFACTS = load("atomic_artifacts", "skills/usw-manage-artifacts/scripts/artifact_writer.py")
 DEVELOPMENT = load("atomic_development", "skills/usw-execute-task/scripts/execute_scope.py")
 TESTING = load("atomic_testing", "skills/usw-verify-task/scripts/verify_scope.py")
 
@@ -69,12 +69,11 @@ class AtomicSkillContractTests(unittest.TestCase):
         self.assertIn("не запускает микротаску", content)
         self.assertIn("task-level `plan.md`/`handoff.md`", content)
 
-    def test_standalone_adapter_writes_only_authorized_planning_artifact(self):
+    def test_writer_writes_only_authorized_planning_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
-            outcome = PROVIDERS.write_planning_artifact(
+            outcome = ARTIFACTS.write_planning_artifact(
                 project,
-                provider="standalone",
                 artifact_root="usw",
                 role="proposal",
                 relative_path="changes/example/proposal.md",
@@ -84,22 +83,6 @@ class AtomicSkillContractTests(unittest.TestCase):
             self.assertEqual("completed", outcome.status)
             self.assertEqual(frozenset({"proposal"}), outcome.written_roles)
             self.assertEqual("proposal\n", (project / "usw/changes/example/proposal.md").read_text())
-
-    def test_unconnected_openspec_adapter_returns_error_without_fallback_write(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            outcome = PROVIDERS.write_planning_artifact(
-                project,
-                provider="openspec",
-                artifact_root="openspec",
-                role="proposal",
-                relative_path="changes/example/proposal.md",
-                content="proposal\n",
-                permitted_roles=frozenset({"proposal"}),
-            )
-            self.assertEqual("unsupported_provider_operation", outcome.outcome)
-            self.assertFalse((project / "openspec").exists())
-            self.assertFalse((project / "usw/changes/example/proposal.md").exists())
 
     def test_development_and_testing_append_only_their_own_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -166,16 +149,15 @@ class AtomicSkillContractTests(unittest.TestCase):
             )
             self.assertEqual("invalid_evidence_path", outcome.outcome)
 
-    def test_standalone_adapter_rejects_symlinked_managed_path(self):
+    def test_writer_rejects_symlinked_managed_path(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             actual = project / "usw/actual"
             actual.mkdir(parents=True)
             (project / "usw/link").symlink_to(actual, target_is_directory=True)
             with self.assertRaisesRegex(ValueError, "symbolic link"):
-                PROVIDERS.write_planning_artifact(
+                ARTIFACTS.write_planning_artifact(
                     project,
-                    provider="standalone",
                     artifact_root="usw",
                     role="proposal",
                     relative_path="link/proposal.md",

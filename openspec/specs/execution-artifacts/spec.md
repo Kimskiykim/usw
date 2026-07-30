@@ -207,7 +207,7 @@ contract revision и инвалидировать всё Development и Testing 
 
 ### Requirement: Review receipt является общей записью перехода
 USW MUST создавать новый reviewer-owned receipt для каждой попытки internal или
-transition review под настроенным provider-neutral review root, по умолчанию
+transition review под настроенным review root, по умолчанию
 `usw/reviews/<subject-type>/<subject-path>/<review-id>.md`. Receipt MUST содержать
 gate, owner role, subject identity, reviewed scope, previous attempt или receipt,
 reviewer, verdict, timestamp, ссылки на findings и sorted reviewed artifact

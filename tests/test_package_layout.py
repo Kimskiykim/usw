@@ -28,7 +28,6 @@ class PackageLayoutTests(unittest.TestCase):
             with self.subTest(template=relative_path):
                 content = (templates / relative_path).read_text(encoding="utf-8")
                 self.assertIn(fragment, content)
-        self.assertFalse((templates / "openspec/AGENTS.md").exists())
         self.assertEqual(
             set(),
             {path.name for path in (templates / "flows").glob("flow-scenario-*.md")},
@@ -50,20 +49,17 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertIn(fragment, skill)
         for fragment in (
-            "accept only providers `standalone` and `openspec`",
+            "reject the removed `artifacts.provider` field",
             "accept safe custom artifact, flow and review roots",
-            "Treat a real `openspec/` directory only as a provider hint",
             "repository tracking policy belongs to the\nuser",
-            "for provider `openspec`, do not create or modify",
             "Preserve every existing regular file byte-for-byte",
             "Never overwrite, merge, delete, chmod, or follow links",
             "the two packaged examples",
-            "Do not create, migrate, or remove legacy `flow-scenario-*.md` files",
+            "Do not create, migrate, or remove legacy\n`flow-scenario-*.md` files",
         ):
             self.assertIn(fragment, fallback)
         for obsolete in (
             "Stop on custom configuration",
-            "Stop if an `openspec/` path exists",
             "git check-ignore",
         ):
             self.assertNotIn(obsolete, fallback)

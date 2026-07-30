@@ -40,24 +40,6 @@ Analysis MUST NOT писать implementation code, technical design, executable
 - **WHEN** несколько capabilities должны поставляться и проверяться вместе
 - **THEN** Analysis сохраняет их как capability specs одного change
 
-### Requirement: OpenSpec frontier разделён между Analysis и Development
-При OpenSpec `spec-driven` provider Analysis SHALL создавать `proposal` и
-capability `specs`, а Development SHALL создавать technical `design` и `tasks`.
-Role-oriented flows MUST запрашивать artifact instructions по отдельности и
-MUST NOT вызывать bundled `openspec-propose` через эту границу.
-
-#### Scenario: Analysis достигает своего OpenSpec frontier
-- **WHEN** `proposal` и capability `specs` завершены, status `design` равен
-  `ready`, `design.md` отсутствует, а status `tasks` равен `blocked`
-- **THEN** Analysis может предложить handoff при `isComplete: false`, не создавая
-  `design.md` или `tasks.md`
-
-#### Scenario: Development продолжает OpenSpec graph
-- **WHEN** Development принимает Analysis handoff с явным scope
-- **THEN** Development запрашивает instructions и создаёт technical `design.md`,
-  повторно читает status и затем создаёт `tasks.md`, когда его status становится
-  `ready`
-
 ### Requirement: Development сохраняет authority спецификации
 Development SHALL владеть technical design, executable tasks, implementation,
 implementation-adjacent tests, local verification, repair, Development evidence
@@ -186,7 +168,7 @@ Orchestrator SHALL вызывать capability через action-executor contra
 ### Requirement: Минимальный набор skills ориентирован на capabilities
 Начальный workflow SHALL использовать три role scenarios и один
 `usw-run-flow`, переиспользовать существующие brainstorming, refinement,
-small-step task decomposition и local checkpoint skills и добавлять только provider-aware artifact
+small-step task decomposition и local checkpoint skills и добавлять только безопасное artifact
 management, bounded task execution и independent verification/evidence.
 
 #### Scenario: Human review требуется сценарию

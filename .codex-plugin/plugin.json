@@ -1,7 +1,7 @@
 {
   "name": "usw",
   "version": "0.1.0+codex.20260717085420",
-  "description": "Run standalone USW workflows with optional OpenSpec compatibility.",
+  "description": "Run standalone USW workflows.",
   "author": {
     "name": "USW contributors",
     "url": "https://github.com/Kimskiykim"
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "USW",
     "shortDescription": "Run standalone role-based development workflows.",
-    "longDescription": "Initializes a standalone USW workspace, orchestrates Analysis, Development and Testing scenarios, preserves evidence and review receipts, and optionally integrates with OpenSpec through explicit configuration.",
+    "longDescription": "Initializes a standalone USW workspace, orchestrates Analysis, Development and Testing scenarios, and preserves evidence and review receipts.",
     "developerName": "USW contributors",
     "category": "Developer Tools",
     "capabilities": [

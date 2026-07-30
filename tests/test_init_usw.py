@@ -25,18 +25,16 @@ SPEC.loader.exec_module(INIT_USW)
 
 
 class InitializeUswTests(unittest.TestCase):
-    def test_v1_defaults_include_provider_neutral_review_root(self):
+    def test_v1_defaults_include_project_owned_roots(self):
         config = INIT_USW.default_config()
 
         self.assertEqual(1, config.schema_version)
-        self.assertEqual("standalone", config.provider)
         self.assertEqual("usw", config.artifact_root)
         self.assertEqual("usw/flows", config.flow_root)
         self.assertEqual("usw/reviews", config.review_root)
         self.assertEqual(
             "schema_version: 1\n"
             "artifacts:\n"
-            "  provider: standalone\n"
             "  root: usw\n"
             "flows:\n"
             "  root: usw/flows\n"
@@ -45,19 +43,16 @@ class InitializeUswTests(unittest.TestCase):
             INIT_USW.render_default_config(),
         )
 
-    def test_parse_config_preserves_unknown_fields_and_provider_defaults(self):
+    def test_parse_config_preserves_unknown_fields_and_defaults(self):
         content = (
             "schema_version: 1\n"
-            "artifacts:\n"
-            "  provider: openspec\n"
             "future:\n"
             "  behavior: retained\n"
         )
 
         config = INIT_USW.parse_config(content)
 
-        self.assertEqual("openspec", config.provider)
-        self.assertEqual("openspec", config.artifact_root)
+        self.assertEqual("usw", config.artifact_root)
         self.assertEqual("usw/flows", config.flow_root)
         self.assertEqual("usw/reviews", config.review_root)
         self.assertEqual(content, config.raw_content)
@@ -70,7 +65,7 @@ class InitializeUswTests(unittest.TestCase):
             legacy.write_text("legacy bytes\n", encoding="utf-8")
             before = legacy.read_bytes()
             (project / "usw.yaml").write_text(
-                "schema_version: 1\nartifacts:\n  provider: standalone\n"
+                "schema_version: 1\n"
                 "refinement:\n  root: shared/refinements\n",
                 encoding="utf-8",
             )
@@ -88,16 +83,16 @@ class InitializeUswTests(unittest.TestCase):
             self.assertEqual(before, legacy.read_bytes())
             self.assertFalse((project / ".usw/refinements").exists())
 
-    def test_rejects_unsupported_schema_and_provider_with_stable_codes(self):
+    def test_rejects_unsupported_schema_and_removed_provider(self):
         with self.assertRaises(INIT_USW.ConfigError) as schema_error:
             INIT_USW.parse_config("schema_version: 2\n")
         self.assertEqual("unsupported_schema_version", schema_error.exception.code)
 
         with self.assertRaises(INIT_USW.ConfigError) as provider_error:
             INIT_USW.parse_config(
-                "schema_version: 1\nartifacts:\n  provider: external\n"
+                "schema_version: 1\nartifacts:\n  provider: legacy\n"
             )
-        self.assertEqual("unsupported_provider", provider_error.exception.code)
+        self.assertEqual("invalid_config", provider_error.exception.code)
 
     def test_validation_accepts_standalone_namespace_containment(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -141,17 +136,6 @@ class InitializeUswTests(unittest.TestCase):
                 INIT_USW.validate_config(project, INIT_USW.default_config())
 
             self.assertEqual([], list(outside.iterdir()))
-
-    def test_openspec_defaults_require_explicit_provider(self):
-        standalone = INIT_USW.parse_config("schema_version: 1\n")
-        openspec = INIT_USW.parse_config(
-            "schema_version: 1\nartifacts:\n  provider: openspec\n"
-        )
-
-        self.assertEqual("usw", standalone.artifact_root)
-        self.assertEqual("openspec", openspec.artifact_root)
-        with tempfile.TemporaryDirectory() as directory:
-            INIT_USW.validate_config(Path(directory), openspec)
 
     def test_load_config_does_not_rewrite_existing_content(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -213,14 +197,6 @@ class InitializeUswTests(unittest.TestCase):
                 ".usw/.gitignore",
                 ".usw/HANDOFF.md",
                 "usw.yaml",
-                "usw/templates/change/proposal.md",
-                "usw/templates/change/design.md",
-                "usw/templates/change/spec.md",
-                "usw/templates/change/tasks.md",
-                "usw/templates/task/task.md",
-                "usw/templates/task/development-evidence.md",
-                "usw/templates/task/testing-evidence.md",
-                "usw/templates/review/receipt.md",
                 "usw/flows/examples/chat-review.md",
                 "usw/flows/examples/dev-test.md",
             }
@@ -236,20 +212,6 @@ class InitializeUswTests(unittest.TestCase):
                 INIT_USW.render_default_config(),
                 (project / "usw.yaml").read_text(encoding="utf-8"),
             )
-            for relative in (
-                "change/proposal.md",
-                "change/design.md",
-                "change/spec.md",
-                "change/tasks.md",
-                "task/task.md",
-                "task/development-evidence.md",
-                "task/testing-evidence.md",
-                "review/receipt.md",
-            ):
-                self.assertEqual(
-                    INIT_USW.read_template(relative),
-                    (project / "usw/templates" / relative).read_text(encoding="utf-8"),
-                )
             for name in (
                 "chat-review.md",
                 "dev-test.md",
@@ -262,8 +224,9 @@ class InitializeUswTests(unittest.TestCase):
                 )
             self.assertFalse((project / "usw/refinements").exists())
             self.assertFalse((project / ".usw/refinements").exists())
-            self.assertTrue((project / "usw/changes").is_dir())
-            self.assertTrue((project / "usw/reviews").is_dir())
+            self.assertFalse((project / "usw/changes").exists())
+            self.assertFalse((project / "usw/reviews").exists())
+            self.assertFalse((project / "usw/templates").exists())
             self.assertEqual(
                 "*\n", (project / ".usw/.gitignore").read_text(encoding="utf-8")
             )
@@ -273,7 +236,6 @@ class InitializeUswTests(unittest.TestCase):
             self.assertIn("## Session journal\n", handoff_content)
             self.assertIn("## Trusted source snapshot\n", handoff_content)
 
-            self.assertFalse((project / "openspec").exists())
             self.assertFalse((project / "hello_world.py").exists())
 
     def test_uses_nearest_git_root(self):
@@ -289,42 +251,6 @@ class InitializeUswTests(unittest.TestCase):
                 self.assertTrue(path.is_relative_to(project.resolve()))
             self.assertEqual(project.resolve() / "usw.yaml", results[0][0])
             self.assertEqual(project.resolve() / ".usw" / "HANDOFF.md", results[-1][0])
-
-    def test_detects_existing_openspec_workspace_without_overwriting(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            openspec = project / "openspec"
-            specs = openspec / "specs"
-            specs.mkdir(parents=True)
-            agents_file = openspec / "AGENTS.md"
-            agents_file.write_text("existing OpenSpec instructions\n", encoding="utf-8")
-            before = {
-                path.relative_to(project): path.read_bytes()
-                for path in openspec.rglob("*")
-                if path.is_file()
-            }
-
-            results = INIT_USW.initialize_usw(project)
-
-            self.assertTrue(INIT_USW.detect_openspec_workspace(project))
-            self.assertTrue(all(created for _, created in results))
-            after = {
-                path.relative_to(project): path.read_bytes()
-                for path in openspec.rglob("*")
-                if path.is_file()
-            }
-            self.assertEqual(before, after)
-            self.assertFalse((openspec / "changes").exists())
-
-            completed = subprocess.run(
-                ["python3", str(SCRIPT_PATH), str(project)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            self.assertIn("OpenSpec directory", completed.stdout)
-            self.assertIn("left unchanged", completed.stdout)
-            self.assertIn("artifacts.provider: openspec", completed.stdout)
 
     def test_second_initialization_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -342,99 +268,6 @@ class InitializeUswTests(unittest.TestCase):
                 first_handoff,
                 (project / ".usw" / "HANDOFF.md").read_text(encoding="utf-8"),
             )
-
-    def test_reinitialization_preserves_and_restores_artifact_templates(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            INIT_USW.initialize_usw(project)
-            proposal = project / "usw/templates/change/proposal.md"
-            task = project / "usw/templates/task/task.md"
-            proposal.write_text("project-owned template\n", encoding="utf-8")
-            task.unlink()
-
-            results = INIT_USW.initialize_usw(project)
-
-            self.assertEqual(
-                "project-owned template\n", proposal.read_text(encoding="utf-8")
-            )
-            self.assertEqual(
-                INIT_USW.read_template("task/task.md"),
-                task.read_text(encoding="utf-8"),
-            )
-            created = {path for path, was_created in results if was_created}
-            self.assertEqual({task.resolve()}, created)
-
-    def test_openspec_provider_does_not_receive_usw_artifact_templates(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            (project / "openspec").mkdir()
-            (project / "usw.yaml").write_text(
-                "schema_version: 1\nartifacts:\n  provider: openspec\n",
-                encoding="utf-8",
-            )
-
-            completed = subprocess.run(
-                ["python3", str(SCRIPT_PATH), str(project)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-
-            self.assertFalse((project / "openspec/templates").exists())
-            self.assertFalse((project / "usw/templates").exists())
-            self.assertIn("OpenSpec provider is already active", completed.stdout)
-            self.assertNotIn("opt in explicitly", completed.stdout)
-            self.assertEqual(
-                {
-                    ".usw/.gitignore",
-                    ".usw/HANDOFF.md",
-                    "usw.yaml",
-                    "usw/flows/examples/chat-review.md",
-                    "usw/flows/examples/dev-test.md",
-                },
-                {
-                    path.relative_to(project).as_posix()
-                    for path in project.rglob("*")
-                    if path.is_file()
-                },
-            )
-            self.assertTrue((project / "usw/reviews").is_dir())
-
-    def test_explicit_standalone_root_under_openspec_is_honored(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            openspec = project / "openspec"
-            openspec.mkdir()
-            existing = openspec / "existing.txt"
-            existing.write_text("user content\n", encoding="utf-8")
-            (project / "usw.yaml").write_text(
-                "schema_version: 1\n"
-                "artifacts:\n"
-                "  provider: standalone\n"
-                "  root: openspec\n",
-                encoding="utf-8",
-            )
-
-            INIT_USW.initialize_usw(project)
-
-            self.assertEqual("user content\n", existing.read_text(encoding="utf-8"))
-            self.assertTrue((openspec / "changes").is_dir())
-            self.assertTrue((openspec / "templates/change/proposal.md").is_file())
-
-    def test_rejects_symlinked_artifact_template_root_before_writes(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory) / "project"
-            outside = Path(directory) / "outside"
-            project.mkdir()
-            outside.mkdir()
-            (project / "usw").mkdir()
-            os.symlink(outside, project / "usw/templates")
-
-            with self.assertRaisesRegex(OSError, "symbolic links"):
-                INIT_USW.initialize_usw(project)
-
-            self.assertEqual([], list(outside.iterdir()))
-            self.assertFalse((project / "usw.yaml").exists())
 
     def test_reinitialization_restores_example_and_preserves_legacy_scenarios(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -497,22 +330,6 @@ class InitializeUswTests(unittest.TestCase):
 
             self.assertFalse((outside / ".gitignore").exists())
             self.assertFalse((outside / "HANDOFF.md").exists())
-            self.assertFalse((project / "openspec").exists())
-
-    def test_does_not_follow_symlinked_openspec_hint(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory) / "project"
-            outside = Path(directory) / "outside"
-            project.mkdir()
-            outside.mkdir()
-            os.symlink(outside, project / "openspec")
-
-            INIT_USW.initialize_usw(project)
-
-            self.assertFalse((outside / "specs").exists())
-            self.assertFalse((outside / "changes").exists())
-            self.assertTrue((project / "usw").is_dir())
-
     def test_preserves_existing_ignore_without_enforcing_git_policy(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
@@ -533,7 +350,6 @@ class InitializeUswTests(unittest.TestCase):
                 (local_state / ".gitignore").read_text(encoding="utf-8"),
             )
             self.assertTrue((local_state / "HANDOFF.md").exists())
-            self.assertFalse((project / "openspec").exists())
 
     def test_accepts_existing_ignore_that_keeps_local_state_private(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -577,7 +393,6 @@ class InitializeUswTests(unittest.TestCase):
             INIT_USW.initialize_usw(project)
 
             self.assertEqual("existing handoff\n", handoff.read_text(encoding="utf-8"))
-            self.assertFalse((project / "openspec").exists())
 
     def test_cli_failure_reports_partial_workspace_retry_guidance(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -645,17 +460,6 @@ class InitializeUswTests(unittest.TestCase):
         )
         self.assertEqual(1, content.count("## Next action"))
         self.assertIn("- Freshness: unknown\n", content)
-
-    def test_preserves_non_workspace_openspec_path(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            (project / "openspec").write_text("not a directory", encoding="utf-8")
-
-            INIT_USW.initialize_usw(project)
-
-            self.assertEqual("not a directory", (project / "openspec").read_text())
-            self.assertTrue((project / "usw").is_dir())
-
 
 if __name__ == "__main__":
     unittest.main()

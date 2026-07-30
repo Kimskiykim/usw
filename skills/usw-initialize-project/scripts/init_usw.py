@@ -17,7 +17,6 @@ LOCAL_STATE_IGNORE_CONTENT = "*\n"
 TEMPLATE_ROOT = Path(__file__).parents[1] / "templates"
 CONFIG_FILE_NAME = "usw.yaml"
 SUPPORTED_SCHEMA_VERSION = 1
-SUPPORTED_PROVIDERS = frozenset({"standalone", "openspec"})
 DEFAULT_SPECIALIZED_ROOTS = {
     "flows": "usw/flows",
     "reviews": "usw/reviews",
@@ -25,16 +24,6 @@ DEFAULT_SPECIALIZED_ROOTS = {
 FLOW_EXAMPLE_PATHS = (
     "chat-review.md",
     "dev-test.md",
-)
-ARTIFACT_TEMPLATE_PATHS = (
-    "change/proposal.md",
-    "change/design.md",
-    "change/spec.md",
-    "change/tasks.md",
-    "task/task.md",
-    "task/development-evidence.md",
-    "task/testing-evidence.md",
-    "review/receipt.md",
 )
 
 
@@ -50,7 +39,6 @@ class WorkspaceConfig(NamedTuple):
     """Resolved v1 workspace configuration."""
 
     schema_version: int
-    provider: str
     artifact_root: str
     flow_root: str
     review_root: str
@@ -65,15 +53,11 @@ class WorkspaceConfig(NamedTuple):
         }
 
 
-def default_config(provider: str = "standalone") -> WorkspaceConfig:
-    """Return deterministic v1 defaults for an explicitly selected provider."""
-    if provider not in SUPPORTED_PROVIDERS:
-        raise ConfigError("unsupported_provider", f"unsupported provider: {provider}")
-    artifact_root = "usw" if provider == "standalone" else "openspec"
+def default_config() -> WorkspaceConfig:
+    """Return deterministic v1 defaults."""
     return WorkspaceConfig(
         schema_version=SUPPORTED_SCHEMA_VERSION,
-        provider=provider,
-        artifact_root=artifact_root,
+        artifact_root="usw",
         flow_root=DEFAULT_SPECIALIZED_ROOTS["flows"],
         review_root=DEFAULT_SPECIALIZED_ROOTS["reviews"],
     )
@@ -138,10 +122,12 @@ def parse_config(content: str) -> WorkspaceConfig:
     ):
         if not isinstance(section, dict):
             raise ConfigError("invalid_config", f"{name} must be a mapping")
-    provider = artifacts.get("provider", "standalone")
-    if not isinstance(provider, str) or provider not in SUPPORTED_PROVIDERS:
-        raise ConfigError("unsupported_provider", f"unsupported provider: {provider!r}")
-    defaults = default_config(provider)
+    if "provider" in artifacts:
+        raise ConfigError(
+            "invalid_config",
+            "artifacts.provider is no longer supported; remove it",
+        )
+    defaults = default_config()
 
     def root_value(section: dict[str, object], default: str, name: str) -> str:
         value = section.get("root", default)
@@ -151,7 +137,6 @@ def parse_config(content: str) -> WorkspaceConfig:
 
     return WorkspaceConfig(
         schema_version=SUPPORTED_SCHEMA_VERSION,
-        provider=provider,
         artifact_root=root_value(artifacts, defaults.artifact_root, "artifacts"),
         flow_root=root_value(flows, defaults.flow_root, "flows"),
         review_root=root_value(reviews, defaults.review_root, "reviews"),
@@ -216,8 +201,7 @@ def validate_config(project_root: Path, config: WorkspaceConfig) -> WorkspaceCon
         if not _paths_overlap(parsed["artifacts"], parsed[specialized_name]):
             continue
         allowed = (
-            config.provider == "standalone"
-            and len(parsed[specialized_name]) > len(parsed["artifacts"])
+            len(parsed[specialized_name]) > len(parsed["artifacts"])
             and parsed[specialized_name][: len(parsed["artifacts"])]
             == parsed["artifacts"]
         )
@@ -384,7 +368,6 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
         (CONFIG_FILE_NAME, "file"),
         (config.flow_root, "directory"),
         (f"{config.flow_root}/examples", "directory"),
-        (config.review_root, "directory"),
         (".usw", "directory"),
         (".usw/.gitignore", "file"),
         (".usw/HANDOFF.md", "file"),
@@ -396,18 +379,6 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
         )
         for example in FLOW_EXAMPLE_PATHS
     )
-    if config.provider == "standalone":
-        expected_paths.extend(
-            [
-                (config.artifact_root, "directory"),
-                (f"{config.artifact_root}/changes", "directory"),
-                (f"{config.artifact_root}/templates", "directory"),
-            ]
-        )
-        expected_paths.extend(
-            (f"{config.artifact_root}/templates/{path}", "file")
-            for path in ARTIFACT_TEMPLATE_PATHS
-        )
     for rendered_path, expected_kind in expected_paths:
         parts = Path(rendered_path).parts
         current = project_root
@@ -424,22 +395,13 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
                 raise IsADirectoryError(f"Project path is a directory, not a file: {current}")
 
 
-def detect_openspec_workspace(project_root: Path) -> bool:
-    """Return whether a real OpenSpec directory exists, without inspecting it."""
-    return _existing_path_kind(project_root / "openspec") == "directory"
-
-
 def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
     """Create configured USW workspace state without overwriting project files."""
     project_root = find_project_root(project)
     config_file = project_root / CONFIG_FILE_NAME
     config = load_config(project_root)
-    artifact_directory = project_root / config.artifact_root
-    changes_directory = artifact_directory / "changes"
-    artifact_template_directory = artifact_directory / "templates"
     flow_directory = project_root / config.flow_root
     flow_example_directory = flow_directory / "examples"
-    review_directory = project_root / config.review_root
     local_state_ignore_file = project_root / ".usw" / ".gitignore"
     handoff_file = project_root / ".usw" / "HANDOFF.md"
 
@@ -451,34 +413,6 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
             create_file(project_root, config_file, render_default_config()),
         ),
     ]
-    if config.provider == "standalone":
-        results.extend(
-            [
-                (
-                    artifact_directory,
-                    create_directory(project_root, artifact_directory),
-                ),
-                (
-                    changes_directory,
-                    create_directory(project_root, changes_directory),
-                ),
-                (
-                    artifact_template_directory,
-                    create_directory(project_root, artifact_template_directory),
-                ),
-            ]
-        )
-        results.extend(
-            (
-                artifact_template_directory / relative_path,
-                create_file(
-                    project_root,
-                    artifact_template_directory / relative_path,
-                    read_template(relative_path),
-                ),
-            )
-            for relative_path in ARTIFACT_TEMPLATE_PATHS
-        )
     results.extend(
         [
             (flow_directory, create_directory(project_root, flow_directory)),
@@ -486,7 +420,6 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
                 flow_example_directory,
                 create_directory(project_root, flow_example_directory),
             ),
-            (review_directory, create_directory(project_root, review_directory)),
         ]
     )
     results.extend(
@@ -530,9 +463,6 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        project_root = find_project_root(args.project)
-        openspec_detected = detect_openspec_workspace(project_root)
-        config = load_config(project_root)
         results = initialize_usw(args.project)
     except OSError as error:
         print(f"USW initialization failed: {error}", file=sys.stderr)
@@ -546,17 +476,6 @@ def main() -> int:
     for path, created in results:
         status = "Created" if created else "Already exists"
         print(f"{status}: {path}")
-    if openspec_detected:
-        if config.provider == "openspec":
-            print(
-                "Detected existing OpenSpec directory; the OpenSpec provider is "
-                "already active and the directory was left unchanged."
-            )
-        else:
-            print(
-                "Detected existing OpenSpec directory; it was left unchanged. "
-                "Set artifacts.provider: openspec in usw.yaml to opt in explicitly."
-            )
     return 0
 
 

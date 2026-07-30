@@ -1,8 +1,6 @@
 # USW
 
 USW — устанавливаемый самостоятельный workflow для Qwen Code и Codex.
-OpenSpec поддерживается как явно выбранный compatibility provider, но не нужен
-для стандартной установки и работы.
 
 Первая команда харнеса инициализирует standalone USW в текущем проекте и сразу
 создаёт:
@@ -14,24 +12,10 @@ OpenSpec поддерживается как явно выбранный compati
 │   └── HANDOFF.md
 ├── usw.yaml
 └── usw/
-    ├── changes/
-    ├── templates/
-    │   ├── change/
-    │   │   ├── proposal.md
-    │   │   ├── design.md
-    │   │   ├── spec.md
-    │   │   └── tasks.md
-    │   ├── task/
-    │   │   ├── task.md
-    │   │   ├── development-evidence.md
-    │   │   └── testing-evidence.md
-    │   └── review/
-    │       └── receipt.md
-    ├── flows/
-    │   └── examples/
-    │       ├── chat-review.md
-    │       └── dev-test.md
-    └── reviews/
+    └── flows/
+        └── examples/
+            ├── chat-review.md
+            └── dev-test.md
 ```
 
 `.usw/HANDOFF.md` создаётся как локальная точка входа разработчика для
@@ -42,56 +26,30 @@ OpenSpec поддерживается как явно выбранный compati
 намерения; `/usw-init` эти lazy directories не материализует. Два flow
 examples создаются только в shared `<flows.root>/examples/`.
 
-`usw.yaml` версии 1 выбирает provider и project-relative roots. По умолчанию
-используются `standalone`, `usw`, `usw/flows` и `usw/reviews`.
+`usw.yaml` версии 1 выбирает project-relative roots. По умолчанию используются
+`usw`, `usw/flows` и `usw/reviews`.
 Инициализация аддитивна: существующие файлы не
 перезаписываются. Небезопасные, пересекающиеся или symlinked roots отклоняются
 до записи. Если поздняя I/O-ошибка оставила partial workspace, устраните причину
 и повторите `/usw-init`: существующие bytes сохранятся, а отсутствующие
 артефакты будут достроены.
 
-В standalone-режиме `/usw-init` также материализует недостающие шаблоны
-change, task, evidence и review-артефактов в `<artifacts.root>/templates/`.
-Повторная инициализация не перезаписывает изменённые проектные шаблоны. В режиме
-OpenSpec эти шаблоны не копируются в provider-owned `openspec/`.
-При явно выбранном OpenSpec provider initializer создаёт только configured
-flow/review roots, два flow examples, `.usw/.gitignore` и
-`.usw/HANDOFF.md`; `openspec/**` он не создаёт и не изменяет.
+`/usw-init` не создаёт `changes/`, `reviews/` и `templates/` заранее. Точный
+artifact destination создаёт использующий его flow только при необходимости.
 
 Для детерминированной инициализации skill сначала ищет Python 3.10+ под именем
 `python3`, затем `python`. Если совместимого интерпретатора нет, он спрашивает
 разрешение на менее детерминированный LLM fallback с тем же функциональным v1
-contract, включая safe custom roots и оба provider. Ошибка уже найденного
+contract, включая safe custom roots. Ошибка уже найденного
 Python-скрипта fallback не включает и всегда сообщается как есть.
-
-Если рядом уже есть real `openspec/` directory, USW использует его только как
-hint и не начинает writes только из-за detection. Явно заданный standalone
-custom root под `openspec/**` остаётся пользовательским writable root; при
-OpenSpec provider его provider-owned artifacts сохраняются byte-for-byte. Для
-standalone USW показывает explicit opt-in; при уже выбранном OpenSpec provider
-только подтверждает активный provider. Opt-in выглядит так:
-
-```yaml
-schema_version: 1
-artifacts:
-  provider: openspec
-  root: openspec
-```
-
-OpenSpec adapter использует native artifact graph: Analysis владеет
-`proposal/specs`, Development — `design/tasks`. Review receipts при любом
-provider остаются в USW-owned `reviews.root` и только ссылаются на planning
-artifacts.
 
 ## Lifecycle и артефакты
 
-Инициализированные `analysis`, `development`, `testing`, `chat-review` и
-`dev-test` — ненормативные примеры, а не автоматически активные flow. Runner не
-исполняет их на месте. Скопируйте нужный файл из `<flows.root>/examples/` в
-`<flows.root>/<name>.md`, адаптируйте под проект и только затем запускайте.
-Analysis, Development и Testing показывают один возможный lifecycle
-`Analysis → Development → Testing → Delivery`; конкретные gates, writes и
-артефакты определяет скопированный project-owned flow.
+Инициализированные `chat-review` и `dev-test` — ненормативные примеры, а не
+автоматически активные flow. Runner не исполняет их на месте. Скопируйте нужный
+файл из `<flows.root>/examples/` в `<flows.root>/<name>.md`, адаптируйте под
+проект и только затем запускайте. Конкретные gates, writes и артефакты
+определяет скопированный project-owned flow.
 
 `tasks.md` — единственный completion source, `task.md` хранит task contract и
 milestones, `development-evidence.md` и `testing-evidence.md` имеют разных
@@ -220,7 +178,7 @@ Skill `usw-refine-intent` ведёт обсуждение в режиме опр
 decision case за ход, фиксирует подтверждённое решение и только затем переходит
 к следующему. Локальная ненормативная сессия, журнал решений и необязательный
 итог сохраняются в `.usw/refinements/<refinement-id>/`. Skill не создаёт
-backlog, OpenSpec change, planning artifacts или executable tasks:
+backlog, planning change, planning artifacts или executable tasks:
 
 ```text
 $usw-refine-intent Давай по одному решению уточним идею этой задачи.
@@ -301,16 +259,6 @@ codex plugin add usw@usw
 
 ## Разработка
 
-Standalone suite не требует OpenSpec:
-
 ```bash
 python3 -m unittest discover -s tests -v
-```
-
-Реальная compatibility suite устанавливает OpenSpec изолированно. Pinned
-`1.6.0` блокирует release readiness; latest probe видим, но не блокирует:
-
-```bash
-./tests/run_openspec_compatibility.sh pinned
-./tests/run_openspec_compatibility.sh latest
 ```

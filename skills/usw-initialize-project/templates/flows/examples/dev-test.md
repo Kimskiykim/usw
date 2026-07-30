@@ -4,8 +4,8 @@
 
 # Flow: dev-test
 
-Реализует выбранное OpenSpec-изменение, затем независимо проверяет соответствие
-результата change и отсутствие лишних изменений. Отдельно проверяет diff на
+Реализует выбранную USW-задачу, затем независимо проверяет соответствие
+результата task contract и отсутствие лишних изменений. Отдельно проверяет diff на
 избыточную сложность. Замечания reviewers не исправляются автоматически.
 
 ## Контракт
@@ -18,14 +18,15 @@
    снимок текущего рабочего дерева: status, изменённые файлы и существующий
    diff. Снимок нужен только для отделения уже имевшихся пользовательских
    изменений от изменений, внесённых этим flow.
-2. Скилл: `openspec-apply-change`
-   - Пишет: `implementation` `implementation-tests` `task-index`
+2. Скилл: `usw-execute-task`
+   - Пишет: `implementation` `implementation-tests` `development-evidence`
+     `local-checkpoint`
 3. `critical-result-review` — передать независимому SUBAGENT
-   `critical-reviewer` OpenSpec change, результат реализации, task index и
+   `critical-reviewer` task contract, результат реализации, evidence и
    baseline. Reviewer выполняет одно read-only ревью через скилл
    `usw-structured-review`:
    - Scope: только изменения, внесённые flow после baseline, в сопоставлении с
-     proposal, design, delta specs и tasks выбранного change.
+     принятыми требованиями и checks выбранной задачи.
    - Review focus: полнота реализации требований и тестов; изменения вне
      согласованного scope; случайно затронутые файлы; смешение с существующими
      пользовательскими правками; необоснованные рефакторинги; согласованность
@@ -54,6 +55,7 @@
 
 - `implementation`
 - `implementation-tests`
-- `task-index`
+- `development-evidence`
+- `local-checkpoint`
 
 Reviewer и Ponytail не имеют полномочий записи.

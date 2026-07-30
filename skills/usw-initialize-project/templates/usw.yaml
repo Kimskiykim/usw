@@ -1,6 +1,5 @@
 schema_version: 1
 artifacts:
-  provider: standalone
   root: usw
 flows:
   root: usw/flows

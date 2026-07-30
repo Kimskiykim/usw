@@ -51,7 +51,7 @@ belongs to the user.
 ### Requirement: A clarification may end without downstream work
 `usw-refine-intent` SHALL allow a session to finish with a standalone formulated
 outcome, a paused state, or unresolved questions. It MUST NOT require or imply a
-backlog item, OpenSpec change, implementation plan, executable task, or next flow.
+  backlog item, planning change, implementation plan, executable task, or next flow.
 
 #### Scenario: Formulation is sufficient
 - **WHEN** the user accepts the current formulation and requests no further work

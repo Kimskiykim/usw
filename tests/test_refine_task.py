@@ -32,7 +32,7 @@ class RefineTaskTests(unittest.TestCase):
         local = project / ".usw"
         local.mkdir()
         (local / ".gitignore").write_text("*\n", encoding="utf-8")
-        config = "schema_version: 1\nartifacts:\n  provider: standalone\n"
+        config = "schema_version: 1\nartifacts:\n  root: usw\n"
         if legacy_root:
             config += f"refinement:\n  root: {legacy_root}\n"
         (project / "usw.yaml").write_text(config, encoding="utf-8")
