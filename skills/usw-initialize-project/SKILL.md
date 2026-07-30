@@ -31,8 +31,10 @@ clarification sessions create
 `.usw/flows/` and `.usw/refinements/` only on first use.
 
 The optional top-level `handoff` field accepts only boolean `true` or `false`;
-absence means `true`. When enabled, initialize `.usw/HANDOFF.md` with generic
-idle state. When disabled, do not read, validate, create or modify that path.
+absence means `true`. When enabled, initialize `.usw/HANDOFF.md` with the
+deterministic empty operation router. Keep `.usw/handoffs/` lazy until the first
+Begin. When disabled, do not read, validate, create or modify either path or an
+operation-scoped candidate.
 Generate `.usw/.gitignore` as a convenience, but do not inspect or enforce Git
 tracking state; repository tracking policy belongs to the user.
 
@@ -49,9 +51,9 @@ workspace and recommend fixing the cause and rerunning; create-only behavior
 preserves existing files on retry.
 
 Do not pre-create artifact storage. In particular, initialization does not
-create `<artifacts.root>/changes/`, `<artifacts.root>/templates/`, or
-`<reviews.root>/`; the capability that needs an artifact creates its exact
-destination on first use.
+create `<artifacts.root>/changes/`, `<artifacts.root>/templates/`,
+`<reviews.root>/`, or `.usw/handoffs/`; the capability that needs an artifact
+creates its exact destination on first use.
 
 The bundled files under `templates/flows/examples/` are guidance, not runtime
 fallbacks or normative flow contracts. Copy exactly `chat-review.md` and

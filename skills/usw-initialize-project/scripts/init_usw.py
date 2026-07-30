@@ -7,7 +7,6 @@ import argparse
 import os
 import stat
 import sys
-from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
@@ -236,12 +235,9 @@ def load_config(project_root: Path) -> WorkspaceConfig:
     return validate_config(project_root, config)
 
 
-def render_handoff(updated_at: datetime | None = None) -> str:
-    """Return the initial developer-local handoff state."""
-    timestamp = updated_at or datetime.now(timezone.utc)
-    return read_template("local/HANDOFF.md").replace(
-        "{{updated_at}}", timestamp.isoformat(timespec="seconds")
-    )
+def render_handoff() -> str:
+    """Return the initial empty developer-local handoff router."""
+    return read_template("local/HANDOFF.md")
 
 
 def find_project_root(start: Path) -> Path:

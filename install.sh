@@ -31,9 +31,10 @@ case "$#" in
 esac
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SKILL_NAMES="usw-initialize-project usw-manage-handoff usw-refine-intent usw-plan-small-steps usw-explain-me usw-create-flow usw-run-flow usw-route-task usw-manage-artifacts"
-LEGACY_SKILL_NAMES="usw-init usw-refine-task usw-execute-task usw-verify-task"
-COMMAND_NAMES="usw-init.md usw-handoff.md usw-resume.md usw-reviewer-llm-critic.md"
+SKILL_NAMES="usw-initialize-project usw-manage-handoff usw-refine-intent usw-plan-small-steps usw-explain-me usw-create-flow usw-run-flow usw-find-flow"
+LEGACY_SKILL_NAMES="usw-init usw-refine-task usw-execute-task usw-verify-task usw-route-task"
+COMMAND_NAMES="usw-init.md usw-handoff.md usw-resume.md usw-reviewer-llm-critic.md usw-find-flow.md usw-refine-intent.md usw-plan-small-steps.md usw-explain-me.md"
+LEGACY_COMMAND_NAMES="usw-route-task.md"
 QWEN_HOME_DIR="${QWEN_HOME:-${HOME}/.qwen}"
 QWEN_SKILLS_DIR="$QWEN_HOME_DIR/skills"
 QWEN_COMMANDS_DIR="$QWEN_HOME_DIR/commands"
@@ -65,6 +66,9 @@ check_agent_targets() {
   done
   for legacy_skill_name in $LEGACY_SKILL_NAMES; do
     check_target "$skills_dir/$legacy_skill_name"
+  done
+  for legacy_command_name in $LEGACY_COMMAND_NAMES; do
+    check_target "$commands_dir/$legacy_command_name"
   done
 }
 
@@ -103,6 +107,11 @@ install_agent() {
     for legacy_skill_name in $LEGACY_SKILL_NAMES; do
       if [ -e "$skills_dir/$legacy_skill_name" ]; then
         rm -rf "$skills_dir/$legacy_skill_name"
+      fi
+    done
+    for legacy_command_name in $LEGACY_COMMAND_NAMES; do
+      if [ -e "$commands_dir/$legacy_command_name" ]; then
+        rm -f "$commands_dir/$legacy_command_name"
       fi
     done
   fi

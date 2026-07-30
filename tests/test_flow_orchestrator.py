@@ -43,6 +43,156 @@ class TextFlowRunnerTests(unittest.TestCase):
                 invocation.flow.identity,
             )
 
+    def test_root_execution_uses_begin_or_ephemeral_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, shared = self.project(directory)
+            (shared / "review.md").write_text("review\n", encoding="utf-8")
+            invocation = RUNNER.prepare_markdown_run(
+                project, shared, "review", "input"
+            )
+            operation = "usw-operation:" + "1" * 64
+
+            enabled = RUNNER.bind_root_execution(
+                invocation,
+                handoff_enabled=True,
+                operation=operation,
+            )
+            disabled = RUNNER.bind_root_execution(
+                invocation,
+                handoff_enabled=False,
+            )
+            repeated = RUNNER.bind_root_execution(
+                invocation,
+                handoff_enabled=False,
+            )
+
+            self.assertEqual(operation, enabled.context.root_identity)
+            self.assertTrue(enabled.context.owns_durable_state)
+            self.assertIsNone(enabled.context.branch_label)
+            self.assertRegex(
+                disabled.context.root_identity,
+                r"^usw-ephemeral:[0-9a-f]{32}$",
+            )
+            self.assertNotEqual(
+                disabled.context.root_identity,
+                repeated.context.root_identity,
+            )
+            with self.assertRaisesRegex(
+                RUNNER.FlowError, "exact Begin operation"
+            ):
+                RUNNER.bind_root_execution(
+                    invocation,
+                    handoff_enabled=True,
+                    operation=None,
+                )
+
+    def test_nested_run_resolves_safely_and_borrows_verified_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, shared = self.project(directory)
+            (shared / "root.md").write_text("root\n", encoding="utf-8")
+            child_bytes = b"child\r\n"
+            (shared / "child.md").write_bytes(child_bytes)
+            operation = "usw-operation:" + "1" * 64
+            root = RUNNER.bind_root_execution(
+                RUNNER.prepare_markdown_run(
+                    project, shared, "root", "root input"
+                ),
+                handoff_enabled=True,
+                operation=operation,
+            )
+            verified = []
+
+            child = RUNNER.prepare_nested_run(
+                project,
+                shared,
+                "child",
+                "ordinary input with usw-operation:" + "2" * 64,
+                parent=root.context,
+                branch_label="review branch",
+                assert_current=lambda path, identity: verified.append(
+                    (path, identity)
+                ),
+            )
+
+            self.assertEqual(
+                child_bytes.decode("utf-8"),
+                child.invocation.flow.markdown,
+            )
+            self.assertEqual(operation, child.context.root_identity)
+            self.assertEqual("review branch", child.context.branch_label)
+            self.assertFalse(child.context.owns_durable_state)
+            self.assertEqual([(project, operation)], verified)
+            self.assertIn(
+                "usw-operation:" + "2" * 64,
+                child.invocation.user_input,
+            )
+            with self.assertRaisesRegex(
+                RUNNER.FlowError, "root-owned context"
+            ):
+                RUNNER.prepare_nested_run(
+                    project,
+                    shared,
+                    "child",
+                    "input",
+                    parent=child.context,
+                    branch_label="nested again",
+                    assert_current=lambda *_: None,
+                )
+
+    def test_nested_run_stops_on_stale_parent_and_skips_disabled_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, shared = self.project(directory)
+            (shared / "flow.md").write_text("flow\n", encoding="utf-8")
+            invocation = RUNNER.prepare_markdown_run(
+                project, shared, "flow", "input"
+            )
+            routed = RUNNER.bind_root_execution(
+                invocation,
+                handoff_enabled=True,
+                operation="usw-operation:" + "1" * 64,
+            )
+
+            def stale_parent(*_):
+                raise RUNNER.FlowError(
+                    "inactive_parent", "parent route is stale"
+                )
+
+            with self.assertRaisesRegex(RUNNER.FlowError, "parent route is stale"):
+                RUNNER.prepare_nested_run(
+                    project,
+                    shared,
+                    "flow",
+                    "child",
+                    parent=routed.context,
+                    branch_label="child",
+                    assert_current=stale_parent,
+                )
+
+            ephemeral = RUNNER.bind_root_execution(
+                invocation, handoff_enabled=False
+            )
+            child = RUNNER.prepare_nested_run(
+                project,
+                shared,
+                "flow",
+                "child",
+                parent=ephemeral.context,
+                branch_label="offline child",
+            )
+            self.assertFalse(child.context.handoff_enabled)
+            with self.assertRaisesRegex(
+                RUNNER.FlowError, "must not inspect"
+            ):
+                RUNNER.prepare_nested_run(
+                    project,
+                    shared,
+                    "flow",
+                    "child",
+                    parent=ephemeral.context,
+                    branch_label="wrong child",
+                    assert_current=lambda *_: None,
+                )
+
     def test_local_precedes_shared_and_explicit_shared_wins(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)

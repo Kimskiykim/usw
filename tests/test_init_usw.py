@@ -5,7 +5,6 @@ import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stderr
-from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -246,10 +245,12 @@ class InitializeUswTests(unittest.TestCase):
                 "*\n", (project / ".usw/.gitignore").read_text(encoding="utf-8")
             )
             handoff_content = (project / ".usw/HANDOFF.md").read_text(encoding="utf-8")
-            self.assertIn("# Developer Handoff\n", handoff_content)
-            self.assertIn("- Status: idle\n", handoff_content)
-            self.assertIn("## Active work\n", handoff_content)
+            self.assertIn("# Developer Handoff Router\n", handoff_content)
+            self.assertIn("## Operations\n", handoff_content)
+            self.assertIn("No registered operations.\n", handoff_content)
+            self.assertNotIn("- Status:", handoff_content)
             self.assertNotIn("| Subject | Role |", handoff_content)
+            self.assertFalse((project / ".usw/handoffs").exists())
 
             self.assertFalse((project / "hello_world.py").exists())
 
@@ -464,14 +465,15 @@ class InitializeUswTests(unittest.TestCase):
             )
             self.assertEqual(0, ignored.returncode)
 
-    def test_renders_initial_handoff_with_supplied_timestamp(self):
-        updated_at = datetime(2026, 7, 17, 9, 30, tzinfo=timezone.utc)
+    def test_renders_deterministic_empty_handoff_router(self):
+        content = INIT_USW.render_handoff()
 
-        content = INIT_USW.render_handoff(updated_at)
-
-        self.assertIn("- Updated: 2026-07-17T09:30:00+00:00\n", content)
-        self.assertIn("- Status: idle\n", content)
-        self.assertEqual(1, content.count("## Active work"))
+        self.assertEqual(
+            "# Developer Handoff Router\n\n"
+            "## Operations\n\n"
+            "No registered operations.\n",
+            content,
+        )
 
     def test_handoff_false_skips_existing_or_missing_state(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -512,7 +514,11 @@ class InitializeUswTests(unittest.TestCase):
                 "schema_version: 1\nhandoff: true\n", encoding="utf-8"
             )
             INIT_USW.initialize_usw(project)
-            self.assertIn("- Status: idle", handoff.read_text(encoding="utf-8"))
+            self.assertEqual(
+                INIT_USW.render_handoff(),
+                handoff.read_text(encoding="utf-8"),
+            )
+            self.assertFalse((project / ".usw/handoffs").exists())
 
 if __name__ == "__main__":
     unittest.main()

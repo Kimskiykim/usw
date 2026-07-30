@@ -20,7 +20,7 @@ class PackageLayoutTests(unittest.TestCase):
             "review/receipt.md": "## Reviewed artifact identities",
             "flows/examples/chat-review.md": "# Flow: chat-review",
             "flows/examples/dev-test.md": "# Flow: dev-test",
-            "local/HANDOFF.md": "## Active work",
+            "local/HANDOFF.md": "## Operations",
             "usw.yaml": "root: usw/reviews",
         }
 
@@ -134,13 +134,12 @@ class PackageLayoutTests(unittest.TestCase):
 
         for fragment in (
             "## Подготовка",
-            "## Гарантии",
-            "## Граница выполнения",
+            "## Создание и проверка",
             "`--structured`",
             "`-s`",
-            "не читать version-specific reference",
-            "ordinary/structured style",
-            "Никогда не вызывать `usw-run-flow`",
+            "Без него не читать reference",
+            "ordinary или `version-2` форму",
+            "не выполнять описанный flow",
         ):
             self.assertIn(fragment, skill)
         self.assertEqual(
@@ -163,15 +162,123 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertNotIn(removed, content)
         self.assertIn("не machine DSL", content)
-        self.assertIn("Не заявлять parser или validator", content)
+        self.assertIn("Применять только нужные маркеры", content)
+        self.assertIn("human decision point", content)
 
-    def test_create_flow_keeps_optional_analysis_separate(self):
+    def test_create_flow_stays_within_authoring_scope(self):
         skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
             encoding="utf-8"
         )
-        self.assertIn("После успешного сохранения", skill)
-        self.assertIn("Не проводить его без согласия", skill)
-        self.assertIn("не изменять flow без отдельного одобрения", skill)
+        self.assertIn("$usw-run-flow --local", skill)
+        self.assertIn("$usw-run-flow --shared", skill)
+        for removed in (
+            "Опциональный анализ",
+            "retired validator",
+            "--experimental-structured",
+        ):
+            self.assertNotIn(removed, skill)
+
+    def test_create_flow_has_bounded_human_controlled_design_recipes(self):
+        skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        spec = (
+            ROOT
+            / "openspec/changes/add-guided-flow-authoring/specs"
+            / "guided-flow-authoring/spec.md"
+        ).read_text(encoding="utf-8")
+
+        recipe_names = (
+            "Проверка результата",
+            "Human decision",
+            "Подтверждение внешнего действия",
+            "Обработка ошибки",
+            "Ограниченная доработка",
+            "Независимые проверки",
+            "Повторное использование capability",
+        )
+        recipe_headings = [
+            line.removeprefix("### ")
+            for line in skill.splitlines()
+            if line.startswith("### ")
+        ]
+        self.assertEqual(list(recipe_names), recipe_headings)
+
+        for fragment in (
+            "## Подсказки по проектированию",
+            "три наиболее релевантные подсказки",
+            "`применить`, `изменить` или `пропустить`",
+            "Для ordinary Markdown",
+            "Только для `version-2`",
+            "`изменить` сначала показывает",
+            "для его записи пользователь должен отдельно",
+            "После revision не запускать design scan повторно",
+            "Примеры в рецептах ниже показывают только `version-2` форму",
+            "Не копировать их\nstructured markers в ordinary flow",
+        ):
+            self.assertIn(fragment, skill)
+
+        self.assertLess(
+            skill.index("Сообщить имя, origin, путь"),
+            skill.index("После успешного сохранения и отчёта"),
+        )
+
+        verification = skill.split("### Проверка результата", 1)[1].split(
+            "### Human decision", 1
+        )[0]
+        self.assertLess(
+            verification.index("Сначала добавить наблюдаемую проверку"),
+            verification.index("`GATE` предлагать только"),
+        )
+
+        human_decision = skill.split("### Human decision", 1)[1].split(
+            "### Подтверждение внешнего действия", 1
+        )[0]
+        external_approval = skill.split(
+            "### Подтверждение внешнего действия", 1
+        )[1].split("### Обработка ошибки", 1)[0]
+        error_handling = skill.split("### Обработка ошибки", 1)[1].split(
+            "### Ограниченная доработка", 1
+        )[0]
+        for recipe in (human_decision, external_approval, error_handling):
+            self.assertTrue(
+                "только когда" in recipe or "только если" in recipe
+            )
+
+        refinement = skill.split("### Ограниченная доработка", 1)[1].split(
+            "### Независимые проверки", 1
+        )[0]
+        for fragment in (
+            "read-only, идемпотентны или безопасно обратимы",
+            "критерий выхода и предел",
+            "approval и внешнее действие\nоставлять после выхода из цикла",
+        ):
+            self.assertIn(fragment, refinement)
+
+        parallel = skill.split("### Независимые проверки", 1)[1].split(
+            "### Повторное использование capability", 1
+        )[0]
+        self.assertIn(
+            "Не предлагать `PARALLEL` для зависимых действий", parallel
+        )
+
+        capability = skill.split(
+            "### Повторное использование capability", 1
+        )[1]
+        self.assertIn("текущем списке доступных skills", capability)
+        self.assertIn(
+            "Одного имени без присутствия в текущем списке", capability
+        )
+        self.assertNotIn("или CALL FLOW", capability)
+        self.assertIn("не предлагать `CALL FLOW`", capability)
+
+        for fragment in (
+            "`применить`, `изменить` and `пропустить`",
+            "present in the current available-skills list",
+            "does not write until a\n  later explicit `применить`",
+            "keeps that action and its approval outside the loop",
+        ):
+            self.assertIn(fragment, spec)
 
     def test_run_flow_has_one_text_path_and_local_precedence(self):
         skill_dir = ROOT / "skills/usw-run-flow"
@@ -185,46 +292,60 @@ class PackageLayoutTests(unittest.TestCase):
             "--origin local",
             "Использовать только возвращённый `markdown`",
             "не machine DSL",
-            "уникального invocation token",
-            "Допустимые Outcome statuses",
-            "`in_progress` создаётся только Begin",
-            "`idle` — только explicit Finish",
+            "independent top-level invocations",
+            "Exact Begin operation ID является root execution identity",
+            "`assert-current`",
+            "Nested child не владеет durable state",
+            "Только root пишет aggregate Outcome",
+            "Новый Begin создаёт другую route",
         ):
             self.assertIn(fragment, skill)
         self.assertFalse((skill_dir / "references").exists())
 
-    def test_route_task_is_explicit_preview_first_orchestration(self):
-        skill_dir = ROOT / "skills/usw-route-task"
+    def test_readme_explains_routed_roots_nested_children_and_cleanup(self):
+        readme = " ".join(
+            (ROOT / "README.md").read_text(encoding="utf-8").split()
+        )
+        for fragment in (
+            ".usw/HANDOFF.md` хранит только маршруты",
+            "чат UI:",
+            "чат backend:",
+            "USW не обнаруживает и не разрешает конфликты в product files",
+            "не получает собственную route",
+            "Только root агрегирует результаты детей",
+            "/usw-handoff finish <operation-id>",
+            "Для rollback",
+            "generic idle HANDOFF старой версии",
+            "не создаёт scheduler",
+        ):
+            self.assertIn(fragment, readme)
+
+    def test_find_flow_is_explicit_read_only_discovery(self):
+        skill_dir = ROOT / "skills/usw-find-flow"
         skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
         metadata = (skill_dir / "agents/openai.yaml").read_text(encoding="utf-8")
 
         required_fragments = (
-            "одну исходную задачу",
-            "Если задача простая",
-            "Не выполнять задачу",
+            "одно описание намерения",
+            "Writes and side effects: none",
+            "`match`, `ambiguous` или `no-match`",
             ".usw/flows",
             "configured shared",
-            "templates/flows/examples",
+            "safe kebab-case",
             "не следовать symlink",
-            "`exact`",
-            "`adapted`",
-            "`new`",
-            "при сомнении — `local`",
-            "До preview ничего не записывать",
-            "Если пользователь отклоняет preview",
-            "не вызывать authoring capability",
-            "Existing source flow никогда не изменяется",
-            "обычные permission",
+            "safe `resolve`",
+            "Не искать packaged examples",
+            "готовую команду `$usw-run-flow`",
+            "Не запускать эту команду",
+            "не вызывать его",
+            "не читает и не изменяет HANDOFF",
         )
         for fragment in required_fragments:
             self.assertIn(fragment, skill)
-        approved = skill.split("## Approved continuation", 1)[1]
-        self.assertLess(
-            approved.index("`usw-create-flow`"),
-            approved.index("`usw-run-flow`"),
-        )
         self.assertIn("allow_implicit_invocation: false", metadata)
         self.assertFalse((skill_dir / "scripts").exists())
+        self.assertFalse((ROOT / "skills/usw-route-task").exists())
+        self.assertFalse((ROOT / "commands/usw-route-task.md").exists())
 
     def test_research_snapshot_is_outside_package_surfaces(self):
         snapshot = ROOT / "research/structured-runtime"
@@ -236,12 +357,17 @@ class PackageLayoutTests(unittest.TestCase):
             path.relative_to(snapshot).as_posix()
             for path in snapshot.rglob("*")
             if path.is_file()
+            and "__pycache__" not in path.parts
+            and path.suffix not in {".pyc", ".pyo"}
         }
-        self.assertEqual(34, len(preserved))
-        design = (
-            ROOT
-            / "openspec/changes/refocus-text-first-workflows/design.md"
-        ).read_text(encoding="utf-8")
+        self.assertEqual(38, len(preserved))
+        archived_designs = tuple(
+            (ROOT / "openspec/changes/archive").glob(
+                "*-refocus-text-first-workflows/design.md"
+            )
+        )
+        self.assertEqual(1, len(archived_designs))
+        design = archived_designs[0].read_text(encoding="utf-8")
         for path in preserved:
             self.assertIn(f"`{path}`", design)
 
@@ -250,6 +376,10 @@ class PackageLayoutTests(unittest.TestCase):
             "usw-init.md": "usw-initialize-project",
             "usw-handoff.md": "usw-manage-handoff",
             "usw-resume.md": "usw-manage-handoff",
+            "usw-find-flow.md": "usw-find-flow",
+            "usw-refine-intent.md": "usw-refine-intent",
+            "usw-plan-small-steps.md": "usw-plan-small-steps",
+            "usw-explain-me.md": "usw-explain-me",
         }
 
         for command_name, skill_name in expectations.items():
@@ -258,6 +388,16 @@ class PackageLayoutTests(unittest.TestCase):
                     encoding="utf-8"
                 )
                 self.assertIn(skill_name, command)
+        handoff = (ROOT / "commands/usw-handoff.md").read_text(
+            encoding="utf-8"
+        )
+        resume = (ROOT / "commands/usw-resume.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("exact current operation", handoff)
+        self.assertIn("zero/one/many", handoff)
+        self.assertIn("optional exact operation ID", resume)
+        self.assertIn("zero/one/many", resume)
 
     def test_qwen_extension_points_to_shared_skills(self):
         manifest = json.loads((ROOT / "qwen-extension.json").read_text(encoding="utf-8"))
@@ -278,12 +418,16 @@ class PackageLayoutTests(unittest.TestCase):
         )
         self.assertTrue((skills_dir / "usw-create-flow" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-run-flow" / "SKILL.md").is_file())
-        self.assertTrue((skills_dir / "usw-route-task" / "SKILL.md").is_file())
+        self.assertTrue((skills_dir / "usw-find-flow" / "SKILL.md").is_file())
         for command_name in (
             "usw-init.md",
             "usw-handoff.md",
             "usw-resume.md",
             "usw-reviewer-llm-critic.md",
+            "usw-find-flow.md",
+            "usw-refine-intent.md",
+            "usw-plan-small-steps.md",
+            "usw-explain-me.md",
         ):
             self.assertTrue((commands_dir / command_name).is_file())
 
@@ -308,12 +452,16 @@ class PackageLayoutTests(unittest.TestCase):
         )
         self.assertTrue((skills_dir / "usw-create-flow" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-run-flow" / "SKILL.md").is_file())
-        self.assertTrue((skills_dir / "usw-route-task" / "SKILL.md").is_file())
+        self.assertTrue((skills_dir / "usw-find-flow" / "SKILL.md").is_file())
         for command_name in (
             "usw-init.md",
             "usw-handoff.md",
             "usw-resume.md",
             "usw-reviewer-llm-critic.md",
+            "usw-find-flow.md",
+            "usw-refine-intent.md",
+            "usw-plan-small-steps.md",
+            "usw-explain-me.md",
         ):
             self.assertTrue((commands_dir / command_name).is_file())
 
@@ -348,12 +496,19 @@ class PackageLayoutTests(unittest.TestCase):
         )
         self.assertTrue((ROOT / "skills" / "usw-create-flow" / "SKILL.md").is_file())
         self.assertTrue((ROOT / "skills" / "usw-run-flow" / "SKILL.md").is_file())
-        self.assertTrue((ROOT / "skills" / "usw-route-task" / "SKILL.md").is_file())
+        self.assertTrue((ROOT / "skills" / "usw-find-flow" / "SKILL.md").is_file())
         self.assertTrue((ROOT / "commands" / "usw-handoff.md").is_file())
         self.assertTrue((ROOT / "commands" / "usw-resume.md").is_file())
         self.assertTrue(
             (ROOT / "commands" / "usw-reviewer-llm-critic.md").is_file()
         )
+        for command_name in (
+            "usw-find-flow.md",
+            "usw-refine-intent.md",
+            "usw-plan-small-steps.md",
+            "usw-explain-me.md",
+        ):
+            self.assertTrue((ROOT / "commands" / command_name).is_file())
 
     def test_claude_plugin_is_not_packaged(self):
         self.assertFalse((ROOT / ".claude-plugin").exists())

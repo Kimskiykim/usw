@@ -122,6 +122,7 @@ contains exactly these preserved files:
 
 - `README.md`;
 - `runtime/run_flow.py` (including the in-progress run-scoped checkpoint work);
+- `runtime/artifact_contract.py`;
 - `runtime/capability_registry.py`;
 - `runtime/flow_scenario.py`;
 - `references/run-flow-version-2.md`;
@@ -154,6 +155,9 @@ contains exactly these preserved files:
 - `changes/implement-nested-flow-runtime/design.md`;
 - `changes/implement-nested-flow-runtime/tasks.md`;
 - `changes/implement-nested-flow-runtime/specs/nested-flow-runtime/spec.md`.
+- `legacy/usw-manage-artifacts/SKILL.md`;
+- `legacy/usw-manage-artifacts/agents/openai.yaml`;
+- `legacy/usw-manage-artifacts/scripts/artifact_writer.py`.
 
 Whole mixed tests are copied to preserve history; simplified production tests
 are rewritten in `tests/`. The snapshot tests are not required to remain

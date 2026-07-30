@@ -9,6 +9,11 @@ superseded `add-result-list-iteration` and `implement-nested-flow-runtime`
 changes. The snapshot also preserves the in-progress run-scoped UUID checkpoint
 work that was present in the working tree.
 
+The superseded role-authorized planning-artifact and review-receipt writer is
+preserved under `legacy/usw-manage-artifacts/` with its contract validator under
+`runtime/artifact_contract.py`. It is not a production skill and is not
+installed by the default installer.
+
 Nothing under this directory is installed, imported by production code,
 normative for current USW behavior or included in the main test discovery.
 Tests are preserved as historical material and are not guaranteed to run from

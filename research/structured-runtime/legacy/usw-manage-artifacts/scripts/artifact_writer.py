@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from typing import NamedTuple
 
 
-ARTIFACT_SCRIPT = Path(__file__).parents[2] / "usw-initialize-project/scripts/artifact_contract.py"
+ARTIFACT_SCRIPT = Path(__file__).parents[3] / "runtime/artifact_contract.py"
 CONTRACT = SimpleNamespace(**runpy.run_path(str(ARTIFACT_SCRIPT)))
 
 PLANNING_ROLES = {

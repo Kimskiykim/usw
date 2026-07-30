@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
-SCRIPT_PATH = ROOT / "skills/usw-initialize-project/scripts/artifact_contract.py"
+SCRIPT_PATH = ROOT / "research/structured-runtime/runtime/artifact_contract.py"
 SPEC = importlib.util.spec_from_file_location("replanning_artifacts", SCRIPT_PATH)
 ARTIFACTS = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

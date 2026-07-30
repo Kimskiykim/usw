@@ -1,8 +1,5 @@
-# Developer Handoff
+# Developer Handoff Router
 
-- Updated: {{updated_at}}
-- Status: idle
+## Operations
 
-## Active work
-
-No active work.
+No registered operations.

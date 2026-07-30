@@ -1,7 +1,0 @@
-interface:
-  display_name: "Route task with USW"
-  short_description: "Preview a fitting flow before execution"
-  default_prompt: "Use $usw-route-task to assess this task, preview a fitting Markdown flow, and wait for my approval before saving or running it."
-
-policy:
-  allow_implicit_invocation: false

@@ -18,7 +18,10 @@ def load(name: str, relative: str):
     return module
 
 
-ARTIFACTS = load("atomic_artifacts", "skills/usw-manage-artifacts/scripts/artifact_writer.py")
+ARTIFACTS = load(
+    "atomic_artifacts",
+    "research/structured-runtime/legacy/usw-manage-artifacts/scripts/artifact_writer.py",
+)
 
 
 class AtomicSkillContractTests(unittest.TestCase):
@@ -36,8 +39,7 @@ class AtomicSkillContractTests(unittest.TestCase):
             "usw-initialize-project", "usw-manage-handoff",
             "usw-refine-intent",
             "usw-plan-small-steps", "usw-explain-me", "usw-create-flow",
-            "usw-run-flow", "usw-route-task",
-            "usw-manage-artifacts",
+            "usw-run-flow", "usw-find-flow",
         )
         for skill_name in skills:
             with self.subTest(skill=skill_name):
@@ -49,6 +51,31 @@ class AtomicSkillContractTests(unittest.TestCase):
         content = (ROOT / "skills/usw-plan-small-steps/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("не запускает микротаску", content)
         self.assertIn("task-level `plan.md`/`handoff.md`", content)
+
+    def test_handoff_skills_share_the_routed_operation_contract(self):
+        manage = (ROOT / "skills/usw-manage-handoff/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        run = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        initialize = (
+            ROOT / "skills/usw-initialize-project/SKILL.md"
+        ).read_text(encoding="utf-8")
+        fallback = (
+            ROOT
+            / "skills/usw-initialize-project/references/llm-fallback.md"
+        ).read_text(encoding="utf-8")
+
+        for content in (manage, run, initialize, fallback):
+            self.assertIn(".usw/handoffs/", content)
+        self.assertIn("assert-current", manage)
+        self.assertIn("несколько routes без selector", manage)
+        self.assertIn("independent top-level invocations", run)
+        self.assertIn("Nested child не владеет durable state", run)
+        self.assertIn("deterministic empty operation router", initialize)
+        self.assertIn("deterministic empty router", fallback)
+        self.assertNotIn("{{updated_at}}", fallback)
 
     def test_writer_writes_only_authorized_planning_artifact(self):
         with tempfile.TemporaryDirectory() as directory:

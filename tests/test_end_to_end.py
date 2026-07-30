@@ -34,14 +34,18 @@ class TextFirstEndToEndTests(unittest.TestCase):
             invocation = RUNNER.prepare_markdown_run(
                 project, project / "usw/flows", "review", "check the change"
             )
-            handoff, operation = HANDOFF.begin_handoff(
+            router = project / ".usw/HANDOFF.md"
+            first_state, operation = HANDOFF.begin_handoff(
                 project,
                 invocation.flow.name,
                 invocation.flow.origin,
                 invocation.flow.identity,
                 invocation.user_input,
             )
-            self.assertIn(operation, handoff.read_text(encoding="utf-8"))
+            self.assertIn(
+                operation, first_state.read_text(encoding="utf-8")
+            )
+            self.assertIn(operation, router.read_text(encoding="utf-8"))
 
             HANDOFF.outcome_handoff(
                 project,
@@ -56,9 +60,11 @@ class TextFirstEndToEndTests(unittest.TestCase):
             )
             self.assertEqual(
                 "completed",
-                HANDOFF.validate_handoff(handoff.read_text(encoding="utf-8")),
+                HANDOFF.validate_handoff(
+                    first_state.read_text(encoding="utf-8")
+                ),
             )
-            _, next_operation = HANDOFF.begin_handoff(
+            second_state, next_operation = HANDOFF.begin_handoff(
                 project,
                 invocation.flow.name,
                 invocation.flow.origin,
@@ -68,14 +74,104 @@ class TextFirstEndToEndTests(unittest.TestCase):
             self.assertNotEqual(operation, next_operation)
             self.assertEqual(
                 "in_progress",
-                HANDOFF.validate_handoff(handoff.read_text(encoding="utf-8")),
+                HANDOFF.validate_handoff(
+                    second_state.read_text(encoding="utf-8")
+                ),
+            )
+            self.assertEqual(
+                tuple(sorted((operation, next_operation))),
+                HANDOFF.validate_router(
+                    router.read_text(encoding="utf-8")
+                ),
             )
 
-            HANDOFF.finish_handoff(project)
+            HANDOFF.finish_handoff(project, operation)
+            HANDOFF.finish_handoff(project, next_operation)
             self.assertEqual(
-                "idle",
-                HANDOFF.validate_handoff(handoff.read_text(encoding="utf-8")),
+                (),
+                HANDOFF.validate_router(router.read_text(encoding="utf-8")),
             )
+
+    def test_two_roots_aggregate_children_without_cross_operation_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            INIT.initialize_usw(project)
+            shared = project / "usw/flows"
+            (shared / "root.md").write_text("Coordinate.\n", encoding="utf-8")
+            (shared / "child.md").write_text("Inspect.\n", encoding="utf-8")
+            root_invocations = [
+                RUNNER.prepare_markdown_run(
+                    project, shared, "root", value
+                )
+                for value in ("frontend", "backend")
+            ]
+            roots = []
+            states = []
+            for invocation in root_invocations:
+                state, operation = HANDOFF.begin_handoff(
+                    project,
+                    invocation.flow.name,
+                    invocation.flow.origin,
+                    invocation.flow.identity,
+                    invocation.user_input,
+                )
+                states.append(state)
+                roots.append(
+                    RUNNER.bind_root_execution(
+                        invocation,
+                        handoff_enabled=True,
+                        operation=operation,
+                    )
+                )
+
+            aggregates = []
+            for index, root in enumerate(roots):
+                child = RUNNER.prepare_nested_run(
+                    project,
+                    shared,
+                    "child",
+                    f"child {index}",
+                    parent=root.context,
+                    branch_label=f"branch-{index}",
+                    assert_current=HANDOFF.assert_current_handoff,
+                )
+                result = RUNNER.record_nested_result(
+                    child,
+                    status="completed",
+                    factual_result=f"Child {index} completed.",
+                )
+                aggregates.append(
+                    RUNNER.collect_nested_results(
+                        root.context, (result,)
+                    )
+                )
+
+            HANDOFF.outcome_handoff(
+                project,
+                "completed",
+                operation=roots[0].context.root_identity,
+                done=aggregates[0].results[0].factual_result,
+                position="First root completed.",
+                next_action="Finish the first operation.",
+                blocker="None.",
+            )
+
+            self.assertEqual(
+                "completed",
+                HANDOFF.validate_handoff(
+                    states[0].read_text(encoding="utf-8")
+                ),
+            )
+            self.assertEqual(
+                "in_progress",
+                HANDOFF.validate_handoff(
+                    states[1].read_text(encoding="utf-8")
+                ),
+            )
+            with self.assertRaisesRegex(RUNNER.FlowError, "another root"):
+                RUNNER.collect_nested_results(
+                    roots[1].context, aggregates[0].results
+                )
 
     def test_handoff_false_runs_without_reading_existing_state(self):
         with tempfile.TemporaryDirectory() as directory:

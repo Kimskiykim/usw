@@ -1,11 +1,88 @@
+import importlib.util
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
+RUNNER_PATH = ROOT / "skills/usw-run-flow/scripts/run_flow.py"
+RUNNER_SPEC = importlib.util.spec_from_file_location(
+    "scenario_text_flow_runner", RUNNER_PATH
+)
+RUNNER = importlib.util.module_from_spec(RUNNER_SPEC)
+assert RUNNER_SPEC.loader is not None
+sys.modules[RUNNER_SPEC.name] = RUNNER
+RUNNER_SPEC.loader.exec_module(RUNNER)
 
 
 class TextFlowContractTests(unittest.TestCase):
+    def test_nested_results_stay_root_bound_and_preserve_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            shared = project / "usw/flows"
+            shared.mkdir(parents=True)
+            for name in ("root", "frontend", "backend"):
+                (shared / f"{name}.md").write_text(
+                    f"{name}\n", encoding="utf-8"
+                )
+            root = RUNNER.bind_root_execution(
+                RUNNER.prepare_markdown_run(
+                    project, shared, "root", "coordinate"
+                ),
+                handoff_enabled=True,
+                operation="usw-operation:" + "1" * 64,
+            )
+            children = [
+                RUNNER.prepare_nested_run(
+                    project,
+                    shared,
+                    name,
+                    f"{name} input",
+                    parent=root.context,
+                    branch_label=name,
+                    assert_current=lambda *_: None,
+                )
+                for name in ("frontend", "backend")
+            ]
+            results = (
+                RUNNER.record_nested_result(
+                    children[0],
+                    status="completed",
+                    factual_result="Frontend complete.",
+                    checks=("frontend tests passed",),
+                ),
+                RUNNER.record_nested_result(
+                    children[1],
+                    status="decision_required",
+                    factual_result="Backend reached a permission boundary.",
+                    blocker="Deployment permission is required.",
+                    next_action="Ask the user for permission.",
+                ),
+            )
+
+            aggregate = RUNNER.collect_nested_results(
+                root.context, results
+            )
+
+            self.assertEqual(results, aggregate.results)
+            self.assertEqual(
+                ("decision_required",), aggregate.unresolved_statuses
+            )
+            self.assertFalse(aggregate.automatic_retry)
+
+            other_root = RUNNER.bind_root_execution(
+                root.invocation,
+                handoff_enabled=True,
+                operation="usw-operation:" + "2" * 64,
+            )
+            with self.assertRaisesRegex(
+                RUNNER.FlowError, "another root"
+            ):
+                RUNNER.collect_nested_results(
+                    other_root.context, results
+                )
+
     def test_removed_machine_runtime_is_not_in_production_skills(self):
         self.assertFalse(
             (ROOT / "skills/usw-run-flow/scripts/capability_registry.py").exists()
@@ -38,12 +115,20 @@ class TextFlowContractTests(unittest.TestCase):
         create = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
             encoding="utf-8"
         )
+        structured = (
+            ROOT / "skills/usw-create-flow/references/version-2.md"
+        ).read_text(encoding="utf-8")
         self.assertIn("один immutable logical invocation", run)
         self.assertIn("Использовать только возвращённый `markdown`", run)
         self.assertIn("не machine DSL", run)
         self.assertIn("больше не поддерживается", run)
+        self.assertIn("independent top-level invocations", run)
+        self.assertIn("`assert-current`", run)
+        self.assertIn("Nested child не владеет durable state", run)
+        self.assertIn("Новый Begin создаёт другую route", run)
         self.assertIn("человекочитаемый `version-2`", create)
-        self.assertIn("Не добавлять `--experimental-structured`", create)
+        self.assertIn("не machine DSL", structured)
+        self.assertNotIn("--experimental-structured", create)
 
     def test_examples_are_non_normative_text_flows(self):
         examples = ROOT / "skills/usw-initialize-project/templates/flows/examples"

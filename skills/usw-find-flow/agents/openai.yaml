@@ -1,0 +1,7 @@
+interface:
+  display_name: "Find a USW flow"
+  short_description: "Find an existing flow without running it"
+  default_prompt: "Use $usw-find-flow to find an existing local or shared Markdown flow for this intent without creating or running anything."
+
+policy:
+  allow_implicit_invocation: false

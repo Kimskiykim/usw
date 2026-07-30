@@ -23,7 +23,9 @@ def load(name, relative):
 
 INIT = load("e2e_init", "skills/usw-initialize-project/scripts/init_usw.py")
 HANDOFF = load("e2e_handoff", "skills/usw-manage-handoff/scripts/handoff_state.py")
-ARTIFACTS = load("e2e_artifacts", "skills/usw-initialize-project/scripts/artifact_contract.py")
+ARTIFACTS = load(
+    "e2e_artifacts", "research/structured-runtime/runtime/artifact_contract.py"
+)
 FLOWS = load("e2e_flows", "skills/usw-initialize-project/scripts/flow_scenario.py")
 RUNNER = load("e2e_runner", "skills/usw-run-flow/scripts/run_flow.py")
 

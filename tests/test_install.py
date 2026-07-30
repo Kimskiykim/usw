@@ -18,14 +18,17 @@ class InstallTests(unittest.TestCase):
         "usw-explain-me",
         "usw-create-flow",
         "usw-run-flow",
-        "usw-route-task",
-        "usw-manage-artifacts",
+        "usw-find-flow",
     )
     COMMAND_NAMES = (
         "usw-init.md",
         "usw-handoff.md",
         "usw-resume.md",
         "usw-reviewer-llm-critic.md",
+        "usw-find-flow.md",
+        "usw-refine-intent.md",
+        "usw-plan-small-steps.md",
+        "usw-explain-me.md",
     )
 
     def run_install(self, home: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -131,10 +134,10 @@ class InstallTests(unittest.TestCase):
                 )
                 self.assertEqual(source, installed_path.read_text(encoding="utf-8"))
 
-    def test_force_removes_legacy_skill_names(self):
+    def test_force_removes_legacy_names(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
-            legacy_paths = [
+            legacy_skills = [
                 base / name
                 for base in (home / ".qwen/skills", home / ".agents/skills")
                 for name in (
@@ -142,16 +145,24 @@ class InstallTests(unittest.TestCase):
                     "usw-refine-task",
                     "usw-execute-task",
                     "usw-verify-task",
+                    "usw-route-task",
                 )
             ]
-            for path in legacy_paths:
+            for path in legacy_skills:
                 path.mkdir(parents=True)
                 (path / "SKILL.md").write_text("legacy\n", encoding="utf-8")
+            legacy_commands = [
+                base / "usw-route-task.md"
+                for base in (home / ".qwen/commands", home / ".codex/prompts")
+            ]
+            for path in legacy_commands:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("legacy\n", encoding="utf-8")
 
             result = self.run_install(home, "--force")
 
             self.assertEqual(0, result.returncode, result.stderr)
-            for path in legacy_paths:
+            for path in (*legacy_skills, *legacy_commands):
                 self.assertFalse(path.exists())
 
 

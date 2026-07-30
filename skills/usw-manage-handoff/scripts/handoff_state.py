@@ -49,7 +49,13 @@ FLOW_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 FLOW_IDENTITY = re.compile(r"^usw-markdown:(local|shared):[0-9a-f]{64}$")
 INVOCATION = re.compile(r"^[0-9a-f]{32}$")
+OPERATION_ID = re.compile(r"^usw-operation:([0-9a-f]{64})$")
 LEGACY_HEADER = "| Subject | Role | Attempt | Current operation | Status | Updated |"
+ROUTER_HEADER = "# Developer Handoff Router"
+ROUTER_EMPTY = "No registered operations."
+ROUTER_ENTRY = re.compile(
+    r"^- `(usw-operation:([0-9a-f]{64}))` -> `handoffs/([0-9a-f]{64})\.md`$"
+)
 SKILLS_ROOT = Path(__file__).parents[2]
 CONFIG = SimpleNamespace(
     **runpy.run_path(
@@ -71,6 +77,11 @@ class Handoff:
     metadata: dict[str, str]
     sections: dict[str, str]
     legacy: bool = False
+
+
+@dataclass(frozen=True)
+class Router:
+    operations: tuple[str, ...]
 
 
 def find_project_root(start: Path) -> Path:
@@ -121,6 +132,58 @@ def _handoff_path(root: Path) -> Path:
     return root / ".usw" / "HANDOFF.md"
 
 
+def _operation_path(root: Path, operation: str) -> Path:
+    return root / ".usw" / operation_relative_path(operation)
+
+
+def _operation_candidate_path(root: Path, operation: str) -> Path:
+    return root / ".usw" / operation_candidate_relative_path(operation)
+
+
+@contextmanager
+def _opened_operation_directory(
+    root: Path,
+    local_descriptor: int,
+    *,
+    create: bool = False,
+):
+    local_path = root / ".usw"
+    path = local_path / "handoffs"
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
+        os, "O_NOFOLLOW", 0
+    )
+    try:
+        descriptor = os.open("handoffs", flags, dir_fd=local_descriptor)
+    except FileNotFoundError as error:
+        if not create:
+            raise HandoffError(
+                "missing_operation_state",
+                f"operation state directory is missing: {path}",
+            ) from error
+        try:
+            os.mkdir("handoffs", 0o700, dir_fd=local_descriptor)
+        except FileExistsError:
+            pass
+        try:
+            descriptor = os.open("handoffs", flags, dir_fd=local_descriptor)
+        except OSError as open_error:
+            raise HandoffError(
+                "unsafe_handoff", f"unsafe operation state directory: {path}"
+            ) from open_error
+    except OSError as error:
+        raise HandoffError(
+            "unsafe_handoff", f"unsafe operation state directory: {path}"
+        ) from error
+    try:
+        if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            raise HandoffError(
+                "unsafe_handoff", f"unsafe operation state directory: {path}"
+            )
+        yield path, descriptor
+    finally:
+        os.close(descriptor)
+
+
 def _read_regular_at(
     directory_descriptor: int,
     name: str,
@@ -145,6 +208,35 @@ def _read_regular_at(
         os.close(descriptor)
 
 
+def _read_operation_at(
+    root: Path,
+    local_descriptor: int,
+    operation: str,
+) -> tuple[Path, str, Handoff]:
+    path = _operation_path(root, operation)
+    with _opened_operation_directory(
+        root, local_descriptor
+    ) as (_, operation_descriptor):
+        content = _read_regular_at(
+            operation_descriptor,
+            operation_filename(operation),
+            path,
+            missing_code="missing_operation",
+            missing_detail=f"operation is not registered: {operation}",
+        )
+    parsed = parse_handoff(content)
+    if (
+        parsed.legacy
+        or parsed.status == "idle"
+        or parsed.metadata.get("Operation") != operation
+    ):
+        raise HandoffError(
+            "invalid_operation_state",
+            "operation document identity does not match its route",
+        )
+    return path, content, parsed
+
+
 def _timestamp(value: datetime | None = None) -> str:
     return (value or datetime.now(timezone.utc)).isoformat(timespec="seconds")
 
@@ -166,6 +258,83 @@ def render_idle(updated_at: datetime | None = None) -> str:
         "## Active work\n\n"
         "No active work.\n"
     )
+
+
+def _operation_suffix(operation: str) -> str:
+    matched = OPERATION_ID.fullmatch(operation)
+    if matched is None:
+        raise HandoffError("invalid_operation", "invalid operation identity")
+    return matched.group(1)
+
+
+def operation_filename(operation: str) -> str:
+    return f"{_operation_suffix(operation)}.md"
+
+
+def operation_relative_path(operation: str) -> str:
+    return f"handoffs/{operation_filename(operation)}"
+
+
+def operation_candidate_filename(operation: str) -> str:
+    return f"{_operation_suffix(operation)}.next.md"
+
+
+def operation_candidate_relative_path(operation: str) -> str:
+    return f"handoffs/{operation_candidate_filename(operation)}"
+
+
+def render_router(operations: tuple[str, ...] | list[str] = ()) -> str:
+    normalized = tuple(sorted(operations))
+    if len(normalized) != len(set(normalized)):
+        raise HandoffError("invalid_router", "duplicate operation identity")
+    for operation in normalized:
+        _operation_suffix(operation)
+    body = (
+        [ROUTER_EMPTY]
+        if not normalized
+        else [
+            f"- `{operation}` -> `{operation_relative_path(operation)}`"
+            for operation in normalized
+        ]
+    )
+    return "\n".join((ROUTER_HEADER, "", "## Operations", "", *body, ""))
+
+
+def parse_router(content: str) -> Router:
+    lines = content.splitlines()
+    if (
+        len(lines) < 5
+        or lines[:4] != [ROUTER_HEADER, "", "## Operations", ""]
+        or any(line.startswith(("# ", "## ")) for line in lines[4:])
+    ):
+        raise HandoffError("invalid_router", "invalid HANDOFF router structure")
+    entries = lines[4:]
+    if entries == [ROUTER_EMPTY]:
+        return Router(())
+    if not entries or ROUTER_EMPTY in entries:
+        raise HandoffError("invalid_router", "invalid HANDOFF router entries")
+    operations: list[str] = []
+    for line in entries:
+        matched = ROUTER_ENTRY.fullmatch(line)
+        if matched is None or matched.group(2) != matched.group(3):
+            raise HandoffError("invalid_router", "invalid HANDOFF router entry")
+        operations.append(matched.group(1))
+    if operations != sorted(operations):
+        raise HandoffError("invalid_router", "router entries must be sorted")
+    if len(operations) != len(set(operations)):
+        raise HandoffError("invalid_router", "duplicate operation identity")
+    return Router(tuple(operations))
+
+
+def validate_router(content: str) -> tuple[str, ...]:
+    return parse_router(content).operations
+
+
+def handoff_format(content: str) -> str:
+    if content.startswith(f"{ROUTER_HEADER}\n"):
+        parse_router(content)
+        return "router"
+    return "legacy" if parse_handoff(content).legacy else "generic"
 
 
 def _metadata(lines: list[str]) -> dict[str, str]:
@@ -372,9 +541,13 @@ def render_begin(
 
 
 def _atomic_write(
-    directory_descriptor: int, path: Path, content: str
+    directory_descriptor: int,
+    path: Path,
+    content: str,
+    *,
+    validator=parse_handoff,
 ) -> None:
-    temporary = f".HANDOFF.md.{secrets.token_hex(8)}.tmp"
+    temporary = f".{path.name}.{secrets.token_hex(8)}.tmp"
     flags = (
         os.O_WRONLY
         | os.O_CREAT
@@ -402,7 +575,7 @@ def _atomic_write(
             missing_code="missing_handoff",
             missing_detail="HANDOFF disappeared after write",
         )
-        parse_handoff(saved)
+        validator(saved)
         if saved != content:
             raise HandoffError(
                 "write_verification",
@@ -415,9 +588,9 @@ def _atomic_write(
             pass
 
 
-def _read_handoff_locked(
+def _read_handoff_content_locked(
     root: Path, directory_descriptor: int
-) -> tuple[Path, str, str]:
+) -> tuple[Path, str]:
     path = _handoff_path(root)
     content = _read_regular_at(
         directory_descriptor,
@@ -426,13 +599,284 @@ def _read_handoff_locked(
         missing_code="missing_handoff",
         missing_detail="run /usw-init before using handoff",
     )
+    return path, content
+
+
+def _install_operation_document(
+    operation_descriptor: int,
+    path: Path,
+    content: str,
+    *,
+    allow_existing: bool = True,
+) -> bool:
+    name = path.name
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(name, flags, 0o600, dir_fd=operation_descriptor)
+    except FileExistsError:
+        if not allow_existing:
+            raise HandoffError(
+                "operation_collision",
+                f"operation document already exists: {path}",
+            )
+        saved = _read_regular_at(
+            operation_descriptor,
+            name,
+            path,
+            missing_code="missing_operation",
+            missing_detail=f"operation document disappeared: {path}",
+        )
+        parse_handoff(saved)
+        if saved != content:
+            raise HandoffError(
+                "operation_collision",
+                "existing operation document does not match migration state",
+            )
+        return False
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.fsync(operation_descriptor)
+        saved = _read_regular_at(
+            operation_descriptor,
+            name,
+            path,
+            missing_code="missing_operation",
+            missing_detail=f"operation document disappeared: {path}",
+        )
+        parse_handoff(saved)
+        if saved != content:
+            raise HandoffError(
+                "write_verification",
+                "operation document changed before exact readback verification",
+            )
+        return True
+    except BaseException:
+        try:
+            os.unlink(name, dir_fd=operation_descriptor)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _ensure_router_locked(
+    root: Path, directory_descriptor: int
+) -> tuple[Path, Router | None, str]:
+    path, content = _read_handoff_content_locked(root, directory_descriptor)
+    state_format = handoff_format(content)
+    if state_format == "router":
+        return path, parse_router(content), content
+    if state_format == "legacy":
+        return path, None, content
+
+    current = parse_handoff(content)
+    if current.status == "idle":
+        candidate = render_router()
+        _atomic_write(
+            directory_descriptor,
+            path,
+            candidate,
+            validator=parse_router,
+        )
+        return path, Router(()), candidate
+
+    operation = current.metadata["Operation"]
+    operation_path = _operation_path(root, operation)
+    created = False
+    try:
+        with _opened_operation_directory(
+            root, directory_descriptor, create=True
+        ) as (_, operation_descriptor):
+            created = _install_operation_document(
+                operation_descriptor, operation_path, content
+            )
+        candidate = render_router([operation])
+        _atomic_write(
+            directory_descriptor,
+            path,
+            candidate,
+            validator=parse_router,
+        )
+        return path, Router((operation,)), candidate
+    except BaseException:
+        if created:
+            try:
+                with _opened_operation_directory(
+                    root, directory_descriptor
+                ) as (_, operation_descriptor):
+                    os.unlink(operation_path.name, dir_fd=operation_descriptor)
+                    os.fsync(operation_descriptor)
+            except FileNotFoundError:
+                pass
+        raise
+
+
+def _registered_operation_locked(
+    root: Path,
+    directory_descriptor: int,
+    operation: str,
+) -> tuple[Path, Router, Path, str, Handoff]:
+    _operation_suffix(operation)
+    router_path, router, _ = _ensure_router_locked(root, directory_descriptor)
+    if router is None:
+        raise HandoffError(
+            "legacy_recovery_required",
+            "legacy HANDOFF is read-only until explicit finish",
+        )
+    if operation not in router.operations:
+        raise HandoffError(
+            "stale_operation",
+            f"operation is not registered: {operation}",
+        )
+    operation_path, content, current = _read_operation_at(
+        root, directory_descriptor, operation
+    )
+    return router_path, router, operation_path, content, current
+
+
+def _write_operation_at(
+    root: Path,
+    directory_descriptor: int,
+    operation: str,
+    content: str,
+) -> Path:
+    path = _operation_path(root, operation)
+    parsed = parse_handoff(content)
+    if (
+        parsed.legacy
+        or parsed.status == "idle"
+        or parsed.metadata.get("Operation") != operation
+    ):
+        raise HandoffError(
+            "invalid_operation_state",
+            "operation document identity does not match its route",
+        )
+    with _opened_operation_directory(
+        root, directory_descriptor
+    ) as (_, operation_descriptor):
+        _atomic_write(
+            operation_descriptor,
+            path,
+            content,
+            validator=parse_handoff,
+        )
+    return path
+
+
+def _read_handoff_locked(
+    root: Path, directory_descriptor: int
+) -> tuple[Path, str, str]:
+    path, content = _read_handoff_content_locked(root, directory_descriptor)
     return path, content, parse_handoff(content).status
 
 
-def read_handoff(project: Path) -> tuple[Path, str, str]:
+def _operation_summaries_locked(
+    root: Path,
+    directory_descriptor: int,
+    router: Router,
+) -> tuple[dict[str, str], ...]:
+    summaries = []
+    for operation in router.operations:
+        path, _, current = _read_operation_at(
+            root, directory_descriptor, operation
+        )
+        summaries.append(
+            {
+                "operation": operation,
+                "flow": current.metadata["Flow"],
+                "status": current.status,
+                "path": str(path),
+            }
+        )
+    return tuple(summaries)
+
+
+def discover_handoffs(
+    project: Path,
+) -> tuple[Path, str, tuple[dict[str, str], ...], bool]:
     root = _enabled_root(project)
     with _locked_local_directory(root) as (_, descriptor):
-        return _read_handoff_locked(root, descriptor)
+        path, router, content = _ensure_router_locked(root, descriptor)
+        if router is None:
+            return path, content, (), True
+        return (
+            path,
+            content,
+            _operation_summaries_locked(root, descriptor, router),
+            False,
+        )
+
+
+def assert_current_handoff(project: Path, operation: str) -> Path:
+    root = _enabled_root(project)
+    _operation_suffix(operation)
+    with _locked_local_directory(root) as (_, descriptor):
+        router_path, content = _read_handoff_content_locked(root, descriptor)
+        if handoff_format(content) != "router":
+            raise HandoffError(
+                "inactive_parent",
+                "nested execution requires a routed parent operation",
+            )
+        router = parse_router(content)
+        if operation not in router.operations:
+            raise HandoffError(
+                "inactive_parent",
+                f"parent operation is not registered: {operation}",
+            )
+        operation_path, _, current = _read_operation_at(
+            root, descriptor, operation
+        )
+        if current.status not in RECOVERABLE_STATUSES:
+            raise HandoffError(
+                "inactive_parent",
+                f"parent operation is not recoverable: {current.status}",
+            )
+        if not router_path.is_file():
+            raise HandoffError(
+                "inactive_parent", "HANDOFF router disappeared during verification"
+            )
+        return operation_path
+
+
+def read_handoff(
+    project: Path,
+    operation: str | None = None,
+) -> tuple[Path, str, str]:
+    root = _enabled_root(project)
+    with _locked_local_directory(root) as (_, descriptor):
+        path, router, content = _ensure_router_locked(root, descriptor)
+        if router is None:
+            if operation is not None:
+                raise HandoffError(
+                    "legacy_recovery_required",
+                    "legacy HANDOFF has no routed operation identity",
+                )
+            return path, content, parse_handoff(content).status
+        if operation is not None:
+            _, _, operation_path, operation_content, current = (
+                _registered_operation_locked(root, descriptor, operation)
+            )
+            return operation_path, operation_content, current.status
+        if not router.operations:
+            return path, content, "idle"
+        if len(router.operations) > 1:
+            raise HandoffError(
+                "operation_selection_required",
+                "multiple operations are registered; select one from Show",
+            )
+        operation = router.operations[0]
+        operation_path, operation_content, current = _read_operation_at(
+            root, descriptor, operation
+        )
+        return operation_path, operation_content, current.status
 
 
 def begin_handoff(
@@ -444,21 +888,51 @@ def begin_handoff(
 ) -> tuple[Path, str]:
     root = _enabled_root(project)
     with _locked_local_directory(root) as (_, descriptor):
-        path, content, status = _read_handoff_locked(root, descriptor)
-        current = parse_handoff(content)
-        if current.legacy:
+        router_path, router, _ = _ensure_router_locked(root, descriptor)
+        if router is None:
             raise HandoffError(
                 "legacy_recovery_required",
                 "legacy HANDOFF is read-only; inspect or finish it before a new flow",
             )
-        if status in RECOVERABLE_STATUSES:
-            raise HandoffError(
-                "active_handoff",
-                "a recoverable non-idle HANDOFF blocks every new flow until explicit finish",
-            )
         candidate = render_begin(flow_name, origin, flow_identity, user_input)
-        _atomic_write(descriptor, path, candidate)
-        return path, parse_handoff(candidate).metadata["Operation"]
+        operation = parse_handoff(candidate).metadata["Operation"]
+        if operation in router.operations:
+            raise HandoffError(
+                "operation_collision", "operation identity is already registered"
+            )
+        operation_path = _operation_path(root, operation)
+        created = False
+        try:
+            with _opened_operation_directory(
+                root, descriptor, create=True
+            ) as (_, operation_descriptor):
+                created = _install_operation_document(
+                    operation_descriptor,
+                    operation_path,
+                    candidate,
+                    allow_existing=False,
+                )
+            routed = render_router((*router.operations, operation))
+            _atomic_write(
+                descriptor,
+                router_path,
+                routed,
+                validator=parse_router,
+            )
+        except BaseException:
+            if created:
+                try:
+                    with _opened_operation_directory(
+                        root, descriptor
+                    ) as (_, operation_descriptor):
+                        os.unlink(
+                            operation_path.name, dir_fd=operation_descriptor
+                        )
+                        os.fsync(operation_descriptor)
+                except FileNotFoundError:
+                    pass
+            raise
+        return operation_path, operation
 
 
 def outcome_handoff(
@@ -477,17 +951,9 @@ def outcome_handoff(
         raise HandoffError("invalid_transition", f"invalid outcome status: {status}")
     root = _enabled_root(project)
     with _locked_local_directory(root) as (_, descriptor):
-        path, content, _ = _read_handoff_locked(root, descriptor)
-        current = parse_handoff(content)
-        if current.legacy:
-            raise HandoffError(
-                "legacy_recovery_required",
-                "legacy HANDOFF cannot receive generic Outcome",
-            )
-        if current.metadata.get("Operation") != operation:
-            raise HandoffError(
-                "stale_operation", "Outcome does not match the current operation"
-            )
+        _, _, path, _, current = _registered_operation_locked(
+            root, descriptor, operation
+        )
         if current.status not in RECOVERABLE_STATUSES:
             raise HandoffError(
                 "invalid_transition", f"cannot update terminal status: {current.status}"
@@ -513,45 +979,45 @@ def outcome_handoff(
         )
         candidate = _render_active(metadata=metadata, sections=sections)
         parse_handoff(candidate)
-        _atomic_write(descriptor, path, candidate)
-        return path
+        return _write_operation_at(
+            root, descriptor, operation, candidate
+        )
 
 
-def save_handoff(project: Path, candidate: Path) -> tuple[Path, str]:
+def save_handoff(
+    project: Path,
+    operation: str,
+    candidate: Path,
+) -> tuple[Path, str]:
     root = _enabled_root(project)
-    target = _handoff_path(root)
+    _operation_suffix(operation)
     candidate = Path(os.path.abspath(candidate))
     candidate = Path(os.path.realpath(candidate.parent)) / candidate.name
-    expected = target.with_name("HANDOFF.next.md")
+    expected = _operation_candidate_path(root, operation)
     if candidate != expected:
         raise HandoffError(
             "invalid_candidate", f"candidate must be {expected}"
         )
     with _locked_local_directory(root) as (_, descriptor):
-        _, current_content, _ = _read_handoff_locked(root, descriptor)
-        current = parse_handoff(current_content)
-        content = _read_regular_at(
-            descriptor,
-            candidate.name,
-            candidate,
-            missing_code="missing_candidate",
-            missing_detail=f"candidate is missing: {candidate}",
+        _, _, target, _, current = _registered_operation_locked(
+            root, descriptor, operation
         )
+        with _opened_operation_directory(
+            root, descriptor
+        ) as (_, operation_descriptor):
+            content = _read_regular_at(
+                operation_descriptor,
+                candidate.name,
+                candidate,
+                missing_code="missing_candidate",
+                missing_detail=f"candidate is missing: {candidate}",
+            )
         parsed = parse_handoff(content)
         if parsed.legacy:
             raise HandoffError("legacy_read_only", "legacy HANDOFF cannot be saved")
-        if current.legacy:
-            raise HandoffError(
-                "legacy_recovery_required",
-                "legacy HANDOFF is read-only until explicit finish",
-            )
         if parsed.status == "idle":
             raise HandoffError(
                 "invalid_transition", "only explicit finish may write idle"
-            )
-        if current.status == "idle":
-            raise HandoffError(
-                "invalid_transition", "only Begin may create an operation from idle"
             )
         if current.status not in RECOVERABLE_STATUSES:
             raise HandoffError(
@@ -575,17 +1041,70 @@ def save_handoff(project: Path, candidate: Path) -> tuple[Path, str]:
                 "invalid_transition",
                 "save cannot change immutable operation context",
             )
-        _atomic_write(descriptor, target, content)
-        os.unlink(candidate.name, dir_fd=descriptor)
+        _write_operation_at(root, descriptor, operation, content)
+        with _opened_operation_directory(
+            root, descriptor
+        ) as (_, operation_descriptor):
+            os.unlink(candidate.name, dir_fd=operation_descriptor)
+            os.fsync(operation_descriptor)
         return target, parsed.status
 
 
-def finish_handoff(project: Path) -> Path:
+def finish_handoff(
+    project: Path,
+    operation: str | None = None,
+) -> Path:
     root = _enabled_root(project)
     with _locked_local_directory(root) as (_, descriptor):
-        path, content, _ = _read_handoff_locked(root, descriptor)
-        parse_handoff(content)
-        _atomic_write(descriptor, path, render_idle())
+        path, router, _ = _ensure_router_locked(root, descriptor)
+        if router is None:
+            if operation is not None:
+                raise HandoffError(
+                    "legacy_recovery_required",
+                    "legacy HANDOFF has no routed operation identity",
+                )
+            _atomic_write(
+                descriptor,
+                path,
+                render_router(),
+                validator=parse_router,
+            )
+            return path
+
+        if operation is None:
+            if not router.operations:
+                return path
+            if len(router.operations) > 1:
+                raise HandoffError(
+                    "operation_selection_required",
+                    "multiple operations are registered; select one from Show",
+                )
+            operation = router.operations[0]
+        _registered_operation_locked(root, descriptor, operation)
+
+        remaining = tuple(
+            current
+            for current in router.operations
+            if current != operation
+        )
+        _atomic_write(
+            descriptor,
+            path,
+            render_router(remaining),
+            validator=parse_router,
+        )
+        with _opened_operation_directory(
+            root, descriptor
+        ) as (_, operation_descriptor):
+            for name in (
+                operation_candidate_filename(operation),
+                operation_filename(operation),
+            ):
+                try:
+                    os.unlink(name, dir_fd=operation_descriptor)
+                except FileNotFoundError:
+                    pass
+            os.fsync(operation_descriptor)
         return path
 
 
@@ -596,11 +1115,16 @@ def _print(value: object) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Manage generic USW handoff")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("show", "resume", "finish"):
+    for name in ("show", "resume"):
         command = commands.add_parser(name)
         command.add_argument("project", nargs="?", default=".", type=Path)
+        command.add_argument("operation", nargs="?")
+    finish = commands.add_parser("finish")
+    finish.add_argument("project", nargs="?", default=".", type=Path)
+    finish.add_argument("operation", nargs="?")
     save = commands.add_parser("save")
     save.add_argument("project", type=Path)
+    save.add_argument("operation")
     save.add_argument("candidate", type=Path)
     begin = commands.add_parser("begin")
     begin.add_argument("project", type=Path)
@@ -618,11 +1142,41 @@ def main(argv: list[str] | None = None) -> int:
     outcome.add_argument("--blocker", required=True)
     outcome.add_argument("--check", action="append", default=[])
     outcome.add_argument("--reference", action="append", default=[])
+    assert_current = commands.add_parser("assert-current")
+    assert_current.add_argument("project", type=Path)
+    assert_current.add_argument("operation")
     args = parser.parse_args(argv)
 
     try:
         if args.command in {"show", "resume"}:
-            path, content, status = read_handoff(args.project)
+            if args.operation is None:
+                router_path, router_content, operations, legacy = (
+                    discover_handoffs(args.project)
+                )
+                if not legacy and len(operations) != 1:
+                    _print(
+                        {
+                            "path": str(router_path),
+                            "status": (
+                                "idle"
+                                if not operations
+                                else "selection_required"
+                            ),
+                            "legacy": False,
+                            "recovery_only": bool(operations),
+                            "operations": operations,
+                            "content": router_content,
+                        }
+                    )
+                    return 0
+                selected = (
+                    operations[0]["operation"] if operations else None
+                )
+            else:
+                selected = args.operation
+            path, content, status = read_handoff(
+                args.project, selected
+            )
             parsed = parse_handoff(content)
             _print(
                 {
@@ -634,9 +1188,19 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
         elif args.command == "finish":
-            _print({"path": str(finish_handoff(args.project)), "status": "idle"})
+            _print(
+                {
+                    "path": str(
+                        finish_handoff(args.project, args.operation)
+                    ),
+                    "status": "finished",
+                    "operation": args.operation,
+                }
+            )
         elif args.command == "save":
-            path, status = save_handoff(args.project, args.candidate)
+            path, status = save_handoff(
+                args.project, args.operation, args.candidate
+            )
             _print({"path": str(path), "status": status})
         elif args.command == "begin":
             path, operation = begin_handoff(
@@ -651,6 +1215,18 @@ def main(argv: list[str] | None = None) -> int:
                     "path": str(path),
                     "status": "in_progress",
                     "operation": operation,
+                }
+            )
+        elif args.command == "assert-current":
+            _print(
+                {
+                    "path": str(
+                        assert_current_handoff(
+                            args.project, args.operation
+                        )
+                    ),
+                    "status": "current",
+                    "operation": args.operation,
                 }
             )
         else:

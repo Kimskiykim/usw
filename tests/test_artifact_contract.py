@@ -9,9 +9,9 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 SCRIPT_PATH = (
     ROOT
-    / "skills"
-    / "usw-initialize-project"
-    / "scripts"
+    / "research"
+    / "structured-runtime"
+    / "runtime"
     / "artifact_contract.py"
 )
 SPEC = importlib.util.spec_from_file_location("artifact_contract", SCRIPT_PATH)

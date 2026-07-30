@@ -18,10 +18,11 @@ USW — устанавливаемый самостоятельный workflow �
             └── dev-test.md
 ```
 
-При effective `handoff: true` `.usw/HANDOFF.md` создаётся как локальная точка
-входа разработчика для возобновления работы и изначально сообщает, что активной
-работы нет. При `handoff: false` initializer и runtime не читают, не проверяют
-и не изменяют этот файл.
+При effective `handoff: true` `.usw/HANDOFF.md` создаётся как пустой
+детерминированный router локальных операций. Mutable recovery state появляется
+лениво в `.usw/handoffs/<operation-id-hex>.md` при первом Begin. При
+`handoff: false` initializer и runtime не читают, не проверяют и не изменяют
+router, operation directory или operation-scoped candidates.
 `.usw/.gitignore` с `*` — удобный local default, а решение о tracking остаётся
 за пользователем и не проверяется initializer-ом. `.usw/flows/` создаётся только
 при первом local custom flow, а `.usw/refinements/` — при первом уточнении
@@ -65,38 +66,76 @@ tracked/Git-visible untracked tree. `.git`, `.usw` и configured workflow roots
 исключены: workflow-only запись или commit не инвалидирует evidence, изменение
 product file инвалидирует.
 
-При включённом handoff перед паузой сохраните только актуальное состояние:
+### Routed handoff
+
+При включённом handoff каждый top-level запуск получает уникальный
+`usw-operation:<hex>` и собственный state-файл. `.usw/HANDOFF.md` хранит только
+маршруты от exact operation ID к этим файлам; status, проверки и recovery
+context живут в operation document.
+
+Перед паузой активного запуска сохраните только его актуальное состояние:
 
 ```text
 /usw-handoff
 ```
 
-Команда сохраняет flow, origin, identity, input digest, status, выполненное,
-narrative current position, blocker, проверки, references и ровно одно следующее
-действие. Это компактная локальная summary, а не machine cursor, shared history
-или лог tool calls. Чтобы очистить завершённую работу, вызовите:
+Команда адресует exact ID, возвращённый Begin, и сохраняет flow, origin,
+identity, input digest, status, выполненное, narrative current position,
+blocker, проверки, references и ровно одно следующее действие. Это компактная
+локальная summary, а не machine cursor, shared history или лог tool calls.
+
+В новой сессии восстановите конкретный контекст:
 
 ```text
-/usw-handoff finish
+/usw-resume <operation-id>
 ```
 
-В новой сессии восстановите контекст:
+Без ID пустой router сообщает, что продолжать нечего, единственная route
+выбирается автоматически, а несколько routes показываются списком без
+автоматического продолжения. `in_progress` означает возможное прерывание и
+никогда не запускается повторно автоматически. `paused`, `blocked` и
+`decision_required` требуют явного решения.
+
+Два независимых чата могут работать одновременно:
 
 ```text
-/usw-resume
+чат UI:      Begin → usw-operation:<ui-hex>  → handoffs/<ui-hex>.md
+чат backend: Begin → usw-operation:<api-hex> → handoffs/<api-hex>.md
 ```
 
-`in_progress` означает возможное прерывание и никогда не запускается повторно
-автоматически. `in_progress`, `paused`, `blocked` и `decision_required`
-блокируют новый flow до explicit finish. `completed` и `failed` остаются
-доступны для inspect, но следующий Begin атомарно заменяет их новой operation,
-поэтому ручной finish между завершёнными flow не нужен. Каждый Begin добавляет
-уникальный invocation token, поэтому даже одинаковые flow/input получают разные
-operation ID. Outcome обязан предъявить exact ID, возвращённый Begin; stale
-writer не может перезаписать более новую operation. Handoff transitions
-сериализуются без отдельного state-файла.
-Старый role-based HANDOFF можно прочитать для recovery или очистить через
-finish; он не мигрируется и не получает generic Outcome.
+Их короткие router/state transitions сериализуются, но сами flow не
+сериализуются. Это заявление пользователя о независимости: USW не обнаруживает
+и не разрешает конфликты в product files, поэтому UI и backend scope должны
+быть действительно разделены либо координироваться обычными средствами Git.
+Даже одинаковые flow/input получают разные IDs, а Outcome или Save могут
+изменить только exact зарегистрированную operation.
+
+`completed` и `failed` остаются доступными для inspect и не заменяются
+следующим Begin. Очистка всегда адресная:
+
+```text
+/usw-handoff finish <operation-id>
+```
+
+Без ID Finish использует те же zero/one/many rules. Он удаляет только выбранную
+route и её operation files; остальные запуски остаются зарегистрированы.
+
+Текущий generic single-state HANDOFF при первом обращении мигрирует в router
+без потери recovery content. Старый role-based HANDOFF остаётся read-only до
+explicit Finish. Для rollback на USW, который понимает только single-state
+HANDOFF, сначала завершите через Finish все routed operations, затем замените
+пустой router на generic idle HANDOFF старой версии. Product files и flow
+менять для rollback не требуется.
+
+### Nested flows
+
+Named child flow, запущенный root executor-ом, использует execution identity
+родителя и не получает собственную route. Перед child model execution
+проверяется exact recoverable parent; child не вызывает Begin, Outcome, Save
+или Finish и возвращает root-у фактический status/result. Только root агрегирует
+результаты детей и записывает свой Outcome. Независимые children могут
+исполняться параллельно, но USW не создаёт scheduler, durable child registry,
+automatic retry или conflict detection.
 
 ## Text-first execution
 
@@ -122,6 +161,14 @@ finish; он не мигрируется и не получает generic Outcom
 parser и не обещают deterministic transitions, atomic parallelism или durable
 cursor. При существенной неоднозначности модель возвращает
 `decision_required`.
+
+После успешного сохранения `usw-create-flow` автоматически показывает до трёх
+применимых design suggestions: verification, human decision, approval внешнего
+действия, error handling, bounded refinement, независимые проверки или reuse
+явно названного skill из текущего списка доступных skills. Каждая подсказка
+объясняет конкретный риск и содержит готовый Markdown. Flow изменяется только
+после выбора `применить`; `изменить` сначала показывает новый preview без
+записи, а `пропустить` сохраняет уже записанный файл без revision.
 
 Flow text не предоставляет полномочия. Commit, push, PR, deploy, release,
 destructive и другие внешние действия используют обычные permission boundaries.
@@ -158,10 +205,10 @@ Existing `.usw/FLOW.json` не читается, не изменяется и н
 может продолжиться.
 
 ```text
-resolve exact Markdown bytes → optional HANDOFF/in_progress → model
-pause or decision → generic HANDOFF outcome (без automatic retry)
-completed → HANDOFF/completed
-/usw-handoff finish → idle
+resolve exact Markdown bytes → optional Begin/root operation → root model
+nested child → assert-current(root) → child result → root aggregation
+root natural stop → Outcome(exact root ID, без automatic retry)
+/usw-handoff finish <operation-id> → remove exact route
 ```
 
 Снятый parser, typed runtime, JSON checkpoints, специализированные тесты и два
@@ -177,52 +224,46 @@ text flow → compiler → derived machine flow → durable state → iterator
 Compiler и iterator появятся только в отдельном change с измеримой потребностью
 в machine guarantees.
 
-## Разовая маршрутизация задачи
+## Поиск flow
 
-`usw-route-task` — явный opt-in для одной задачи. Skill оценивает, нужен ли
-отдельный процесс, ищет подходящий local/shared flow и packaged examples, а при
-необходимости готовит новый или адаптированный flow:
+Команда `/usw-find-flow` по одному явному намерению ищет подходящий уже
+существующий runnable flow среди direct local и shared Markdown entries:
 
 ```text
-$usw-route-task "Разбери сложный flaky test и подготовь исправление"
+/usw-find-flow "Проверь текущий план перед реализацией"
 ```
 
-Для простой задачи skill только рекомендует прямое выполнение и
-останавливается. Для сложной задачи он показывает полный flow, обоснование,
-origin и будущий путь, затем ждёт подтверждения. До подтверждения flow и
-HANDOFF не изменяются.
+При однозначном совпадении finder возвращает name, origin, path, краткое
+основание и готовую команду `$usw-run-flow` с исходным намерением. При
+равноценных вариантах он показывает `ambiguous`, а при отсутствии подходящего
+flow — `no-match`.
 
-После подтверждения exact match запускается через `usw-run-flow`. Новый или
-адаптированный flow сначала сохраняется через `usw-create-flow`, затем
-запускается с исходной задачей. Project-specific flow сохраняется в shared
-root, личный, экспериментальный или неоднозначный — в `.usw/flows`.
-
-Маршрутизация не ищет flow в интернете или других проектах, не включается
-неявно и не действует на следующие задачи. Подтверждение flow не предоставляет
-дополнительных полномочий на commit, push, PR, deploy, release или destructive
-actions.
+Finder ничего не создаёт и не запускает, не читает HANDOFF и не ищет packaged
+examples, внешние каталоги или другие проекты. Для нового процесса отдельно
+используйте `$usw-create-flow`, для выбранного существующего —
+`$usw-run-flow`.
 
 ## Декомпозиция на микротаски
 
-Skill `usw-plan-small-steps` превращает большую спецификацию или выбранный
+Команда `/usw-plan-small-steps` через backend skill превращает большую спецификацию или выбранный
 подход в небольшие исполняемые задачи. У каждой заранее есть результат,
 критерий готовности и проверка с ожидаемым наблюдением. Skill не выполняет
 задачи и не выбирает следующий scope: результат возвращается orchestrator.
 
 ```text
-$usw-plan-small-steps Разбей миграцию API на микротаски.
+/usw-plan-small-steps Разбей миграцию API на микротаски.
 ```
 
 ## Итеративное уточнение намерения
 
-Skill `usw-refine-intent` ведёт обсуждение в режиме опросника: разбирает один
+Команда `/usw-refine-intent` через backend skill ведёт обсуждение в режиме опросника: разбирает один
 decision case за ход, фиксирует подтверждённое решение и только затем переходит
 к следующему. Локальная ненормативная сессия, журнал решений и необязательный
 итог сохраняются в `.usw/refinements/<refinement-id>/`. Skill не создаёт
 backlog, planning change, planning artifacts или executable tasks:
 
 ```text
-$usw-refine-intent Давай по одному решению уточним идею этой задачи.
+/usw-refine-intent Давай по одному решению уточним идею этой задачи.
 ```
 
 Это breaking rename без alias: установленный `usw-refine-task` удаляется при
@@ -230,13 +271,13 @@ $usw-refine-intent Давай по одному решению уточним и
 
 ## Перевод предложений агента
 
-Skill `usw-explain-me` переводит план, рекомендацию, дифф, ошибку
+Команда `/usw-explain-me` через backend skill переводит план, рекомендацию, дифф, ошибку
 или статус кодингового агента на выбранный уровень подробности: от «как для
 хлебушка» до экспертного разбора. По умолчанию он подстраивается под запрос и
 не начинает менять код:
 
 ```text
-$usw-explain-me Объясни это как для хлебушка: <вставьте ответ агента>
+/usw-explain-me Объясни это как для хлебушка: <вставьте ответ агента>
 ```
 
 ## Qwen Code
