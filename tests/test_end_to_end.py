@@ -76,7 +76,7 @@ class EndToEndWorkflowTests(unittest.TestCase):
             self.assertEqual("fresh", report.freshness)
             self.assertIn("usw-source-v1:", content)
 
-            flow = project / "usw/flows/examples/analysis.md"
+            flow = project / "usw/flows/examples/chat-review.md"
             flow.write_text(flow.read_text() + "\n<!-- local policy note -->\n")
             self.assertEqual("fresh", HANDOFF.reconcile_handoff(project)[1].freshness)
             (project / "product.txt").write_text("v2\n", encoding="utf-8")
@@ -139,7 +139,7 @@ class EndToEndWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             INIT.initialize_usw(project)
-            example_path = project / "usw/flows/examples/analysis.md"
+            example_path = project / "usw/flows/examples/chat-review.md"
             example_before = example_path.read_bytes()
             script = project / "scripts/check.py"
             script.parent.mkdir()

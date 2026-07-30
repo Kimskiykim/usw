@@ -221,9 +221,6 @@ class InitializeUswTests(unittest.TestCase):
                 "usw/templates/task/development-evidence.md",
                 "usw/templates/task/testing-evidence.md",
                 "usw/templates/review/receipt.md",
-                "usw/flows/examples/analysis.md",
-                "usw/flows/examples/development.md",
-                "usw/flows/examples/testing.md",
                 "usw/flows/examples/chat-review.md",
                 "usw/flows/examples/dev-test.md",
             }
@@ -254,9 +251,6 @@ class InitializeUswTests(unittest.TestCase):
                     (project / "usw/templates" / relative).read_text(encoding="utf-8"),
                 )
             for name in (
-                "analysis.md",
-                "development.md",
-                "testing.md",
                 "chat-review.md",
                 "dev-test.md",
             ):
@@ -395,9 +389,6 @@ class InitializeUswTests(unittest.TestCase):
                     ".usw/.gitignore",
                     ".usw/HANDOFF.md",
                     "usw.yaml",
-                    "usw/flows/examples/analysis.md",
-                    "usw/flows/examples/development.md",
-                    "usw/flows/examples/testing.md",
                     "usw/flows/examples/chat-review.md",
                     "usw/flows/examples/dev-test.md",
                 },
@@ -451,28 +442,27 @@ class InitializeUswTests(unittest.TestCase):
             INIT_USW.initialize_usw(project)
             flow_root = project / "usw/flows"
             examples = flow_root / "examples"
-            analysis = examples / "analysis.md"
-            development = examples / "development.md"
-            testing = examples / "testing.md"
-            analysis.write_text("custom analysis\n", encoding="utf-8")
-            development.unlink()
-            testing_before = testing.read_bytes()
+            chat_review = examples / "chat-review.md"
+            dev_test = examples / "dev-test.md"
+            chat_review.write_text("custom chat review\n", encoding="utf-8")
+            dev_test.unlink()
             legacy = flow_root / "flow-scenario-analysis.md"
             legacy.write_text("legacy project scenario\n", encoding="utf-8")
             legacy_before = legacy.read_bytes()
 
             results = INIT_USW.initialize_usw(project)
 
-            self.assertEqual("custom analysis\n", analysis.read_text(encoding="utf-8"))
-            self.assertTrue(development.is_file())
-            self.assertEqual(testing_before, testing.read_bytes())
+            self.assertEqual(
+                "custom chat review\n", chat_review.read_text(encoding="utf-8")
+            )
+            self.assertTrue(dev_test.is_file())
             self.assertEqual(legacy_before, legacy.read_bytes())
             created = {
                 path.relative_to(project.resolve()).as_posix()
                 for path, was_created in results
                 if was_created
             }
-            self.assertEqual({"usw/flows/examples/development.md"}, created)
+            self.assertEqual({"usw/flows/examples/dev-test.md"}, created)
 
     def test_does_not_overwrite_existing_local_state(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -49,9 +49,8 @@ Create only missing paths:
   `usw.yaml`;
 - create configured flow and review roots;
 - create `.usw/.gitignore` with `*` and a trailing newline;
-- create `<flows.root>/examples/` and copy exactly the five packaged examples
-  `analysis.md`, `development.md`, `testing.md`, `chat-review.md`, and
-  `dev-test.md` there;
+- create `<flows.root>/examples/` and copy exactly the two packaged examples
+  `chat-review.md` and `dev-test.md` there;
 - for provider `standalone`, create the configured artifact root with
   `changes/` and `templates/{change,task,review}` and copy every packaged
   `templates/change/*.md`, `templates/task/*.md`, and `templates/review/*.md`

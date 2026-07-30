@@ -1,16 +1,15 @@
 ## Context
 
-The initializer currently installs three root-level files using the legacy role
-scenario schema. The current public runner defaults to ordinary Markdown and
-does not route those files through the role-scenario validator. Two useful
-project-owned flows, `chat-review` and `dev-test`, are not installed at all.
+The initializer currently installs five examples. Only `chat-review` and
+`dev-test` encode reusable workflows; the three generic role examples duplicate
+ordinary agent behavior.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
 - Make initialized flow assets unambiguously educational.
-- Install five examples without making them directly executable by name.
+- Install two examples without making them directly executable by name.
 - Align Python initialization, LLM fallback, README, specs and tests.
 - Preserve every existing project file, including legacy role scenarios.
 
@@ -34,15 +33,6 @@ Alternative: keep examples at the root with an `example-` prefix. Rejected
 because they would remain directly executable and the label would be the only
 guard against confusing guidance with a supported contract.
 
-### Use ordinary Markdown and explicit copy-before-use notices
-
-The three role examples are rewritten as concise human guidance. Every file
-starts with the same non-normative notice and tells the user to copy it to a
-flat flow filename before adapting and running it.
-
-Alternative: retain the legacy Purpose/Inputs/Branches schema. Rejected because
-that schema is precisely what currently overstates runtime enforcement.
-
 ### Keep current project flows and packaged examples synchronized
 
 The packaged `chat-review` and `dev-test` examples copy the current shared flow
@@ -51,14 +41,14 @@ body with the project-owned source so later edits cannot silently drift.
 
 ### Preserve legacy files additively
 
-The initializer replaces its expected inventory but never removes old
-`flow-scenario-*` files. Existing workspaces therefore keep user-owned content;
-fresh workspaces receive only the five examples.
+The initializer replaces its expected inventory but never removes files.
+Existing workspaces therefore keep previously installed examples; fresh
+workspaces receive only the two retained examples.
 
 ## Risks / Trade-offs
 
-- [Existing projects retain obsolete-looking files] → Document that re-init is
-  create-only and legacy cleanup is a user decision.
+- [Existing projects retain removed examples] → Document that re-init is
+  create-only and cleanup is a user decision.
 - [Duplicated chat-review/dev-test assets can drift] → Add an exact parity test
   after stripping the standard example notice.
 - [Users may expect examples to run in place] → Use a nested non-resolvable path
@@ -67,12 +57,12 @@ fresh workspaces receive only the five examples.
 ## Migration Plan
 
 1. Ship the new packaged example inventory.
-2. New initialization creates only the five nested examples.
+2. New initialization creates only the two nested examples.
 3. Re-initialization creates missing examples and preserves all old files.
 4. Rollback restores the previous package inventory without deleting examples
    already created in user projects.
 
 ## Open Questions
 
-None. The owner selected five non-normative examples and create-only legacy
-preservation.
+None. The owner selected `chat-review` and `dev-test` and create-only
+preservation for existing project files.

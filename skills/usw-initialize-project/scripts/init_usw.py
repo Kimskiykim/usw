@@ -23,9 +23,6 @@ DEFAULT_SPECIALIZED_ROOTS = {
     "reviews": "usw/reviews",
 }
 FLOW_EXAMPLE_PATHS = (
-    "analysis.md",
-    "development.md",
-    "testing.md",
     "chat-review.md",
     "dev-test.md",
 )

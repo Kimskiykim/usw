@@ -18,9 +18,6 @@ class PackageLayoutTests(unittest.TestCase):
             "task/development-evidence.md": "Writer authority: Development only.",
             "task/testing-evidence.md": "Writer authority: Testing only.",
             "review/receipt.md": "## Reviewed artifact identities",
-            "flows/examples/analysis.md": "Ненормативный пример",
-            "flows/examples/development.md": "Ненормативный пример",
-            "flows/examples/testing.md": "Ненормативный пример",
             "flows/examples/chat-review.md": "# Flow: chat-review",
             "flows/examples/dev-test.md": "# Flow: dev-test",
             "local/HANDOFF.md": "## Trusted source snapshot",
@@ -60,7 +57,7 @@ class PackageLayoutTests(unittest.TestCase):
             "for provider `openspec`, do not create or modify",
             "Preserve every existing regular file byte-for-byte",
             "Never overwrite, merge, delete, chmod, or follow links",
-            "the five packaged examples",
+            "the two packaged examples",
             "Do not create, migrate, or remove legacy `flow-scenario-*.md` files",
         ):
             self.assertIn(fragment, fallback)
@@ -70,28 +67,6 @@ class PackageLayoutTests(unittest.TestCase):
             "git check-ignore",
         ):
             self.assertNotIn(obsolete, fallback)
-
-    def test_brainstorm_skill_has_required_structure_and_implicit_invocation(self):
-        skill_dir = ROOT / "skills" / "usw-brainstorm-solutions"
-        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-        metadata = (skill_dir / "agents" / "openai.yaml").read_text(
-            encoding="utf-8"
-        )
-
-        required_fragments = (
-            "## Короткий формат — основной для MVP",
-            "## Полный формат — для сложных задач",
-            "### Контекст и ограничения",
-            "### Проблема",
-            "### Причина",
-            "### Пути решения",
-            "### 1. Рекомендуемый подход",
-            "### Рекомендация",
-            "### Первый шаг",
-        )
-        for fragment in required_fragments:
-            self.assertIn(fragment, skill)
-        self.assertIn("allow_implicit_invocation: true", metadata)
 
     def test_plan_small_steps_skill_has_microtask_workflow_and_implicit_invocation(self):
         skill_dir = ROOT / "skills" / "usw-plan-small-steps"
@@ -357,9 +332,6 @@ class PackageLayoutTests(unittest.TestCase):
             (skills_dir / "usw-initialize-project" / "SKILL.md").is_file()
         )
         self.assertTrue((skills_dir / "usw-manage-handoff" / "SKILL.md").is_file())
-        self.assertTrue(
-            (skills_dir / "usw-brainstorm-solutions" / "SKILL.md").is_file()
-        )
         self.assertTrue((skills_dir / "usw-plan-small-steps" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-refine-intent" / "SKILL.md").is_file())
         self.assertFalse((skills_dir / "usw-refine-task").exists())
@@ -384,9 +356,6 @@ class PackageLayoutTests(unittest.TestCase):
             (skills_dir / "usw-initialize-project" / "SKILL.md").is_file()
         )
         self.assertTrue((skills_dir / "usw-manage-handoff" / "SKILL.md").is_file())
-        self.assertTrue(
-            (skills_dir / "usw-brainstorm-solutions" / "SKILL.md").is_file()
-        )
         self.assertTrue((skills_dir / "usw-plan-small-steps" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-refine-intent" / "SKILL.md").is_file())
         self.assertFalse((skills_dir / "usw-refine-task").exists())
@@ -418,9 +387,6 @@ class PackageLayoutTests(unittest.TestCase):
         )
         self.assertTrue(
             (ROOT / "skills" / "usw-manage-handoff" / "SKILL.md").is_file()
-        )
-        self.assertTrue(
-            (ROOT / "skills" / "usw-brainstorm-solutions" / "SKILL.md").is_file()
         )
         self.assertTrue(
             (ROOT / "skills" / "usw-plan-small-steps" / "SKILL.md").is_file()

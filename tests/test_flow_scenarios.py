@@ -114,14 +114,11 @@ class FlowScenarioTests(unittest.TestCase):
 
 
 class FlowExampleTests(unittest.TestCase):
-    def test_exactly_five_examples_are_non_normative_and_nested(self):
+    def test_exactly_two_examples_are_non_normative_and_nested(self):
         self.assertEqual(
             [
-                "analysis.md",
                 "chat-review.md",
                 "dev-test.md",
-                "development.md",
-                "testing.md",
             ],
             sorted(path.name for path in EXAMPLES.glob("*.md")),
         )
@@ -132,13 +129,8 @@ class FlowExampleTests(unittest.TestCase):
                 self.assertIn("не запускается на месте", content)
                 self.assertIn("<flows.root>/<name>.md", content)
 
-        for name in ("analysis", "development", "testing"):
-            content = (EXAMPLES / f"{name}.md").read_text(encoding="utf-8")
-            self.assertNotIn("# Flow scenario:", content)
-            self.assertNotIn("## Write authority", content)
-
         with self.assertRaisesRegex(CUSTOM.CustomFlowError, "missing_flow"):
-            CUSTOM.load_markdown_flow(EXAMPLES.parent, "analysis")
+            CUSTOM.load_markdown_flow(EXAMPLES.parent, "chat-review")
 
     def test_named_examples_match_current_project_flows_after_notice(self):
         for name in ("chat-review", "dev-test"):
@@ -175,7 +167,7 @@ Prepare, review, and verify a plan.
 4. `independent-checks` — PARALLEL:
    - `check-scope` — CALL SUBAGENT `scope-reviewer`.
      - Действия субагента:
-       1. `analyze-scope` — CALL SKILL `usw-brainstorm-solutions`.
+       1. `analyze-scope` — CALL SKILL `usw-structured-review`.
    - `check-safety` — CALL HUMAN `security-reviewer`.
 5. `run-check` — CALL SCRIPT `scripts/check.py`.
    - Аргументы: `--strict` `one argument`
@@ -304,7 +296,7 @@ This remains ordinary Markdown.
             "duplicate name": valid.replace("`final-review`", "`prepare-plan`"),
             "missing payload": valid.replace(
                 "     - Действия субагента:\n"
-                "       1. `analyze-scope` — CALL SKILL `usw-brainstorm-solutions`.\n",
+                "       1. `analyze-scope` — CALL SKILL `usw-structured-review`.\n",
                 "",
             ),
             "incomplete gate": valid.replace(

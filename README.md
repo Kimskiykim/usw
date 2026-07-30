@@ -29,9 +29,6 @@ OpenSpec поддерживается как явно выбранный compati
     │       └── receipt.md
     ├── flows/
     │   └── examples/
-    │       ├── analysis.md
-    │       ├── development.md
-    │       ├── testing.md
     │       ├── chat-review.md
     │       └── dev-test.md
     └── reviews/
@@ -42,7 +39,7 @@ OpenSpec поддерживается как явно выбранный compati
 `.usw/.gitignore` с `*` — удобный local default, а решение о tracking остаётся
 за пользователем и не проверяется initializer-ом. `.usw/flows/` создаётся только
 при первом local custom flow, а `.usw/refinements/` — при первом уточнении
-намерения; `/usw-init` эти lazy directories не материализует. Пять flow
+намерения; `/usw-init` эти lazy directories не материализует. Два flow
 examples создаются только в shared `<flows.root>/examples/`.
 
 `usw.yaml` версии 1 выбирает provider и project-relative roots. По умолчанию
@@ -58,7 +55,7 @@ change, task, evidence и review-артефактов в `<artifacts.root>/templ
 Повторная инициализация не перезаписывает изменённые проектные шаблоны. В режиме
 OpenSpec эти шаблоны не копируются в provider-owned `openspec/`.
 При явно выбранном OpenSpec provider initializer создаёт только configured
-flow/review roots, пять flow examples, `.usw/.gitignore` и
+flow/review roots, два flow examples, `.usw/.gitignore` и
 `.usw/HANDOFF.md`; `openspec/**` он не создаёт и не изменяет.
 
 Для детерминированной инициализации skill сначала ищет Python 3.10+ под именем
@@ -205,18 +202,6 @@ current evidence, unresolved non-blocking observations и delivery owner
 (пользователь по умолчанию). Принятие Delivery не разрешает автоматически
 commit, push, pull request, deployment или release — каждое внешнее действие
 требует отдельного явного разрешения.
-
-## Структурный брейншторм
-
-Skill `usw-brainstorm-solutions` помогает разбирать запросы вида «как решить
-эту задачу?». Для простых вопросов он использует короткий формат: задача,
-проблема, предполагаемая причина, пути решения и первый шаг. Для сложных задач
-добавляет контекст, ограничения и обоснованную рекомендацию. Он может
-срабатывать автоматически или быть вызван явно:
-
-```text
-$usw-brainstorm-solutions Как сократить время ревью pull request?
-```
 
 ## Декомпозиция на микротаски
 

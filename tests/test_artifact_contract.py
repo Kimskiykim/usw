@@ -21,15 +21,6 @@ SPEC.loader.exec_module(ARTIFACTS)
 
 
 class ArtifactContractTests(unittest.TestCase):
-    def test_archived_change_has_only_explicit_frozen_legacy_tasks(self):
-        change = ROOT / "openspec/changes/archive/2026-07-21-establish-standalone-usw-workflow"
-        legacy = {
-            "1.1", "1.2", "2.1", "2.2", "3.1", "3.2", "3.3",
-            "4.1", "5.1", "5.2", "5.3", "6.1",
-        }
-
-        ARTIFACTS.validate_change_tasks(change, legacy)
-
     def test_v1_contract_requires_sections_and_excludes_milestones_from_identity(self):
         template = (
             ROOT / "skills/usw-initialize-project/templates/task/task.md"

@@ -24,7 +24,7 @@ After agreement, read and follow
 [references/llm-fallback.md](references/llm-fallback.md). If the user declines,
 stop without changes.
 
-Report whether `usw.yaml`, configured USW roots, the five nested flow examples,
+Report whether `usw.yaml`, configured USW roots, the two nested flow examples,
 standalone project-owned artifact templates, `.usw/.gitignore`, and
 `.usw/HANDOFF.md` were created or already existed. Never overwrite an existing
 file. Treat a real `openspec/` directory only as a hint: detection alone never
@@ -60,7 +60,6 @@ template to `<artifacts.root>/templates/`. Preserve existing project-owned
 templates byte-for-byte. Do not copy templates into an OpenSpec artifact root.
 
 The bundled files under `templates/flows/examples/` are guidance, not runtime
-fallbacks or normative flow contracts. Copy exactly `analysis.md`,
-`development.md`, `testing.md`, `chat-review.md`, and `dev-test.md` to
-`<flows.root>/examples/`. Never create, migrate, or delete legacy
-`flow-scenario-*.md` files.
+fallbacks or normative flow contracts. Copy exactly `chat-review.md` and
+`dev-test.md` to `<flows.root>/examples/`. Never create, migrate, or delete
+legacy `flow-scenario-*.md` files.

@@ -10,11 +10,11 @@
 - `<artifacts.root>/templates/change/{proposal.md,design.md,spec.md,tasks.md}`;
 - `<artifacts.root>/templates/task/{task.md,development-evidence.md,testing-evidence.md}`;
 - `<artifacts.root>/templates/review/receipt.md`;
-- `<flows.root>/examples/{analysis.md,development.md,testing.md,chat-review.md,dev-test.md}`;
+- `<flows.root>/examples/{chat-review.md,dev-test.md}`;
 - `<reviews.root>/`;
 - `.usw/.gitignore` и `.usw/HANDOFF.md`.
 
-Для OpenSpec provider initialization SHALL создавать только configured USW flow/review roots, пять перечисленных flow examples и два local `.usw` files и MUST NOT создавать или изменять provider-owned `openspec/**`.
+Для OpenSpec provider initialization SHALL создавать только configured USW flow/review roots, два перечисленных flow examples и два local `.usw` files и MUST NOT создавать или изменять provider-owned `openspec/**`.
 
 Initialization MUST NOT создавать, удалять, перемещать или перезаписывать legacy `flow-scenario-analysis.md`, `flow-scenario-development.md` или `flow-scenario-testing.md`.
 

@@ -112,7 +112,7 @@ boundaries. Для `PARALLEL` результаты children сохраняютс
 4. `independent-checks` — PARALLEL:
    - `check-scope` — CALL SUBAGENT `scope-reviewer`.
      - Действия субагента:
-       1. `analyze-scope` — CALL SKILL `usw-brainstorm-solutions`.
+       1. `analyze-scope` — CALL SKILL `usw-structured-review`.
    - `check-safety` — CALL HUMAN `security-reviewer`.
 ```
 

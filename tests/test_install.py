@@ -13,7 +13,6 @@ class InstallTests(unittest.TestCase):
     SKILL_NAMES = (
         "usw-initialize-project",
         "usw-manage-handoff",
-        "usw-brainstorm-solutions",
         "usw-refine-intent",
         "usw-plan-small-steps",
         "usw-explain-me",
@@ -68,9 +67,6 @@ class InstallTests(unittest.TestCase):
                     ).is_file()
                 )
                 for example in (
-                    "analysis.md",
-                    "development.md",
-                    "testing.md",
                     "chat-review.md",
                     "dev-test.md",
                 ):
