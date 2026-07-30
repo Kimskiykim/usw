@@ -79,10 +79,13 @@ action недоступен.
 ## HANDOFF и возврат
 
 Begin сохраняет exact flow origin/identity, scope, постоянное имя boundary,
-loop counters, именованные inputs и completed results. Outcome записывается до
-изменения cursor. Resume с другой
-identity, origin или source context считается stale; `in_progress` не
-перезапускается автоматически.
+run ID и state reference. Машинный checkpoint хранится в
+`.usw/states/flows/<origin>/<flow-name>/<run-id>/flow.json` и содержит loop
+counters, именованные inputs и completed results. Outcome записывается до
+изменения cursor. Resume выбирает точный run ID; другая identity, origin или
+source context считается stale, а `in_progress` не перезапускается
+автоматически. Корневой `.usw/FLOW.json` поддерживается только как legacy
+checkpoint и не смешивается с run-scoped state.
 
 После одной parent boundary вернуть управление пользователю. Commit, push, PR,
 deployment и release по-прежнему требуют отдельного явного разрешения.

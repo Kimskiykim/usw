@@ -1,88 +1,125 @@
 ---
 name: usw-manage-handoff
-description: Save, finish, inspect, or resume developer-local work through .usw/HANDOFF.md without a separate runtime state.
+description: Manage optional developer-local generic work state in .usw/HANDOFF.md.
 ---
 
-# Manage USW Handoff
+# Manage USW handoff
 
-Treat `.usw/HANDOFF.md` as mutable developer-local state, never as a shared
-project artifact or historical audit log. This capability writes only
-`local-checkpoint`; it never chooses or invokes the next executor.
-Return point: immediately after one confirmed begin, outcome, save, resume, or
-finish operation; return control to `usw-run-flow`.
+Handoff является optional developer-local recovery state, а не shared artifact,
+audit log или machine cursor.
 
-Find the nearest Git root. If `.usw/HANDOFF.md` is missing, stop and tell the
-user to run `/usw-init`.
+## Configuration boundary
 
-## Operation summary
+Сначала найти ближайший Git root и прочитать top-level `handoff` из `usw.yaml`.
+Отсутствующее поле означает `true`.
 
-Keep the existing section order and metadata header. Use metadata as follows:
+При `handoff: false` не проверять наличие, тип или содержимое
+`.usw/HANDOFF.md`, не создавать и не изменять его. Для любого mode объяснить,
+что capability отключена конфигурацией, и вернуть управление.
 
-- `Subject`: exact task/change scope;
-- `Role`: Analysis, Development, or Testing;
-- `Attempt`: current flow name and step, for example `dev-test:1/2`;
-- `Current operation`: task-local `op-NNN`;
-- `Status`: `in_progress`, `completed`, `failed`, `blocked`,
-  `decision_required`, or `paused`;
-- `Updated`: ISO 8601 timestamp with timezone.
+При enabled handoff использовать
+`scripts/handoff_state.py`. Missing HANDOFF требует `/usw-init`.
 
-The first `Session journal` row is the current operation. One completed row per
-flow step is enough; do not log tool calls, reads, or separate begin/end events.
+## Generic state
 
-```markdown
-| Operation | Actor | Executor | Flow cursor | Intent | Declared writes | Status | Result | Actual areas | Started |
-|---|---|---|---|---|---|---|---|---|---|
-| op-001 | codex | agent:main | dev-test:1/2 | Implement the selected task. | implementation, implementation-tests | in_progress | none | none | 2026-07-21T18:00:00+03:00 |
-```
+Generic state содержит flow name, origin, flow identity, input digest, operation
+identity и human-readable sections:
 
-Use `Verification`, `Next action`, `References`, and `Trusted source snapshot`
-for compact facts only. Refer to specifications and evidence by path; never copy
-their contents into HANDOFF.
+- Input;
+- Done;
+- Current position;
+- Next action;
+- Blocker;
+- Checks;
+- References.
+
+`Current position` — narrative text, не machine cursor. Handoff не требует
+role, typed subject, write authority или evidence.
+
+Статусы: `idle`, `in_progress`, `paused`, `blocked`, `decision_required`,
+`failed`, `completed`.
+
+`in_progress`, `paused`, `blocked` и `decision_required` блокируют новую
+operation до explicit finish. `failed` и `completed` сохраняются для inspect,
+но следующий Begin может атомарно заменить их новой operation.
 
 ## Begin
 
-Begin is available only to an already validated flow orchestrator.
+Begin доступен только после безопасного resolve flow и когда HANDOFF находится
+в `idle`, `failed` или `completed`:
 
-1. Read the current HANDOFF. `idle` permits a new operation. Any non-idle state
-   permits only the same flow/scope; otherwise stop and offer resume or
-   `/usw-handoff finish`.
-2. If `.usw/FLOW.json` exists, stop. Do not merge, overwrite, or delete it.
-3. Choose the next `op-NNN`, preserve completed rows, and write `in_progress`
-   with actor, exact executor, flow cursor, one-line intent, declared writes,
-   started timestamp, `Result: none`, and `Actual areas: none`.
-4. Read `.usw/HANDOFF.md` back. Confirm every required value is present and
-   matches the planned executor. On any mismatch or write failure, return a
-   `local-state-boundary`; the executor must not run.
-5. Return the HANDOFF reference to `usw-run-flow` immediately.
+```text
+python3 <script> begin <project> <flow> <origin> <flow-identity> <exact-input>
+```
+
+Script создаёт уникальный invocation token, вычисляет operation identity из
+token, origin, flow identity и SHA-256 exact input, atomарно записывает
+`in_progress` и подтверждает exact-byte readback. Даже одинаковые повторные
+запуски имеют разные operation ID. Executor MUST NOT начинаться до успешного
+Begin.
+
+Legacy role-based HANDOFF и любой generic recoverable state блокируют Begin.
+Begin поверх terminal state создаёт новый invocation и operation identity под
+тем же lock; stale Outcome прежней operation после этого отклоняется.
 
 ## Outcome
 
-1. Compare reported writes with declared writes and the flow authority.
-2. Update the current row with status, one-line result, actual changed areas,
-   verification references, updated timestamp, and cursor. Advance the cursor
-   only for `completed`.
-3. Read the file back and confirm the outcome. On failure, leave the operation
-   treated as possibly `in_progress` and stop before another executor.
-4. Return the HANDOFF reference and next action to `usw-run-flow`.
+После естественной остановки вызвать:
+
+```text
+python3 <script> outcome <project> <status>
+  --operation <begin-operation-id>
+  --done <fact>
+  --position <narrative-position>
+  --next-action <one-line-action>
+  --blocker <fact-or-none>
+  [--check <fact>]...
+  [--reference <path-or-fact>]...
+```
+
+Передавать exact operation ID, возвращённый Begin. Stale Outcome отклоняется,
+если этот ID больше не является текущим. Permission boundary записывать как
+`decision_required`. Записывать только фактические checks. Если Outcome не
+удалось подтвердить, считать прежний `in_progress` потенциально активным и не
+запускать следующую operation.
 
 ## Save
 
-For an explicit `/usw-handoff`, inspect current work and write only factual
-state. Record checks actually run; otherwise use `not-run`. Preserve the current
-operation journal rather than creating a second history.
+Для явного `/usw-handoff` подготовить generic
+`.usw/HANDOFF.next.md`, затем вызвать:
+
+```text
+python3 <script> save <project> <candidate>
+```
+
+Save обновляет только текущую recoverable operation с неизменным flow/input
+context. При каждом чтении decoded Input обязан совпадать со своим digest. Save
+не создаёт operation из idle, не очищает state, не заменяет legacy/terminal
+HANDOFF и не меняет operation identity. Не создавать историю tool calls и не
+записывать выдуманные результаты.
 
 ## Resume
 
-1. Read HANDOFF only; do not open references yet.
-2. If state is `idle`, report that no work is available and stop.
-3. Summarize scope, actor, executor, intent, status, verification, and next action.
-4. `in_progress` with no result means the executor may have been interrupted.
-   Never retry automatically. Inspect current source and references only as
-   needed, then require an explicit scoped decision before mutation.
-5. A different flow/scope remains blocked until resume of the saved work or
-   `/usw-handoff finish`.
+Вызвать `resume` и прочитать state:
+
+- `idle` — продолжать нечего;
+- `in_progress` — mutation могла прерваться, не повторять автоматически;
+- `paused`, `blocked`, `decision_required` — показать recovery context и ждать
+  явного продолжения той же operation;
+- `failed`, `completed` — показать terminal outcome; следующий Begin может
+  заменить его без предварительного finish;
+- legacy — показать сохранённый role context только для recovery, не запускать
+  executor и не переписывать generic Outcome поверх старого формата.
 
 ## Finish
 
-Only an explicit finish/clear request may replace HANDOFF with the initialized
-idle template. Do not archive the journal and do not touch product files.
+Только явный finish заменяет generic или legacy HANDOFF на generic idle:
+
+```text
+python3 <script> finish <project>
+```
+
+Не архивировать прежнее содержимое и не изменять product files.
+
+Return point: после одного подтверждённого begin, outcome, save, resume, show
+или finish.

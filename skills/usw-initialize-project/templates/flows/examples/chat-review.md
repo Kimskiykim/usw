@@ -36,10 +36,9 @@ Human response contract:
 
 ## Режим запуска
 
-Обычный `$usw-run-flow` читает этот Markdown целиком и выполняет описанный flow
-без action map. Строгий parser, именованные bindings и per-action cursor
-доступны только с явным `--experimental-structured` и не требуются для
-default-запуска.
+`$usw-run-flow` читает этот Markdown целиком и выполняет описанный процесс как
+текст. Маркеры ниже помогают чтению, но не создают parser, bindings или
+per-action cursor. При неоднозначности основной чат запрашивает решение.
 
 ## Порядок действий
 

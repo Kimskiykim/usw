@@ -18,16 +18,19 @@ USW — устанавливаемый самостоятельный workflow �
             └── dev-test.md
 ```
 
-`.usw/HANDOFF.md` создаётся как локальная точка входа разработчика для
-возобновления работы и изначально сообщает, что активной работы нет.
+При effective `handoff: true` `.usw/HANDOFF.md` создаётся как локальная точка
+входа разработчика для возобновления работы и изначально сообщает, что активной
+работы нет. При `handoff: false` initializer и runtime не читают, не проверяют
+и не изменяют этот файл.
 `.usw/.gitignore` с `*` — удобный local default, а решение о tracking остаётся
 за пользователем и не проверяется initializer-ом. `.usw/flows/` создаётся только
 при первом local custom flow, а `.usw/refinements/` — при первом уточнении
 намерения; `/usw-init` эти lazy directories не материализует. Два flow
 examples создаются только в shared `<flows.root>/examples/`.
 
-`usw.yaml` версии 1 выбирает project-relative roots. По умолчанию используются
-`usw`, `usw/flows` и `usw/reviews`.
+`usw.yaml` версии 1 выбирает project-relative roots и optional top-level
+`handoff: true|false`. Отсутствующее поле означает `true`. По умолчанию
+используются `usw`, `usw/flows` и `usw/reviews`.
 Инициализация аддитивна: существующие файлы не
 перезаписываются. Небезопасные, пересекающиеся или symlinked roots отклоняются
 до записи. Если поздняя I/O-ошибка оставила partial workspace, устраните причину
@@ -62,45 +65,49 @@ tracked/Git-visible untracked tree. `.git`, `.usw` и configured workflow roots
 исключены: workflow-only запись или commit не инвалидирует evidence, изменение
 product file инвалидирует.
 
-Перед паузой сохраните только актуальное состояние работы:
+При включённом handoff перед паузой сохраните только актуальное состояние:
 
 ```text
 /usw-handoff
 ```
 
-Команда сохраняет typed Subject, текущую Role/Attempt/Operation, actor, exact
-executor, flow cursor, intent, declared writes, result, actual areas,
-verification и ровно одно следующее действие. Это компактная локальная summary,
-а не shared history или лог tool calls. Чтобы очистить завершённую работу,
-вызовите:
+Команда сохраняет flow, origin, identity, input digest, status, выполненное,
+narrative current position, blocker, проверки, references и ровно одно следующее
+действие. Это компактная локальная summary, а не machine cursor, shared history
+или лог tool calls. Чтобы очистить завершённую работу, вызовите:
 
 ```text
 /usw-handoff finish
 ```
 
-В новой сессии восстановите контекст и продолжите со следующего действия:
+В новой сессии восстановите контекст:
 
 ```text
 /usw-resume
 ```
 
-Resume сначала читает только summary. `in_progress` без result означает
-возможное прерывание внутри executor и никогда не запускается повторно
-автоматически. References открываются только при stale/unknown source,
-failed/blocked outcome или явном запросе. Developer handoff не заменяет shared
-task, evidence или review artifacts.
+`in_progress` означает возможное прерывание и никогда не запускается повторно
+автоматически. `in_progress`, `paused`, `blocked` и `decision_required`
+блокируют новый flow до explicit finish. `completed` и `failed` остаются
+доступны для inspect, но следующий Begin атомарно заменяет их новой operation,
+поэтому ручной finish между завершёнными flow не нужен. Каждый Begin добавляет
+уникальный invocation token, поэтому даже одинаковые flow/input получают разные
+operation ID. Outcome обязан предъявить exact ID, возвращённый Begin; stale
+writer не может перезаписать более новую operation. Handoff transitions
+сериализуются без отдельного state-файла.
+Старый role-based HANDOFF можно прочитать для recovery или очистить через
+finish; он не мигрируется и не получает generic Outcome.
 
-## Orchestration и Delivery
+## Text-first execution
 
-По умолчанию `usw-run-flow` принимает задачу и имя flow, ищет обычный
-`<name>.md` сначала в `.usw/flows`, затем в shared `flows.root`, читает документ
-целиком и следует описанному процессу. Версия, DSL, постоянные action names,
-input map и normalized plan не требуются. Весь такой запуск является одной
-HANDOFF begin/outcome boundary; неоднозначность возвращает
-`decision_required`, а внешние действия сохраняют отдельные permissions.
+`usw-run-flow` принимает input и имя flow, ищет `<name>.md` сначала в
+`.usw/flows`, затем в shared `flows.root`, читает документ ровно один раз и
+передаёт модели exact Markdown вместе с исходным input. Identity вычисляется из
+тех же bytes. Версия, DSL, action names, bindings и normalized plan не
+требуются. Metadata внутри файла никогда не переключает execution mode.
 
-`$usw-create-flow` также создаёт ordinary Markdown по умолчанию. Формат может
-быть любым понятным человеку:
+`$usw-create-flow` создаёт ordinary Markdown по умолчанию. Формат может быть
+любым понятным человеку:
 
 ```markdown
 # Проверка плана
@@ -110,17 +117,16 @@ HANDOFF begin/outcome boundary; неоднозначность возвраща�
 3. Покажи результат человеку.
 ```
 
-Строгие версии `1` и `version-2` сохранены как эксперимент. Только явный
-`--experimental-structured` включает parser, typed executors, gates, bounded
-loops, parallel blocks и per-action cursor/checkpoint. Metadata внутри файла
-сама по себе этот режим не включает. Action-specific binding в experiment
-необязателен: общей задачи достаточно для старта.
+`$usw-create-flow --structured` создаёт человекочитаемый `version-2`.
+`CALL`, `GATE`, `LOOP` и `PARALLEL` помогают описать процесс, но не включают
+parser и не обещают deterministic transitions, atomic parallelism или durable
+cursor. При существенной неоднозначности модель возвращает
+`decision_required`.
 
-В обоих режимах сохраняются безопасное разрешение путей, capability contracts,
-HANDOFF и отдельные разрешения на commit, push, PR, deploy и release. Legacy
-`.usw/FLOW.json` не объединяется и не удаляется автоматически.
+Flow text не предоставляет полномочия. Commit, push, PR, deploy, release,
+destructive и другие внешние действия используют обычные permission boundaries.
 
-Создание и первый запуск custom flow:
+Создание и запуск custom flow:
 
 ```text
 $usw-create-flow Создай flow plan-check из проверки плана.
@@ -136,30 +142,65 @@ $usw-create-flow --local Создай flow personal-check из проверки 
 $usw-run-flow personal-check "Проверь мой план"
 ```
 
-Экспериментальный strict-запуск включается отдельно:
+Structured authoring запускается тем же обычным путём:
 
 ```text
 $usw-create-flow --structured Создай flow review-gate.
-$usw-run-flow --experimental-structured review-gate "Проверь изменение"
+$usw-run-flow review-gate "Проверь изменение"
 ```
 
-Live operation state реализован только Markdown-контрактами skills, templates и
-commands: отдельный Python runtime, dependency или второй state-файл не добавлен.
+`--experimental-structured` и внутренние команды `validate`, `run-script`,
+`checkpoint-save`, `checkpoint-resume` сняты. Старый вызов останавливается до
+mutation и предлагает повторить run без flag.
 
-Сквозной сценарий одного flow выглядит так:
+Existing `.usw/FLOW.json` не читается, не изменяется и не удаляется. При его
+наличии показывается одно предупреждение за invocation, после чего text flow
+может продолжиться.
 
 ```text
-resolve Markdown → HANDOFF op-001/in_progress → executor
-interruption → /usw-resume → explicit reconciliation (без retry)
-outcome/completed → HANDOFF terminal outcome
+resolve exact Markdown bytes → optional HANDOFF/in_progress → model
+pause or decision → generic HANDOFF outcome (без automatic retry)
+completed → HANDOFF/completed
 /usw-handoff finish → idle
 ```
 
-Delivery — терминальный контракт одного запуска: scope, tested source identity,
-current evidence, unresolved non-blocking observations и delivery owner
-(пользователь по умолчанию). Принятие Delivery не разрешает автоматически
-commit, push, pull request, deployment или release — каждое внешнее действие
-требует отдельного явного разрешения.
+Снятый parser, typed runtime, JSON checkpoints, специализированные тесты и два
+superseded change-пакета сохранены в `research/structured-runtime/`. Они не
+устанавливаются и не входят в normative specs или основной test discovery.
+
+Ненормативный roadmap:
+
+```text
+text flow → compiler → derived machine flow → durable state → iterator
+```
+
+Compiler и iterator появятся только в отдельном change с измеримой потребностью
+в machine guarantees.
+
+## Разовая маршрутизация задачи
+
+`usw-route-task` — явный opt-in для одной задачи. Skill оценивает, нужен ли
+отдельный процесс, ищет подходящий local/shared flow и packaged examples, а при
+необходимости готовит новый или адаптированный flow:
+
+```text
+$usw-route-task "Разбери сложный flaky test и подготовь исправление"
+```
+
+Для простой задачи skill только рекомендует прямое выполнение и
+останавливается. Для сложной задачи он показывает полный flow, обоснование,
+origin и будущий путь, затем ждёт подтверждения. До подтверждения flow и
+HANDOFF не изменяются.
+
+После подтверждения exact match запускается через `usw-run-flow`. Новый или
+адаптированный flow сначала сохраняется через `usw-create-flow`, затем
+запускается с исходной задачей. Project-specific flow сохраняется в shared
+root, личный, экспериментальный или неоднозначный — в `.usw/flows`.
+
+Маршрутизация не ищет flow в интернете или других проектах, не включается
+неявно и не действует на следующие задачи. Подтверждение flow не предоставляет
+дополнительных полномочий на commit, push, PR, deploy, release или destructive
+actions.
 
 ## Декомпозиция на микротаски
 
@@ -208,10 +249,12 @@ qwen extensions install https://github.com/Kimskiykim/usw
 
 После установки выполните в Qwen Code `/usw-init`, а затем используйте
 `/usw-handoff` и `/usw-resume` для передачи состояния между локальными
-сессиями:
+сессиями. Для жёсткого read-only ревью LLM-кода доступна команда
+`/usw-reviewer-llm-critic [scope]`:
 
 ```text
 /usw-init
+/usw-reviewer-llm-critic Scope: текущий diff
 ```
 
 Для локальной разработки подключите текущий checkout:
@@ -230,10 +273,12 @@ codex plugin add usw@usw
 ```
 
 После установки откройте новую задачу и вызовите `/usw-init`. Команды
-`/usw-handoff` и `/usw-resume` станут доступны после того же перезапуска:
+`/usw-handoff`, `/usw-resume` и `/usw-reviewer-llm-critic` станут доступны
+после того же перезапуска:
 
 ```text
 /usw-init
+/usw-reviewer-llm-critic Scope: текущий diff
 ```
 
 ## Прямая установка

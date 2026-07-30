@@ -18,6 +18,8 @@ use it after `init_usw.py` started or returned an error.
    - resolve omitted `artifacts.root` to `usw`;
    - resolve omitted `flows.root` and `reviews.root` to `usw/flows` and
      `usw/reviews`;
+   - accept optional top-level `handoff` only as unquoted boolean `true` or
+     `false`, with an omitted field meaning `true`;
    - accept safe custom artifact, flow and review roots;
    - ignore legacy `refinement` and unknown fields without using them to create
      or migrate state.
@@ -49,11 +51,10 @@ Do not create `<artifacts.root>/changes/`, `<artifacts.root>/templates/`, or
 `<reviews.root>/`. Their exact destination is created by the capability that
 first needs it.
 
-Render missing `.usw/HANDOFF.md` from packaged `templates/local/HANDOFF.md`.
-Set `status` to `idle`, `updated_at` to the current ISO 8601 timestamp,
-`fresh_stale_or_unknown` to `unknown`, `one_next_action_or_none` and
-`reference_or_none` to `None.`, and every other unresolved placeholder to
-`none`.
+When effective `handoff` is `true`, render missing `.usw/HANDOFF.md` from
+packaged `templates/local/HANDOFF.md` and replace only `{{updated_at}}` with the
+current timezone-aware ISO 8601 timestamp. When `handoff` is `false`, do not
+read, validate, create or modify `.usw/HANDOFF.md`.
 
 Never overwrite, merge, delete, chmod, or follow links. Do not create
 `.usw/flows/` or `.usw/refinements/`. Do not create, migrate, or remove legacy
@@ -63,11 +64,12 @@ flat flow name.
 
 ## Verify and report
 
-Read back every created file, confirm that no template placeholders remain in
-`.usw/HANDOFF.md`, and confirm every pre-existing destination remains
-byte-for-byte unchanged. Report that limited LLM fallback was used and has
-weaker determinism than Python, then list created and preserved paths
-separately.
+Read back every created file. When handoff is enabled, confirm that no template
+placeholders remain in `.usw/HANDOFF.md`; when disabled, confirm only from the
+write inventory that the path was not touched. Confirm every pre-existing
+destination remains byte-for-byte unchanged. Report that limited LLM fallback
+was used and has weaker determinism than Python, then list created and
+preserved paths separately.
 
 If any write fails, report that the workspace may be partially initialized,
 tell the user to fix the cause and rerun initialization, and preserve all

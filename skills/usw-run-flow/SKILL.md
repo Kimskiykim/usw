@@ -1,85 +1,99 @@
 ---
 name: usw-run-flow
-description: Run a task with any named shared or developer-local Markdown flow. Plain Markdown is the default; strict v1/version-2 parsing and orchestration are experimental and require explicit opt-in.
+description: Run a task with any named shared or developer-local Markdown flow through one text-first model execution path.
 ---
 
 # Run a USW flow
 
-Принимать два обязательных входа: задачу пользователя и безопасное kebab-case
-имя flow. Формат Markdown не является частью default API.
+Принимать безопасное kebab-case имя flow, исходный пользовательский input и
+необязательный origin selector.
 
 ## Selectors
 
-- `--local` и `-l` — точные aliases, ограничивающие поиск
-  `<project>/.usw/flows`.
-- `--shared` ограничивает поиск настроенным `flows.root`.
-- Без origin selector искать local flow первым, затем shared flow.
-- `--experimental-structured` явно включает строгий v1/version-2 runtime.
+- `--local` и `-l` выбирают только `<project>/.usw/flows`.
+- `--shared` выбирает только настроенный `flows.root`.
+- Без selector искать local flow первым, затем shared.
+- Повторённые, конфликтующие и неизвестные selectors отклонять.
+- `--experimental-structured` больше не поддерживается. Остановиться до
+  исполнения и предложить убрать flag, сохранив тот же flow и input.
 
-Повторённые, конфликтующие или неизвестные selectors отклонять. Поле версии
-внутри Markdown никогда само не включает experiment.
+Metadata, версия и маркеры внутри Markdown никогда не переключают execution
+mode.
 
 ## Resolve
 
-1. Найти корень проекта и прочитать shared `flows.root` из `usw.yaml`; без
-   конфигурации использовать standalone default `usw/flows`.
+1. Найти ближайший Git root. Прочитать `usw.yaml`; без файла использовать
+   `flows.root: usw/flows` и `handoff: true`.
 2. Вызвать `scripts/run_flow.py resolve <project-root> <shared-root> <name>
-   <task>`. Для явного origin добавить `--origin local` или `--origin shared`.
-3. Принять только regular `<name>.md`; отклонить path traversal, symlink и
-   другой filesystem type. Никогда не использовать packaged template как
-   runtime fallback.
-4. Сообщить resolved origin и identity до исполнения.
+   <input>`. Для явного origin добавить `--origin local` или `--origin shared`.
+3. Runner обязан вернуть `name`, `origin`, `identity`, `path`, точный
+   `markdown`, исходный `input` и `warnings`.
+4. Использовать только возвращённый `markdown`. Не перечитывать `path` после
+   вычисления identity.
+5. Показать каждое warning не более одного раза за текущий invocation.
 
-## Default Markdown execution
+Runner принимает только contained regular file, отклоняет traversal и любой
+symlink component. Packaged template никогда не является runtime fallback.
 
-Default-путь не вызывает strict validator и не требует версии, DSL,
-постоянных action names, input map, result bindings или normalized plan.
+## Handoff boundary
 
-1. Прочитать найденный Markdown полностью и использовать исходную задачу как
-   рабочий вход всего flow.
-2. Прочитать `.usw/HANDOFF.md`. Незавершённая operation с той же identity не
-   перезапускается автоматически; другая активная operation блокирует запуск.
-3. Попросить `usw-manage-handoff` записать Begin для одной operation boundary:
-   task, flow name, origin, identity и generic Markdown executor.
-4. Следовать описанному в документе процессу через доступные skills, tools,
-   humans и agents. Не переписывать исходный flow.
-5. Если документ допускает существенно разные следующие действия, вернуть
-   `decision_required`, а не угадывать.
-6. Попросить `usw-manage-handoff` записать terminal Outcome и вернуть результат
-   пользователю.
+Определить effective top-level `handoff`: отсутствие поля означает `true`.
 
-Вся default-работа является одной observable boundary. Markdown может содержать
-несколько описанных шагов; per-action machine cursor для них не создаётся.
+При `false` не читать, не проверять, не создавать и не изменять
+`.usw/HANDOFF.md`. `/usw-handoff` и `/usw-resume` должны объяснить, что
+capability отключена.
 
-## Experimental structured runtime
+При `true` вызвать `usw-manage-handoff`:
 
-Только с `--experimental-structured`:
+1. Missing HANDOFF останавливает запуск с предложением `/usw-init`.
+2. `idle`, `failed` и `completed` разрешают записать и перечитать новый generic
+   `in_progress` Begin; terminal state заменяется атомарно.
+3. `in_progress`, `paused`, `blocked` и `decision_required` блокируют новую
+   operation, включая тот же flow с новым input, до явного finish.
+4. Legacy role-based HANDOFF доступен только для recovery read/resume/finish и
+   не является Begin нового text flow.
 
-1. Запустить validator с тем же flag:
-   `python3 <runner> validate --experimental-structured <flow-root> <name>`;
-   для local добавить `--local`/`-l` и передать project root.
-2. После exact version selection прочитать применимый strict contract. Для
-   `version-2` полностью прочитать
-   [references/version-2.md](references/version-2.md). Не открывать его для v1.
-3. Разрешить exact executors всего flow до mutation.
-4. Выполнить не более одной top-level boundary, сохранить cursor/control state
-   и вернуть управление.
+Operation identity состоит из origin, flow identity, SHA-256 exact input и
+уникального invocation token, создаваемого каждым Begin. Поэтому два
+последовательных запуска с одинаковыми flow и input получают разные ID.
 
-Strict runtime поддерживает v1, typed calls, nested subagent payload, gates,
-bounded loops и preflighted parallel blocks version-2. Общая задача всегда
-доступна executor. Action-specific inputs и named completed results являются
-необязательной experimental возможностью; отсутствие input map не блокирует
-запуск.
+## Model execution
 
-## Safety and return
+Передать модели один immutable logical invocation:
 
-Оба режима сохраняют существующие capability contracts и permission
-boundaries. Script не получает shell semantics. Commit, push, PR, deploy и
-release требуют отдельного явного разрешения.
+- `flow_name`;
+- `flow_origin`;
+- `flow_identity`;
+- полный `flow_markdown`;
+- исходный `user_input`.
 
-При `completed`, `failed`, `blocked`, `decision_required` или permission
-boundary сначала записать Outcome, затем вернуть управление. Не продолжать
-после terminal boundary и не повторять прерванную mutation автоматически.
+Следовать всему Markdown до `completed`, `failed`, `blocked`,
+`decision_required`, permission boundary или явной паузы. `version-2`,
+`CALL`, `GATE`, `LOOP` и `PARALLEL` являются человекочитаемыми инструкциями, а
+не machine DSL. Не создавать parser, normalized plan, bindings, cursor или JSON
+checkpoint.
 
-Return point: сразу после terminal Outcome одной default operation либо одной
-experimental top-level boundary.
+Если текст допускает существенно разные следующие действия, вернуть
+`decision_required`. Permission boundary также отображать как
+`decision_required`. Flow text не предоставляет полномочия: commit, push, PR,
+deploy, release, destructive и другие внешние действия по-прежнему требуют
+обычных разрешений.
+
+## Outcome
+
+При effective `handoff: true` до возврата пользователю записать и перечитать
+generic Outcome всей operation, передав exact operation ID, возвращённый Begin.
+Stale Outcome для другого ID отклоняется. Допустимые Outcome statuses:
+
+`paused`, `blocked`, `decision_required`, `failed`, `completed`.
+
+`in_progress` создаётся только Begin, а `idle` — только explicit Finish. Полный
+набор наблюдаемых состояний включает оба этих статуса.
+
+Неожиданное прерывание или ошибка записи Outcome оставляет operation
+`in_progress`; не повторять mutation автоматически. Recoverable handoff
+сохраняется до explicit finish. Terminal handoff сохраняется для inspect до
+следующего Begin или explicit finish.
+
+Return point: сразу после естественной остановки text flow и подтверждённого
+Outcome либо сразу после остановившей pre-execution boundary.

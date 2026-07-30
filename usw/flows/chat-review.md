@@ -23,19 +23,17 @@ Reviewer B:
 Presentation contract:
 <как объединить отчёты, добавить личную оценку и показать результат>
 
-Human response contract:
-<как ожидать и обработать реакцию человека для каждого режима:
-`iterate-findings` — разбирать findings по одному и после каждого ждать ответа;
-`show-proposal` — сразу показать рекомендацию основного чата;
-`make-decision` — сразу запросить и зафиксировать решение человека>
+Human decision contract:
+<как зафиксировать одно финальное решение:
+`accept-as-is` — принять результат без изменений;
+`fix-findings` — принять findings для последующей отдельной реализации>
 ```
 
 ## Режим запуска
 
-Обычный `$usw-run-flow` читает этот Markdown целиком и выполняет описанный flow
-без action map. Строгий parser, именованные bindings и per-action cursor
-доступны только с явным `--experimental-structured` и не требуются для
-default-запуска.
+`$usw-run-flow` читает этот Markdown целиком и выполняет описанный процесс как
+текст. Маркеры ниже помогают чтению, но не создают parser, bindings или
+per-action cursor. При неоднозначности основной чат запрашивает решение.
 
 ## Порядок действий
 
@@ -46,9 +44,14 @@ default-запуска.
    - `review-b` — передать Reviewer B его три блока: CALL SUBAGENT `reviewer-b`.
      - Действия субагента:
        1. `run-review-b` — выполнить одно ревью: CALL SKILL `usw-structured-review`.
-2. `prepare-presentation` — основному чату объединить отчёты, добавить личную оценку, показать результат и запросить режим продолжения: CALL HUMAN `owner`; GATE: выбрать `iterate-findings`, `show-proposal` или `make-decision`.
-   - IF `iterate-findings`: продолжить к `handle-follow-up`.
-   - ELIF `show-proposal`: продолжить к `handle-follow-up`.
-   - ELIF `make-decision`: продолжить к `handle-follow-up`.
-   - ELSE: запросить один из объявленных вариантов.
-3. `handle-follow-up` — основному чату обработать completed outcome `prepare-presentation` по Human response contract: начать поштучное обсуждение findings, сразу показать собственную рекомендацию либо запросить и зафиксировать решение человека: CALL HUMAN `owner`.
+2. `prepare-presentation` — основному чату объединить и дедуплицировать отчёты,
+   добавить личную оценку и рекомендацию, затем показать результат.
+3. `make-decision` — сразу после презентации запросить одно финальное решение:
+   CALL HUMAN `owner`; GATE: выбрать `accept-as-is` или `fix-findings`.
+   - IF `accept-as-is`: зафиксировать решение по Human decision contract и
+     завершить flow со статусом `completed`.
+   - ELIF `fix-findings`: зафиксировать findings для последующей отдельной
+     реализации по Human decision contract и завершить flow со статусом
+     `completed`. Этот read-only flow не исправляет код.
+   - ELSE: вернуть `decision_required` и запросить только один из двух
+     объявленных вариантов, не добавляя промежуточный выбор режима.

@@ -1,7 +1,7 @@
 {
   "name": "usw",
-  "version": "0.1.0",
-  "description": "Run standalone USW workflows.",
+  "version": "0.2.0",
+  "description": "Create, route, and run text-first Markdown workflows.",
   "skills": "skills",
   "commands": "commands"
 }

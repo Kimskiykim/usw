@@ -32,8 +32,10 @@ class InitializeUswTests(unittest.TestCase):
         self.assertEqual("usw", config.artifact_root)
         self.assertEqual("usw/flows", config.flow_root)
         self.assertEqual("usw/reviews", config.review_root)
+        self.assertTrue(config.handoff)
         self.assertEqual(
             "schema_version: 1\n"
+            "handoff: true\n"
             "artifacts:\n"
             "  root: usw\n"
             "flows:\n"
@@ -55,7 +57,20 @@ class InitializeUswTests(unittest.TestCase):
         self.assertEqual("usw", config.artifact_root)
         self.assertEqual("usw/flows", config.flow_root)
         self.assertEqual("usw/reviews", config.review_root)
+        self.assertTrue(config.handoff)
         self.assertEqual(content, config.raw_content)
+
+    def test_handoff_accepts_only_boolean_and_defaults_true(self):
+        self.assertTrue(INIT_USW.parse_config("schema_version: 1\n").handoff)
+        self.assertFalse(
+            INIT_USW.parse_config("schema_version: 1\nhandoff: false\n").handoff
+        )
+        for value in ('"false"', "'true'", "1", "yes", ""):
+            content = f"schema_version: 1\nhandoff: {value}\n"
+            with self.subTest(value=value), self.assertRaisesRegex(
+                INIT_USW.ConfigError, "handoff must be a boolean"
+            ):
+                INIT_USW.parse_config(content)
 
     def test_legacy_refinement_root_is_ignored_without_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -232,9 +247,9 @@ class InitializeUswTests(unittest.TestCase):
             )
             handoff_content = (project / ".usw/HANDOFF.md").read_text(encoding="utf-8")
             self.assertIn("# Developer Handoff\n", handoff_content)
-            self.assertIn("| Subject | Role | Attempt | Current operation | Status | Updated |", handoff_content)
-            self.assertIn("## Session journal\n", handoff_content)
-            self.assertIn("## Trusted source snapshot\n", handoff_content)
+            self.assertIn("- Status: idle\n", handoff_content)
+            self.assertIn("## Active work\n", handoff_content)
+            self.assertNotIn("| Subject | Role |", handoff_content)
 
             self.assertFalse((project / "hello_world.py").exists())
 
@@ -454,12 +469,50 @@ class InitializeUswTests(unittest.TestCase):
 
         content = INIT_USW.render_handoff(updated_at)
 
-        self.assertIn(
-            "| none | none | none | none | idle | 2026-07-17T09:30:00+00:00 |",
-            content,
-        )
-        self.assertEqual(1, content.count("## Next action"))
-        self.assertIn("- Freshness: unknown\n", content)
+        self.assertIn("- Updated: 2026-07-17T09:30:00+00:00\n", content)
+        self.assertIn("- Status: idle\n", content)
+        self.assertEqual(1, content.count("## Active work"))
+
+    def test_handoff_false_skips_existing_or_missing_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            (project / "usw.yaml").write_text(
+                "schema_version: 1\nhandoff: false\n", encoding="utf-8"
+            )
+
+            results = INIT_USW.initialize_usw(project)
+
+            self.assertFalse((project / ".usw/HANDOFF.md").exists())
+            self.assertNotIn(
+                ".usw/HANDOFF.md",
+                {
+                    path.relative_to(project.resolve()).as_posix()
+                    for path, _ in results
+                },
+            )
+
+            existing = project / ".usw/HANDOFF.md"
+            existing.write_bytes(b"\xff user bytes")
+            before = existing.read_bytes()
+            INIT_USW.initialize_usw(project)
+            self.assertEqual(before, existing.read_bytes())
+
+    def test_enabling_handoff_creates_missing_generic_idle_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            config = project / "usw.yaml"
+            config.write_text(
+                "schema_version: 1\nhandoff: false\n", encoding="utf-8"
+            )
+            INIT_USW.initialize_usw(project)
+            handoff = project / ".usw/HANDOFF.md"
+            self.assertFalse(handoff.exists())
+
+            config.write_text(
+                "schema_version: 1\nhandoff: true\n", encoding="utf-8"
+            )
+            INIT_USW.initialize_usw(project)
+            self.assertIn("- Status: idle", handoff.read_text(encoding="utf-8"))
 
 if __name__ == "__main__":
     unittest.main()

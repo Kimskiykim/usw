@@ -81,9 +81,9 @@ receipts или developer-local state.
   сообщает, что workspace уже существует
 
 ### Requirement: Developer-local state остаётся приватным
-USW SHALL хранить `.usw/HANDOFF.md` и clarification notes под `.usw/`, а shared
-state — под configured artifact и review roots. Initialization SHALL создавать
-`.usw/.gitignore` как локальный default, но Git tracking policy SHALL
+USW SHALL хранить enabled `.usw/HANDOFF.md` и clarification notes под `.usw/`,
+а shared state — под configured artifact и review roots. Initialization SHALL
+создавать `.usw/.gitignore` как локальный default, но Git tracking policy SHALL
 принадлежать пользователю и MUST NOT блокировать initialization.
 
 #### Scenario: Local state уже tracked
@@ -91,3 +91,19 @@ state — под configured artifact и review roots. Initialization SHALL со�
   либо custom ignore rules
 - **THEN** он сохраняет state и продолжает initialization без изменения
   repository tracking policy
+
+### Requirement: Handoff включается top-level boolean
+`usw.yaml` SHALL принимать необязательное top-level поле `handoff` только как
+boolean. Отсутствующее поле SHALL означать `true`; schema version остаётся `1`.
+
+#### Scenario: Backwards-compatible configuration
+- **WHEN** существующий `usw.yaml` не содержит `handoff`
+- **THEN** USW включает handoff
+
+#### Scenario: Handoff явно отключён
+- **WHEN** `handoff: false`
+- **THEN** run, init, handoff и resume не требуют, не читают и не изменяют `HANDOFF.md`
+
+#### Scenario: Неверный тип
+- **WHEN** `handoff` является строкой, числом или mapping
+- **THEN** configuration validation завершается наблюдаемой ошибкой

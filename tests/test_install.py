@@ -18,9 +18,15 @@ class InstallTests(unittest.TestCase):
         "usw-explain-me",
         "usw-create-flow",
         "usw-run-flow",
+        "usw-route-task",
         "usw-manage-artifacts",
     )
-    COMMAND_NAMES = ("usw-init.md", "usw-handoff.md", "usw-resume.md")
+    COMMAND_NAMES = (
+        "usw-init.md",
+        "usw-handoff.md",
+        "usw-resume.md",
+        "usw-reviewer-llm-critic.md",
+    )
 
     def run_install(self, home: Path, *args: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
@@ -46,6 +52,15 @@ class InstallTests(unittest.TestCase):
             for skills_dir in (home / ".qwen/skills", home / ".agents/skills"):
                 for skill_name in self.SKILL_NAMES:
                     self.assertTrue((skills_dir / skill_name / "SKILL.md").is_file())
+                self.assertEqual(
+                    [],
+                    [
+                        path
+                        for path in skills_dir.rglob("*")
+                        if path.name == "__pycache__"
+                        or path.suffix in {".pyc", ".pyo"}
+                    ],
+                )
                 self.assertTrue(
                     (
                         skills_dir

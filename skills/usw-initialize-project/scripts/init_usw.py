@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import stat
 import sys
 from datetime import datetime, timezone
@@ -42,6 +41,7 @@ class WorkspaceConfig(NamedTuple):
     artifact_root: str
     flow_root: str
     review_root: str
+    handoff: bool
     raw_content: str | None = None
 
     @property
@@ -60,6 +60,7 @@ def default_config() -> WorkspaceConfig:
         artifact_root="usw",
         flow_root=DEFAULT_SPECIALIZED_ROOTS["flows"],
         review_root=DEFAULT_SPECIALIZED_ROOTS["reviews"],
+        handoff=True,
     )
 
 
@@ -96,9 +97,17 @@ def _parse_yaml_mapping(content: str) -> dict[str, object]:
             parent[key] = child
             stack.append((indent, child))
             continue
-        if value.startswith(("'", '"')) and value.endswith(value[0]):
+        quoted = value.startswith(("'", '"')) and value.endswith(value[0])
+        if quoted:
             value = value[1:-1]
-        scalar: object = int(value) if value.isdecimal() else value
+        if quoted:
+            scalar: object = value
+        elif value == "true":
+            scalar = True
+        elif value == "false":
+            scalar = False
+        else:
+            scalar = int(value) if value.isdecimal() else value
         parent[key] = scalar
     return root
 
@@ -107,7 +116,7 @@ def parse_config(content: str) -> WorkspaceConfig:
     """Parse supported fields while retaining the original bytes for consumers."""
     data = _parse_yaml_mapping(content)
     schema_version = data.get("schema_version")
-    if schema_version != SUPPORTED_SCHEMA_VERSION:
+    if type(schema_version) is not int or schema_version != SUPPORTED_SCHEMA_VERSION:
         raise ConfigError(
             "unsupported_schema_version",
             f"expected {SUPPORTED_SCHEMA_VERSION}, got {schema_version!r}",
@@ -128,6 +137,9 @@ def parse_config(content: str) -> WorkspaceConfig:
             "artifacts.provider is no longer supported; remove it",
         )
     defaults = default_config()
+    handoff = data.get("handoff", defaults.handoff)
+    if type(handoff) is not bool:
+        raise ConfigError("invalid_config", "handoff must be a boolean")
 
     def root_value(section: dict[str, object], default: str, name: str) -> str:
         value = section.get("root", default)
@@ -140,6 +152,7 @@ def parse_config(content: str) -> WorkspaceConfig:
         artifact_root=root_value(artifacts, defaults.artifact_root, "artifacts"),
         flow_root=root_value(flows, defaults.flow_root, "flows"),
         review_root=root_value(reviews, defaults.review_root, "reviews"),
+        handoff=handoff,
         raw_content=content,
     )
 
@@ -226,18 +239,8 @@ def load_config(project_root: Path) -> WorkspaceConfig:
 def render_handoff(updated_at: datetime | None = None) -> str:
     """Return the initial developer-local handoff state."""
     timestamp = updated_at or datetime.now(timezone.utc)
-    values = {
-        "status": "idle",
-        "updated_at": timestamp.isoformat(timespec="seconds"),
-        "fact_or_none": "no active work",
-        "one_next_action_or_none": "None.",
-        "reference_or_none": "None.",
-        "fresh_stale_or_unknown": "unknown",
-    }
-    return re.sub(
-        r"{{([^}]+)}}",
-        lambda match: values.get(match.group(1), "none"),
-        read_template("local/HANDOFF.md"),
+    return read_template("local/HANDOFF.md").replace(
+        "{{updated_at}}", timestamp.isoformat(timespec="seconds")
     )
 
 
@@ -370,8 +373,9 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
         (f"{config.flow_root}/examples", "directory"),
         (".usw", "directory"),
         (".usw/.gitignore", "file"),
-        (".usw/HANDOFF.md", "file"),
     ]
+    if config.handoff:
+        expected_paths.append((".usw/HANDOFF.md", "file"))
     expected_paths.extend(
         (
             f"{config.flow_root}/examples/{example}",
@@ -433,13 +437,16 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
         )
         for example in FLOW_EXAMPLE_PATHS
     )
-    results.extend([
+    results.append(
         (
             local_state_ignore_file,
             create_file(project_root, local_state_ignore_file, LOCAL_STATE_IGNORE_CONTENT),
-        ),
-        (handoff_file, create_file(project_root, handoff_file, render_handoff())),
-    ])
+        )
+    )
+    if config.handoff:
+        results.append(
+            (handoff_file, create_file(project_root, handoff_file, render_handoff()))
+        )
     return results
 
 

@@ -90,6 +90,29 @@ payload, complete gates, bounded loops и preflighted parallel blocks. Он MUST
 - **WHEN** все заранее разрешённые parallel children завершаются успешно
 - **THEN** runner агрегирует outcomes и открывает следующую top-level boundary
 
+### Requirement: Structured checkpoint изолирован по запуску
+Каждый новый structured root run SHALL получать UUID и сохранять машинный
+checkpoint в
+`.usw/states/flows/<origin>/<flow-name>/<run-id>/flow.json`. Checkpoint SHALL
+содержать совпадающие run ID и origin, записываться атомарно с private
+permissions и выбираться для resume только по точному run ID.
+
+Legacy singleton `.usw/FLOW.json` SHALL оставаться доступным только для чтения,
+когда resume не передаёт run ID. Новые сохранения MUST NOT перезаписывать,
+перемещать или объединять legacy checkpoint.
+
+#### Scenario: Два запуска одного flow
+- **WHEN** один structured flow запускается дважды
+- **THEN** каждый запуск получает отдельный UUID и ни один checkpoint не перезаписывает другой
+
+#### Scenario: Одинаковые local и shared имена
+- **WHEN** local и shared flow имеют одинаковое безопасное имя
+- **THEN** их checkpoints разделены компонентом origin
+
+#### Scenario: Exact resume при наличии legacy state
+- **WHEN** `.usw/FLOW.json` существует и resume передаёт run-scoped UUID
+- **THEN** runner загружает только `.usw/states/flows/<origin>/<flow-name>/<run-id>/flow.json`
+
 ### Requirement: Experimental binding необязателен
 Experimental runtime MAY принимать action-specific inputs и передавать
 именованные completed results. Если binding передан, неизвестные action names

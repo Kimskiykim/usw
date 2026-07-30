@@ -5,90 +5,58 @@ description: Создавать или обновлять именованный
 
 # Создание USW flow
 
-Создавать один именованный flow как Markdown-файл. По умолчанию не требовать
-версию или DSL. Структурированный executable contract создавать только после
-явного opt-in. Никогда не выполнять созданный flow.
+Создавать один понятный человеку Markdown-файл. По умолчанию не требовать
+версию, DSL, постоянные action names или специальную структуру.
 
 ## Подготовка
 
 1. Независимо разобрать selectors:
-   - `--local` или точный alias `-l` выбирает developer-local root;
-   - `--structured` или точный alias `-s` включает экспериментальный
-     `version-2` contract.
-   Допускать их вместе в любом порядке. Повторённый или неизвестный selector
-   отклонить.
-2. Без `-s`/`--structured` сразу выбрать ordinary Markdown. Не спрашивать
-   версию и не читать version-specific references.
-3. С structured selector полностью прочитать только
-   [references/version-2.md](references/version-2.md). Legacy
-   [references/version-1.md](references/version-1.md) читать только при явном
-   запросе создать или сохранить strict version `1`.
-4. Выбрать ровно один root без поиска и fallback:
-   - local: `<project>/.usw/flows`;
-   - shared: безопасно разрешённый `flows.root` из `usw.yaml`.
-5. Потребовать безопасное kebab-case имя и regular `<name>.md`; отклонить
-   traversal, symlink или другой filesystem type.
-6. Уточнить задачу, ожидаемый результат и важные ограничения. В default mode
-   записать понятный человеку порядок без обязательных headings, metadata или
-   executor syntax.
-7. При редактировании сначала прочитать существующий flow. Не переписывать его
-   в strict format без явного structured запроса.
+   - `--local` или `-l` выбирает `<project>/.usw/flows`;
+   - `--structured` или `-s` выбирает человекочитаемый `version-2` authoring
+     style.
+2. Повторённый, конфликтующий или неизвестный selector отклонить.
+3. Без structured selector не читать version-specific reference.
+4. Со structured selector полностью прочитать только
+   [references/version-2.md](references/version-2.md).
+5. Выбрать один root без fallback: local либо безопасный configured
+   `flows.root`.
+6. Потребовать безопасное kebab-case имя и regular `<name>.md`; отклонить
+   traversal, symlink и другой filesystem type.
+7. При редактировании прочитать существующий flow и сохранить его выбранный
+   ordinary/structured style.
 
-## Общие гарантии
+## Гарантии
 
-- Изменять только выбранный `<flow-root>/<name>.md`; в local mode разрешено
-  создать отсутствующий каталог `.usw/flows`.
-- Ordinary Markdown может использовать любой ясный формат. Не добавлять поле
-  версии, action names, bindings или control DSL ради validator.
-- Structured mode создаёт постоянные имена, exact executors и transitions по
-  version-2 reference, затем вызывает validator только с
-  `--experimental-structured`.
-- Commit, push, PR, deployment и release требуют отдельного разрешения.
-- Не исполнять flow, executors или HANDOFF.
+- Изменять только выбранный `<flow-root>/<name>.md`.
+- Ordinary Markdown не требует headings или metadata.
+- Structured Markdown использует маркеры только для читаемости и не обещает
+  deterministic transitions, atomic parallelism, durable cursor или validation.
+- Никогда не вызывать `usw-run-flow`, executor, HANDOFF или retired validator.
+- Flow не может сам предоставить полномочия на внешние или destructive actions.
 
 ## Проверка и отчёт
 
-Default mode проверяет только безопасный путь, сохранение Markdown и отсутствие
-непреднамеренного изменения других файлов. Structured mode дополнительно
-запускает strict validator.
+Проверить безопасный путь, сохранение UTF-8 Markdown, понятность процесса и
+отсутствие непреднамеренных изменений других файлов.
 
-Сообщить имя, origin, путь и точную команду запуска с задачей:
-`$usw-run-flow <name> <task>`. Для local добавить `--local`; для строгого
-runtime — `--experimental-structured`.
+Сообщить имя, origin, путь, выбранный authoring style и обычную команду:
+
+```text
+$usw-run-flow [--local|--shared] <name> <input>
+```
+
+Не добавлять `--experimental-structured`.
 
 ## Опциональный анализ улучшений
 
-1. Сначала полностью завершить создание, проверку и отчёт по запрошенному flow.
-   Не проводить скрытый аудит, не добавлять улучшения от себя и не утверждать,
-   что идеи уже есть.
-2. Только после успешного отчёта спросить:
-
-   > Flow создан и проверен. Могу отдельно изучить его и предложить возможные
-   > улучшения. Хотите?
-
-   При отказе или без явного согласия завершить работу без анализа и изменений.
-3. После согласия изучить сохранённый flow и предложить только применимые
-   улучшения. Каждую рекомендацию связать с конкретным риском или отсутствующим
-   исходом. Если flow создаёт новый артефакт или использует рассуждение для
-   принятия решения, явно оценить пользу verification и независимого review.
-   Где релевантно, также проверить:
-   - acceptance и deterministic checks;
-   - critic review и HITL для неоднозначных, рискованных или необратимых решений;
-   - полноту веток и терминальных исходов;
-   - feedback loops, пределы повторов и escalation;
-   - сохранение состояния и безопасное возобновление.
-   Не рекомендовать механизм только ради полноты checklist.
-4. Показать компактный список рекомендаций до любых правок. Согласие на анализ
-   не считать согласием на изменение flow.
-5. Изменить flow только после того, как пользователь явно выбрал отдельные
-   рекомендации или одобрил весь список. Применить только одобренное, сохранить
-   исходные root и ordinary/structured mode, затем повторить применимую проверку
-   и отчёт. Никогда не исполнять flow.
+После успешного сохранения можно отдельно предложить read-only анализ flow.
+Не проводить его без согласия и не изменять flow без отдельного одобрения.
+Рекомендации связывать с конкретным риском: неоднозначной веткой, отсутствующим
+исходом, неограниченным повтором, опасным действием или непроверяемым
+результатом. Не добавлять machine syntax ради полноты.
 
 ## Граница выполнения
 
-- Inputs: цель, имя, описание, optional local/structured selectors и project config.
-- Output: созданный или обновлённый Markdown-flow и краткий отчёт; после явного
-  opt-in также read-only рекомендации либо отдельно одобренная revision.
-- Return point: после отчёта и отказа от анализа, после read-only рекомендаций
-  либо после проверки явно одобренной revision; всегда без исполнения flow.
+Inputs: цель, имя, описание, optional local/structured selectors и config.
+Output: один Markdown-flow и краткий отчёт. Return point: после сохранения и
+проверки, всегда без исполнения.

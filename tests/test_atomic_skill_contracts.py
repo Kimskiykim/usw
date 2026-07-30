@@ -18,42 +18,25 @@ def load(name: str, relative: str):
     return module
 
 
-FLOWS = load("atomic_flows", "skills/usw-initialize-project/scripts/flow_scenario.py")
-REGISTRY = load("atomic_registry", "skills/usw-run-flow/scripts/capability_registry.py")
 ARTIFACTS = load("atomic_artifacts", "skills/usw-manage-artifacts/scripts/artifact_writer.py")
 
 
 class AtomicSkillContractTests(unittest.TestCase):
-    def test_all_role_scenario_actions_resolve_to_production_capabilities(self):
-        templates = ROOT / "tests/fixtures/flow-scenarios"
-        actions = set()
-        for path in templates.glob("flow-scenario-*.md"):
-            actions.update(FLOWS.validate_scenario(path.read_text(encoding="utf-8")).actions)
-
-        self.assertEqual(actions, set(REGISTRY.ACTION_CAPABILITIES))
-        for action, skill_name in REGISTRY.ACTION_CAPABILITIES.items():
-            with self.subTest(action=action):
-                self.assertTrue((ROOT / "skills" / skill_name / "SKILL.md").is_file())
-                self.assertNotIn("stub", skill_name)
-
-        self.assertEqual(
-            "usw-refine-intent", REGISTRY.ACTION_CAPABILITIES["clarify-intent"]
-        )
-        self.assertEqual(
-            "usw-run-flow",
-            REGISTRY.ACTION_CAPABILITIES["select-approach"],
-        )
-        self.assertNotEqual(
-            REGISTRY.ACTION_CAPABILITIES["clarify-intent"],
-            REGISTRY.ACTION_CAPABILITIES["select-approach"],
-        )
+    def test_production_skills_do_not_import_research_runtime(self):
+        for path in (ROOT / "skills").rglob("*"):
+            if path.is_file() and "__pycache__" not in path.parts:
+                self.assertNotIn(
+                    "research/structured-runtime",
+                    path.read_text(encoding="utf-8"),
+                    path,
+                )
 
     def test_atomic_skills_declare_input_write_output_and_return_boundaries(self):
         skills = (
             "usw-initialize-project", "usw-manage-handoff",
             "usw-refine-intent",
             "usw-plan-small-steps", "usw-explain-me", "usw-create-flow",
-            "usw-run-flow",
+            "usw-run-flow", "usw-route-task",
             "usw-manage-artifacts",
         )
         for skill_name in skills:

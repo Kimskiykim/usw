@@ -6,7 +6,7 @@
 
 ## Контракт
 
-- Версия: `1`
+- Версия: `version-2`
 
 ## Порядок действий
 
@@ -16,7 +16,6 @@
    изменений от изменений, внесённых этим flow.
 2. `implement-and-check` — основной чат реализует выбранную задачу в
    согласованном scope и запускает названные локальные проверки.
-   - Пишет: `implementation` `implementation-tests`
 3. `critical-result-review` — передать независимому SUBAGENT
    `critical-reviewer` task contract, результат реализации, результаты
    проверок и baseline. Reviewer выполняет одно read-only ревью через скилл
@@ -31,8 +30,7 @@
      отдельные списки ожидаемо и подозрительно затронутых файлов; пропущенные
      проверки; итоговый verdict `clean` или `needs-attention`. Ничего не
      исправлять.
-4. Скилл: `ponytail-review`
-   - Пишет: нет
+4. CALL SKILL `ponytail-review` для отдельного read-only complexity review.
 5. `present-reviews` — основной чат объединяет critical review и Ponytail
    review, добавляет собственную оценку и вызывает HUMAN `owner`; GATE: выбрать
    `iterate-findings`, `show-proposal` или `make-decision`.
@@ -47,9 +45,5 @@
    `owner`. Исправления, commit, push и другие mutations требуют отдельного
    явного решения человека и не входят в review-часть flow.
 
-## Полномочия записи
-
-- `implementation`
-- `implementation-tests`
-
-Reviewer и Ponytail не имеют полномочий записи.
+Flow не предоставляет полномочия. Реализация ограничена исходным запросом
+пользователя и обычными permission boundaries; reviewers остаются read-only.

@@ -1,6 +1,6 @@
 interface:
   display_name: "Run USW flow"
-  short_description: "Run one shared or local validated USW flow action"
-  default_prompt: "Run the selected project-owned USW flow with explicit scope and authority checks."
+  short_description: "Run one shared or local Markdown flow"
+  default_prompt: "Run the selected Markdown flow through the text-first model path and respect normal permission boundaries."
 policy:
   allow_implicit_invocation: true

@@ -99,9 +99,10 @@ commit, push, pull request, deployment и release SHALL по-прежнему т
 
 ### Requirement: Возобновление с незавершённого шага
 Система SHALL сохранять имя flow, identity его контракта, выбранный scope и
-индекс следующего незавершённого шага в developer-local checkpoint. Resume
-SHALL продолжать только если контракт flow и применимый source context не стали
-stale.
+индекс следующего незавершённого шага в developer-local checkpoint. Новый run
+SHALL сохраняться под его exact origin, safe flow name и UUID. Resume SHALL
+выбирать точный run ID и продолжать только если checkpoint identity, контракт
+flow и применимый source context не стали stale.
 
 #### Scenario: Безопасное продолжение
 - **WHEN** checkpoint fresh и ранее завершённые шаги соответствуют текущему flow identity
@@ -110,6 +111,10 @@ stale.
 #### Scenario: Flow изменился после остановки
 - **WHEN** identity Markdown flow не совпадает с сохранённой
 - **THEN** система не продолжает автоматически и требует нового scoped run
+
+#### Scenario: Независимые checkpoints одного flow
+- **WHEN** один custom flow имеет несколько run UUID
+- **THEN** resume выбранного UUID не читает и не изменяет checkpoints других запусков
 
 ### Requirement: Существующие role flows не изменяются
 Добавление custom flows SHALL NOT менять формат, lookup или исполнение packaged
