@@ -16,11 +16,17 @@ artifacts while preserving user-owned files and repository policy.
 - `<artifacts.root>/templates/change/{proposal.md,design.md,spec.md,tasks.md}`;
 - `<artifacts.root>/templates/task/{task.md,development-evidence.md,testing-evidence.md}`;
 - `<artifacts.root>/templates/review/receipt.md`;
-- `<flows.root>/{flow-scenario-analysis.md,flow-scenario-development.md,flow-scenario-testing.md}`;
+- `<flows.root>/examples/{chat-review.md,dev-test.md}`;
 - `<reviews.root>/`;
 - `.usw/.gitignore` и `.usw/HANDOFF.md`.
 
-Для OpenSpec provider initialization SHALL создавать только configured USW flow/review roots, три перечисленных standard scenario files и два local `.usw` files и MUST NOT создавать или изменять provider-owned `openspec/**`.
+Для OpenSpec provider initialization SHALL создавать только configured USW
+flow/review roots, два перечисленных flow examples и два local `.usw` files и
+MUST NOT создавать или изменять provider-owned `openspec/**`.
+
+Initialization MUST NOT создавать, удалять, перемещать или перезаписывать legacy
+`flow-scenario-analysis.md`, `flow-scenario-development.md` или
+`flow-scenario-testing.md`.
 
 #### Scenario: Default standalone workspace инициализируется
 - **WHEN** пользователь запускает `/usw-init` без существующей configuration
@@ -33,6 +39,10 @@ artifacts while preserving user-owned files and repository policy.
 #### Scenario: Standalone явно использует custom root под `openspec`
 - **WHEN** поддерживаемая v1 configuration выбирает provider `standalone` и явно задаёт artifact, flow или review root под `openspec/**`
 - **THEN** initialization уважает user-selected root и применяет к нему обычный create-only standalone contract
+
+#### Scenario: Legacy role scenario уже существует
+- **WHEN** configured flow root содержит один или несколько legacy `flow-scenario-*` files
+- **THEN** initialization сохраняет их byte-for-byte и независимо создаёт только отсутствующие example files
 
 ### Requirement: Lazy local artifacts не материализуются initialization
 `/usw-init` MUST NOT создавать `.usw/flows/` или `.usw/refinements/`. Эти directories SHALL создаваться только capability, которой пользователь явно поручил создать первый local custom flow или intent clarification session.

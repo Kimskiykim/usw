@@ -136,35 +136,26 @@ source identity или evidence стали неактуальны.
 - **THEN** работа проходит через затронутые Development, Testing и review gates
 
 ### Requirement: Явный контракт flow scenario
-Каждый исполнимый USW flow SHALL быть описан artifact
+Каждый project-owned исполнимый role scenario SHALL быть описан artifact
 `flow-scenario-<name>.md` с sections Purpose, Inputs, Ordered actions, Branches,
 Write authority, Stop conditions и Outputs.
 
-Исполнимые scenarios MUST разрешаться из configured project `flows.root`.
-Package SHALL предоставлять initial templates, а initialization SHALL создавать
-только отсутствующие Analysis, Development и Testing scenario files без
-перезаписи существующих. Package assets MUST NOT использоваться как скрытый
-runtime fallback для отсутствующего project scenario.
+Исполнимые role scenarios MUST разрешаться только из configured project
+`flows.root`. Initialization MUST NOT создавать role scenarios автоматически,
+а packaged examples под `<flows.root>/examples/` MUST NOT использоваться как
+scenario либо скрытый runtime fallback.
 
-#### Scenario: Валидация полного scenario
-- **WHEN** scenario содержит все обязательные sections и ссылается на доступные
-  actions
+#### Scenario: Валидация полного project-owned scenario
+- **WHEN** пользовательский scenario содержит все обязательные sections и ссылается на доступные actions
 - **THEN** USW принимает его как исполнимый orchestration contract
 
 #### Scenario: Отклонение неполного scenario
-- **WHEN** scenario не содержит Write authority или Stop conditions
+- **WHEN** пользовательский scenario не содержит Write authority или Stop conditions
 - **THEN** USW отклоняет его до запуска любого action
-
-#### Scenario: Инициализация добавляет отсутствующие standard scenarios
-- **WHEN** configured flow root не содержит один или несколько initial scenario
-  files
-- **THEN** initialization создаёт только отсутствующие files из packaged
-  templates и сохраняет существующие scenarios byte-for-byte
 
 #### Scenario: Project scenario отсутствует во время запуска
 - **WHEN** orchestrator не находит выбранный scenario в configured flow root
-- **THEN** flow останавливается как invalid artifact state и не выполняет
-  packaged scenario неявно
+- **THEN** flow останавливается как invalid artifact state и не выполняет packaged example неявно
 
 ### Requirement: Scenario владеет оркестрацией
 `usw-run-flow` SHALL следовать ordered actions и branches выбранного scenario.
