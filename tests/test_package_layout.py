@@ -271,6 +271,24 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertIn(fragment, skill)
 
+    def test_create_flow_offers_separate_optional_improvement_analysis(self):
+        skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "Сначала полностью завершить создание, проверку и отчёт",
+            "что идеи уже есть",
+            "Могу отдельно изучить его и предложить возможные",
+            "При отказе или без явного согласия завершить работу без анализа",
+            "Каждую рекомендацию связать с конкретным риском",
+            "явно оценить пользу verification и независимого review",
+            "не считать согласием на изменение flow",
+            "Применить только одобренное",
+            "Никогда не исполнять flow",
+        ):
+            self.assertIn(fragment, skill)
+
     def test_run_flow_skill_resolves_local_before_shared_by_default(self):
         skill = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(
             encoding="utf-8"
