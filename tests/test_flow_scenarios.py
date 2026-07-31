@@ -141,6 +141,44 @@ class TextFlowContractTests(unittest.TestCase):
             self.assertIn("Ненормативный пример", content)
             self.assertNotIn("--experimental-structured", content)
 
+    def test_chat_review_declares_adaptive_quorum_contract(self):
+        content = (ROOT / "usw/flows/chat-review.md").read_text(encoding="utf-8")
+        required = (
+            "--reviewers auto|2|3",
+            "Review profile: llm-critic | custom",
+            "CALL COMMAND `/usw-reviewer-llm-critic`",
+            "выполняет ровно одно discovery review: CALL SKILL",
+            "Неизвестный profile",
+            "Scope отсутствует или пуст",
+            "high-impact trigger",
+            "uncertainty factors",
+            "support",
+            "reject",
+            "abstain",
+            "1:1",
+            "reviewer-c",
+            "Не запускать четвёртого reviewer-а",
+            "voting-specific `Scope`, `Review focus` и `Output contract`",
+            "возобновить flow сразу с `GATE finding-decisions`",
+            "fix-finding",
+            "reject-finding",
+            "не считать голосом\n`reject`",
+            "evidence, vote provenance и human decision",
+            "отдельного implementation flow",
+        )
+
+        for fragment in required:
+            self.assertIn(fragment, content)
+
+    def test_packaged_chat_review_matches_shared_contract(self):
+        shared = (ROOT / "usw/flows/chat-review.md").read_text(encoding="utf-8")
+        packaged = (
+            ROOT / "skills/usw-initialize-project/templates/flows/examples/chat-review.md"
+        ).read_text(encoding="utf-8")
+        packaged_contract = "# Flow:" + packaged.split("# Flow:", 1)[1]
+
+        self.assertEqual(shared, packaged_contract)
+
     def test_active_project_flows_use_text_first_contracts(self):
         chat = (ROOT / "usw/flows/chat-review.md").read_text(encoding="utf-8")
         development = (ROOT / "usw/flows/dev-test.md").read_text(encoding="utf-8")

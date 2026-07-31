@@ -28,7 +28,8 @@ IDs и generated relative paths. Mutable status и recovery context каждой
 operation находятся в `.usw/handoffs/<operation-hex>.md`.
 
 Operation document содержит flow name, origin, flow identity, input digest,
-operation identity и human-readable sections:
+operation identity, one-line `Summary`, immutable `Started`, latest `Updated` и
+human-readable sections:
 
 - Input;
 - Done;
@@ -36,7 +37,13 @@ operation identity и human-readable sections:
 - Next action;
 - Blocker;
 - Checks;
-- References.
+- References;
+- Workspace.
+
+`Workspace` хранит Git base revision, bounded expected-write hints из Begin и
+фактически reported changed areas последнего Outcome. Эти сведения нужны только
+для recovery: они не предоставляют write authority, не доказывают ownership и
+не обнаруживают пересечения между concurrent operations.
 
 `Current position` — narrative text, не machine cursor. Статусы operation:
 `in_progress`, `paused`, `blocked`, `decision_required`, `failed`, `completed`.
@@ -53,10 +60,16 @@ Begin доступен после безопасного resolve flow:
 
 ```text
 python3 <script> begin <project> <flow> <origin> <flow-identity> <exact-input>
+  [--summary <one-line-summary>]
+  [--expected-write <path-or-area>]...
 ```
 
 Script создаёт уникальный invocation token и operation ID из token, origin,
-flow identity и SHA-256 exact input. Под общим коротким lock он:
+flow identity и SHA-256 exact input. Он фиксирует текущую Git revision либо
+явное `unborn`, `not-git` или `unknown`; summary нормализует и ограничивает, а
+при отсутствии выводит из exact input. Expected writes сохраняет как
+informational hints.
+Под общим коротким lock он:
 
 1. создаёт и подтверждает `in_progress` operation document;
 2. добавляет exact operation ID в router и подтверждает readback;
@@ -79,13 +92,16 @@ python3 <script> outcome <project> <status>
   --blocker <fact-or-none>
   [--check <fact>]...
   [--reference <path-or-fact>]...
+  [--observed-change <path-or-area>]...
 ```
 
 Outcome разрешает exact ID через router, проверяет embedded identity и immutable
 flow/input context и изменяет только выбранный operation document. Missing,
 finished, mismatched и terminal target отклоняются без изменения других
 operations. Permission boundary записывать как `decision_required`; checks
-должны быть фактическими.
+должны быть фактическими. Observed changes передавать только из фактического
+root outcome; script сохраняет их как hints и не приписывает operation изменения
+из общего `git status`.
 
 ## Save
 
@@ -97,9 +113,12 @@ python3 <script> save <project> <operation-id> <candidate>
 ```
 
 Save обновляет только exact recoverable operation, не меняет identity,
-flow/input context и не заменяет legacy или terminal state. После подтверждения
-candidate удаляется. Не создавать историю tool calls и не записывать
-выдуманные результаты.
+flow/input context, Started, workspace base или expected writes и не заменяет
+legacy или terminal state. Enriched operation нельзя заменить старой формой.
+Старую generic operation разрешено обновить только enriched candidate с
+`Started: unknown`, unknown base и пустыми expected writes. После подтверждения
+candidate удаляется. Не создавать историю tool calls и не записывать выдуманные
+результаты.
 
 ## Show и Resume
 
@@ -111,8 +130,8 @@ python3 <script> resume <project> [operation-id]
 
 - empty router — продолжать нечего;
 - одна route без selector — выбрать её;
-- несколько routes без selector — показать validated список flow/status и
-  ждать выбора, ничего не продолжая;
+- несколько routes без selector — показать validated список
+  summary/flow/status/Started/Updated и ждать выбора, ничего не продолжая;
 - `in_progress` — mutation могла прерваться, не повторять автоматически;
 - `paused`, `blocked`, `decision_required` — показать recovery context и ждать
   явного продолжения той же operation;

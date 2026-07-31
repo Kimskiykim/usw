@@ -1,4 +1,5 @@
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -7,6 +8,37 @@ ROOT = Path(__file__).parents[1]
 
 
 class PackageLayoutTests(unittest.TestCase):
+    def test_packaged_flow_dependencies_cover_literal_skill_calls(self):
+        examples = (
+            ROOT / "skills/usw-initialize-project/templates/flows/examples"
+        )
+        installer = (ROOT / "install.sh").read_text(encoding="utf-8")
+        installer_match = re.search(
+            r'^SKILL_NAMES="([^"]*)"$', installer, re.MULTILINE
+        )
+        self.assertIsNotNone(installer_match)
+        installed_skills = set(installer_match.group(1).split())
+        call_pattern = re.compile(r"CALL SKILL `([^`]+)`")
+        dependency_pattern = re.compile(
+            r"^- (bundled|external) skill: `([^`]+)`$", re.MULTILINE
+        )
+
+        for path in examples.glob("*.md"):
+            with self.subTest(example=path.name):
+                content = path.read_text(encoding="utf-8")
+                calls = set(call_pattern.findall(content))
+                dependencies = dependency_pattern.findall(content)
+                declared = {name: kind for kind, name in dependencies}
+
+                self.assertEqual(len(dependencies), len(declared))
+                self.assertEqual(calls, set(declared))
+                for name, kind in declared.items():
+                    if kind == "external":
+                        self.assertNotIn(name, installed_skills)
+                        continue
+                    self.assertTrue((ROOT / "skills" / name / "SKILL.md").is_file())
+                    self.assertIn(name, installed_skills)
+
     def test_initialize_skill_packages_standalone_execution_templates(self):
         templates = ROOT / "skills" / "usw-initialize-project" / "templates"
         expected_fragments = {

@@ -19,6 +19,7 @@ class InstallTests(unittest.TestCase):
         "usw-create-flow",
         "usw-run-flow",
         "usw-find-flow",
+        "usw-structured-review",
     )
     COMMAND_NAMES = (
         "usw-init.md",

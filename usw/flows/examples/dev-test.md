@@ -12,11 +12,6 @@
 
 - Версия: `version-2`
 
-## Dependencies
-
-- bundled skill: `usw-structured-review`
-- external skill: `ponytail-review`
-
 ## Порядок действий
 
 1. `capture-baseline` — основной чат перед реализацией сохраняет read-only
@@ -27,8 +22,8 @@
    согласованном scope и запускает названные локальные проверки.
 3. `critical-result-review` — передать независимому SUBAGENT
    `critical-reviewer` task contract, результат реализации, результаты
-   проверок и baseline. Reviewer выполняет одно read-only ревью через
-   CALL SKILL `usw-structured-review`:
+   проверок и baseline. Reviewer выполняет одно read-only ревью через скилл
+   `usw-structured-review`:
    - Scope: только изменения, внесённые flow после baseline, в сопоставлении с
      принятыми требованиями и checks выбранной задачи.
    - Review focus: полнота реализации требований и тестов; изменения вне
