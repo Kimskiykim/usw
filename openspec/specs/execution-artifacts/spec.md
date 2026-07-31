@@ -58,32 +58,14 @@ call.
 - **THEN** в Milestone log добавляется новая попытка со ссылками на предыдущий
   receipt и новый source, не изменяя identity исходной версии контракта
 
-### Requirement: Локальный handoff описывает только текущую сессию
-`.usw/HANDOFF.md` MUST содержать metadata table
-`Subject | Role | Attempt | Current operation | Status | Updated`, ограниченный Session
-journal `Event | Operation | Status | Fact | Changed areas`, Verification table,
-одно Next action, References и trusted source snapshot с freshness.
+### Requirement: Generic handoff не требует artifact roles
+`.usw/HANDOFF.md` MUST remain developer-local current recovery state and MUST
+NOT require typed subject, role, write authority, shared evidence or review
+receipts. It MUST NOT be treated as durable shared task history.
 
-`Subject` MUST быть typed reference на refinement, change или task. `Role` MUST
-называть текущий Analysis, Development или Testing flow, чтобы resume восстановил
-его write authority и completion criteria. Analysis checkpoint MAY ссылаться на
-refinement или change до появления granular task.
-
-Operation IDs MUST обозначать смысловые единицы работы, а events — изменения их
-состояния, включая как минимум started, completed, blocked, interrupted и
-superseded. Журнал MUST NOT перечислять каждую shell command или tool call.
-Файл SHALL перезаписываться как текущая локальная контрольная точка и MUST NOT
-считаться общей или долговечной историей задачи.
-
-#### Scenario: Нормальная пауза
-- **WHEN** исполнитель останавливается между операциями
-- **THEN** он обновляет snapshot, завершённые факты, Current operation и ровно
-  одно Next action перед окончанием сессии
-
-#### Scenario: Неожиданное прерывание
-- **WHEN** агент не успел записать завершение текущей операции
-- **THEN** следующий запуск сверяет trusted source snapshot и Git diff, считает
-  незавершённую операцию неподтверждённой и продолжает только после reconciliation
+#### Scenario: Flow does not use OpenSpec artifacts
+- **WHEN** a text flow pauses
+- **THEN** handoff preserves sufficient narrative recovery context without creating shared artifacts
 
 ### Requirement: Development и Testing ведут раздельное evidence
 Development MUST быть единственным writer файла `development-evidence.md`, а
@@ -207,7 +189,7 @@ contract revision и инвалидировать всё Development и Testing 
 
 ### Requirement: Review receipt является общей записью перехода
 USW MUST создавать новый reviewer-owned receipt для каждой попытки internal или
-transition review под настроенным provider-neutral review root, по умолчанию
+transition review под настроенным review root, по умолчанию
 `usw/reviews/<subject-type>/<subject-path>/<review-id>.md`. Receipt MUST содержать
 gate, owner role, subject identity, reviewed scope, previous attempt или receipt,
 reviewer, verdict, timestamp, ссылки на findings и sorted reviewed artifact
@@ -261,25 +243,6 @@ Receipt SHALL быть единственной общей записью при
 - **WHEN** source или reviewed artifact identity изменились после accepted receipt
 - **THEN** прежний receipt остаётся неизменным, но не разрешает новый переход, и
   применимый gate выполняется новой попыткой
-
-### Requirement: Локальный checkpoint и shared history не дублируют друг друга
-`.usw/HANDOFF.md` SHALL указывать на typed subject, role, attempt, operation и
-канонические shared artifacts, но MUST NOT быть единственным источником
-долговечной истории.
-Durable milestone history SHALL находиться в `task.md`, выполненные проверки —
-в role-owned evidence, а human decisions и переходы — в receipts. Git MAY
-служить технической историей файлов, но MUST NOT заменять эти workflow records.
-
-#### Scenario: Новая сессия возобновляет задачу
-- **WHEN** доступен актуальный `.usw/HANDOFF.md`
-- **THEN** исполнитель восстанавливает role и текущую operation по её ID и
-  проверяет ссылки на shared artifacts, не копируя их содержимое в local checkpoint
-
-#### Scenario: Локальный checkpoint отсутствует или устарел
-- **WHEN** `.usw/HANDOFF.md` отсутствует либо его source snapshot не совпадает
-  с текущим source
-- **THEN** shared task, evidence и receipt artifacts сохраняют историю, а
-  текущая операция восстанавливается заново и явно
 
 ### Requirement: Первое включение модели не мигрирует legacy evidence
 При первом включении execution-artifact templates USW SHALL явно пометить все

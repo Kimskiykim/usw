@@ -31,9 +31,10 @@ case "$#" in
 esac
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SKILL_NAMES="usw-initialize-project usw-manage-handoff usw-brainstorm-solutions usw-refine-intent usw-plan-small-steps usw-explain-me usw-create-flow usw-run-flow usw-manage-artifacts usw-execute-task usw-verify-task"
-LEGACY_SKILL_NAMES="usw-init usw-refine-task"
-COMMAND_NAMES="usw-init.md usw-handoff.md usw-resume.md"
+SKILL_NAMES="usw-initialize-project usw-manage-handoff usw-refine-intent usw-plan-small-steps usw-explain-me usw-create-flow usw-run-flow usw-find-flow"
+LEGACY_SKILL_NAMES="usw-init usw-refine-task usw-execute-task usw-verify-task usw-route-task"
+COMMAND_NAMES="usw-init.md usw-handoff.md usw-resume.md usw-reviewer-llm-critic.md usw-find-flow.md usw-refine-intent.md usw-plan-small-steps.md usw-explain-me.md"
+LEGACY_COMMAND_NAMES="usw-route-task.md"
 QWEN_HOME_DIR="${QWEN_HOME:-${HOME}/.qwen}"
 QWEN_SKILLS_DIR="$QWEN_HOME_DIR/skills"
 QWEN_COMMANDS_DIR="$QWEN_HOME_DIR/commands"
@@ -66,6 +67,9 @@ check_agent_targets() {
   for legacy_skill_name in $LEGACY_SKILL_NAMES; do
     check_target "$skills_dir/$legacy_skill_name"
   done
+  for legacy_command_name in $LEGACY_COMMAND_NAMES; do
+    check_target "$commands_dir/$legacy_command_name"
+  done
 }
 
 install_skill() {
@@ -78,6 +82,8 @@ install_skill() {
     rm -rf "$target"
   fi
   cp -R "$source_skill_dir" "$target"
+  find "$target" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+  find "$target" -type d -name '__pycache__' -empty -delete
   echo "Installed USW skill at $target"
 }
 
@@ -101,6 +107,11 @@ install_agent() {
     for legacy_skill_name in $LEGACY_SKILL_NAMES; do
       if [ -e "$skills_dir/$legacy_skill_name" ]; then
         rm -rf "$skills_dir/$legacy_skill_name"
+      fi
+    done
+    for legacy_command_name in $LEGACY_COMMAND_NAMES; do
+      if [ -e "$commands_dir/$legacy_command_name" ]; then
+        rm -f "$commands_dir/$legacy_command_name"
       fi
     done
   fi
@@ -132,4 +143,4 @@ case "$MODE" in
     ;;
 esac
 
-echo "Start a new agent session to load /usw-init, /usw-handoff, and /usw-resume."
+echo "Start a new agent session to load the installed USW commands."

@@ -5,10 +5,8 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import stat
 import sys
-from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
@@ -17,27 +15,13 @@ LOCAL_STATE_IGNORE_CONTENT = "*\n"
 TEMPLATE_ROOT = Path(__file__).parents[1] / "templates"
 CONFIG_FILE_NAME = "usw.yaml"
 SUPPORTED_SCHEMA_VERSION = 1
-SUPPORTED_PROVIDERS = frozenset({"standalone", "openspec"})
 DEFAULT_SPECIALIZED_ROOTS = {
     "flows": "usw/flows",
     "reviews": "usw/reviews",
 }
 FLOW_EXAMPLE_PATHS = (
-    "analysis.md",
-    "development.md",
-    "testing.md",
     "chat-review.md",
     "dev-test.md",
-)
-ARTIFACT_TEMPLATE_PATHS = (
-    "change/proposal.md",
-    "change/design.md",
-    "change/spec.md",
-    "change/tasks.md",
-    "task/task.md",
-    "task/development-evidence.md",
-    "task/testing-evidence.md",
-    "review/receipt.md",
 )
 
 
@@ -53,10 +37,10 @@ class WorkspaceConfig(NamedTuple):
     """Resolved v1 workspace configuration."""
 
     schema_version: int
-    provider: str
     artifact_root: str
     flow_root: str
     review_root: str
+    handoff: bool
     raw_content: str | None = None
 
     @property
@@ -68,17 +52,14 @@ class WorkspaceConfig(NamedTuple):
         }
 
 
-def default_config(provider: str = "standalone") -> WorkspaceConfig:
-    """Return deterministic v1 defaults for an explicitly selected provider."""
-    if provider not in SUPPORTED_PROVIDERS:
-        raise ConfigError("unsupported_provider", f"unsupported provider: {provider}")
-    artifact_root = "usw" if provider == "standalone" else "openspec"
+def default_config() -> WorkspaceConfig:
+    """Return deterministic v1 defaults."""
     return WorkspaceConfig(
         schema_version=SUPPORTED_SCHEMA_VERSION,
-        provider=provider,
-        artifact_root=artifact_root,
+        artifact_root="usw",
         flow_root=DEFAULT_SPECIALIZED_ROOTS["flows"],
         review_root=DEFAULT_SPECIALIZED_ROOTS["reviews"],
+        handoff=True,
     )
 
 
@@ -115,9 +96,17 @@ def _parse_yaml_mapping(content: str) -> dict[str, object]:
             parent[key] = child
             stack.append((indent, child))
             continue
-        if value.startswith(("'", '"')) and value.endswith(value[0]):
+        quoted = value.startswith(("'", '"')) and value.endswith(value[0])
+        if quoted:
             value = value[1:-1]
-        scalar: object = int(value) if value.isdecimal() else value
+        if quoted:
+            scalar: object = value
+        elif value == "true":
+            scalar = True
+        elif value == "false":
+            scalar = False
+        else:
+            scalar = int(value) if value.isdecimal() else value
         parent[key] = scalar
     return root
 
@@ -126,7 +115,7 @@ def parse_config(content: str) -> WorkspaceConfig:
     """Parse supported fields while retaining the original bytes for consumers."""
     data = _parse_yaml_mapping(content)
     schema_version = data.get("schema_version")
-    if schema_version != SUPPORTED_SCHEMA_VERSION:
+    if type(schema_version) is not int or schema_version != SUPPORTED_SCHEMA_VERSION:
         raise ConfigError(
             "unsupported_schema_version",
             f"expected {SUPPORTED_SCHEMA_VERSION}, got {schema_version!r}",
@@ -141,10 +130,15 @@ def parse_config(content: str) -> WorkspaceConfig:
     ):
         if not isinstance(section, dict):
             raise ConfigError("invalid_config", f"{name} must be a mapping")
-    provider = artifacts.get("provider", "standalone")
-    if not isinstance(provider, str) or provider not in SUPPORTED_PROVIDERS:
-        raise ConfigError("unsupported_provider", f"unsupported provider: {provider!r}")
-    defaults = default_config(provider)
+    if "provider" in artifacts:
+        raise ConfigError(
+            "invalid_config",
+            "artifacts.provider is no longer supported; remove it",
+        )
+    defaults = default_config()
+    handoff = data.get("handoff", defaults.handoff)
+    if type(handoff) is not bool:
+        raise ConfigError("invalid_config", "handoff must be a boolean")
 
     def root_value(section: dict[str, object], default: str, name: str) -> str:
         value = section.get("root", default)
@@ -154,10 +148,10 @@ def parse_config(content: str) -> WorkspaceConfig:
 
     return WorkspaceConfig(
         schema_version=SUPPORTED_SCHEMA_VERSION,
-        provider=provider,
         artifact_root=root_value(artifacts, defaults.artifact_root, "artifacts"),
         flow_root=root_value(flows, defaults.flow_root, "flows"),
         review_root=root_value(reviews, defaults.review_root, "reviews"),
+        handoff=handoff,
         raw_content=content,
     )
 
@@ -219,8 +213,7 @@ def validate_config(project_root: Path, config: WorkspaceConfig) -> WorkspaceCon
         if not _paths_overlap(parsed["artifacts"], parsed[specialized_name]):
             continue
         allowed = (
-            config.provider == "standalone"
-            and len(parsed[specialized_name]) > len(parsed["artifacts"])
+            len(parsed[specialized_name]) > len(parsed["artifacts"])
             and parsed[specialized_name][: len(parsed["artifacts"])]
             == parsed["artifacts"]
         )
@@ -242,22 +235,9 @@ def load_config(project_root: Path) -> WorkspaceConfig:
     return validate_config(project_root, config)
 
 
-def render_handoff(updated_at: datetime | None = None) -> str:
-    """Return the initial developer-local handoff state."""
-    timestamp = updated_at or datetime.now(timezone.utc)
-    values = {
-        "status": "idle",
-        "updated_at": timestamp.isoformat(timespec="seconds"),
-        "fact_or_none": "no active work",
-        "one_next_action_or_none": "None.",
-        "reference_or_none": "None.",
-        "fresh_stale_or_unknown": "unknown",
-    }
-    return re.sub(
-        r"{{([^}]+)}}",
-        lambda match: values.get(match.group(1), "none"),
-        read_template("local/HANDOFF.md"),
-    )
+def render_handoff() -> str:
+    """Return the initial empty developer-local handoff router."""
+    return read_template("local/HANDOFF.md")
 
 
 def find_project_root(start: Path) -> Path:
@@ -387,11 +367,11 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
         (CONFIG_FILE_NAME, "file"),
         (config.flow_root, "directory"),
         (f"{config.flow_root}/examples", "directory"),
-        (config.review_root, "directory"),
         (".usw", "directory"),
         (".usw/.gitignore", "file"),
-        (".usw/HANDOFF.md", "file"),
     ]
+    if config.handoff:
+        expected_paths.append((".usw/HANDOFF.md", "file"))
     expected_paths.extend(
         (
             f"{config.flow_root}/examples/{example}",
@@ -399,18 +379,6 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
         )
         for example in FLOW_EXAMPLE_PATHS
     )
-    if config.provider == "standalone":
-        expected_paths.extend(
-            [
-                (config.artifact_root, "directory"),
-                (f"{config.artifact_root}/changes", "directory"),
-                (f"{config.artifact_root}/templates", "directory"),
-            ]
-        )
-        expected_paths.extend(
-            (f"{config.artifact_root}/templates/{path}", "file")
-            for path in ARTIFACT_TEMPLATE_PATHS
-        )
     for rendered_path, expected_kind in expected_paths:
         parts = Path(rendered_path).parts
         current = project_root
@@ -427,22 +395,13 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
                 raise IsADirectoryError(f"Project path is a directory, not a file: {current}")
 
 
-def detect_openspec_workspace(project_root: Path) -> bool:
-    """Return whether a real OpenSpec directory exists, without inspecting it."""
-    return _existing_path_kind(project_root / "openspec") == "directory"
-
-
 def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
     """Create configured USW workspace state without overwriting project files."""
     project_root = find_project_root(project)
     config_file = project_root / CONFIG_FILE_NAME
     config = load_config(project_root)
-    artifact_directory = project_root / config.artifact_root
-    changes_directory = artifact_directory / "changes"
-    artifact_template_directory = artifact_directory / "templates"
     flow_directory = project_root / config.flow_root
     flow_example_directory = flow_directory / "examples"
-    review_directory = project_root / config.review_root
     local_state_ignore_file = project_root / ".usw" / ".gitignore"
     handoff_file = project_root / ".usw" / "HANDOFF.md"
 
@@ -454,34 +413,6 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
             create_file(project_root, config_file, render_default_config()),
         ),
     ]
-    if config.provider == "standalone":
-        results.extend(
-            [
-                (
-                    artifact_directory,
-                    create_directory(project_root, artifact_directory),
-                ),
-                (
-                    changes_directory,
-                    create_directory(project_root, changes_directory),
-                ),
-                (
-                    artifact_template_directory,
-                    create_directory(project_root, artifact_template_directory),
-                ),
-            ]
-        )
-        results.extend(
-            (
-                artifact_template_directory / relative_path,
-                create_file(
-                    project_root,
-                    artifact_template_directory / relative_path,
-                    read_template(relative_path),
-                ),
-            )
-            for relative_path in ARTIFACT_TEMPLATE_PATHS
-        )
     results.extend(
         [
             (flow_directory, create_directory(project_root, flow_directory)),
@@ -489,7 +420,6 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
                 flow_example_directory,
                 create_directory(project_root, flow_example_directory),
             ),
-            (review_directory, create_directory(project_root, review_directory)),
         ]
     )
     results.extend(
@@ -503,13 +433,16 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
         )
         for example in FLOW_EXAMPLE_PATHS
     )
-    results.extend([
+    results.append(
         (
             local_state_ignore_file,
             create_file(project_root, local_state_ignore_file, LOCAL_STATE_IGNORE_CONTENT),
-        ),
-        (handoff_file, create_file(project_root, handoff_file, render_handoff())),
-    ])
+        )
+    )
+    if config.handoff:
+        results.append(
+            (handoff_file, create_file(project_root, handoff_file, render_handoff()))
+        )
     return results
 
 
@@ -533,9 +466,6 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        project_root = find_project_root(args.project)
-        openspec_detected = detect_openspec_workspace(project_root)
-        config = load_config(project_root)
         results = initialize_usw(args.project)
     except OSError as error:
         print(f"USW initialization failed: {error}", file=sys.stderr)
@@ -549,17 +479,6 @@ def main() -> int:
     for path, created in results:
         status = "Created" if created else "Already exists"
         print(f"{status}: {path}")
-    if openspec_detected:
-        if config.provider == "openspec":
-            print(
-                "Detected existing OpenSpec directory; the OpenSpec provider is "
-                "already active and the directory was left unchanged."
-            )
-        else:
-            print(
-                "Detected existing OpenSpec directory; it was left unchanged. "
-                "Set artifacts.provider: openspec in usw.yaml to opt in explicitly."
-            )
     return 0
 
 

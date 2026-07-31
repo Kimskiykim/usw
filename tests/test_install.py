@@ -13,17 +13,23 @@ class InstallTests(unittest.TestCase):
     SKILL_NAMES = (
         "usw-initialize-project",
         "usw-manage-handoff",
-        "usw-brainstorm-solutions",
         "usw-refine-intent",
         "usw-plan-small-steps",
         "usw-explain-me",
         "usw-create-flow",
         "usw-run-flow",
-        "usw-manage-artifacts",
-        "usw-execute-task",
-        "usw-verify-task",
+        "usw-find-flow",
     )
-    COMMAND_NAMES = ("usw-init.md", "usw-handoff.md", "usw-resume.md")
+    COMMAND_NAMES = (
+        "usw-init.md",
+        "usw-handoff.md",
+        "usw-resume.md",
+        "usw-reviewer-llm-critic.md",
+        "usw-find-flow.md",
+        "usw-refine-intent.md",
+        "usw-plan-small-steps.md",
+        "usw-explain-me.md",
+    )
 
     def run_install(self, home: Path, *args: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
@@ -49,11 +55,14 @@ class InstallTests(unittest.TestCase):
             for skills_dir in (home / ".qwen/skills", home / ".agents/skills"):
                 for skill_name in self.SKILL_NAMES:
                     self.assertTrue((skills_dir / skill_name / "SKILL.md").is_file())
-                self.assertFalse(
-                    (
-                        skills_dir
-                        / "usw-initialize-project/templates/openspec/AGENTS.md"
-                    ).is_file()
+                self.assertEqual(
+                    [],
+                    [
+                        path
+                        for path in skills_dir.rglob("*")
+                        if path.name == "__pycache__"
+                        or path.suffix in {".pyc", ".pyo"}
+                    ],
                 )
                 self.assertTrue(
                     (
@@ -68,9 +77,6 @@ class InstallTests(unittest.TestCase):
                     ).is_file()
                 )
                 for example in (
-                    "analysis.md",
-                    "development.md",
-                    "testing.md",
                     "chat-review.md",
                     "dev-test.md",
                 ):
@@ -128,22 +134,35 @@ class InstallTests(unittest.TestCase):
                 )
                 self.assertEqual(source, installed_path.read_text(encoding="utf-8"))
 
-    def test_force_removes_legacy_skill_names(self):
+    def test_force_removes_legacy_names(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
-            legacy_paths = [
+            legacy_skills = [
                 base / name
                 for base in (home / ".qwen/skills", home / ".agents/skills")
-                for name in ("usw-init", "usw-refine-task")
+                for name in (
+                    "usw-init",
+                    "usw-refine-task",
+                    "usw-execute-task",
+                    "usw-verify-task",
+                    "usw-route-task",
+                )
             ]
-            for path in legacy_paths:
+            for path in legacy_skills:
                 path.mkdir(parents=True)
                 (path / "SKILL.md").write_text("legacy\n", encoding="utf-8")
+            legacy_commands = [
+                base / "usw-route-task.md"
+                for base in (home / ".qwen/commands", home / ".codex/prompts")
+            ]
+            for path in legacy_commands:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("legacy\n", encoding="utf-8")
 
             result = self.run_install(home, "--force")
 
             self.assertEqual(0, result.returncode, result.stderr)
-            for path in legacy_paths:
+            for path in (*legacy_skills, *legacy_commands):
                 self.assertFalse(path.exists())
 
 

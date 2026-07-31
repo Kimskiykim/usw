@@ -22,7 +22,7 @@ description: Iteratively clarify an ambiguous idea, problem, request, or decisio
 - уточнять не более одного decision case за ход;
 - сохранять локальные ненормативные заметки.
 
-Не оценивать решения, не создавать и не продвигать backlog, OpenSpec change,
+Не оценивать решения, не создавать и не продвигать backlog, planning change,
 provider-owned planning artifacts или executable tasks и не начинать реализацию.
 
 ## Артефакты

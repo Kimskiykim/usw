@@ -24,7 +24,6 @@ Use this directory as the shared specification source of truth.
 6. Merge only specification deltas into master specs when archiving a change.
 7. Keep developer-local state in `.usw/`; do not copy it into shared artifacts.
 
-Directory detection and OpenSpec-provider initialization never create or modify
-provider-owned `openspec/**`. An explicit standalone custom root remains a
-user-selected writable namespace. Provider operations may validate and update
-required OpenSpec artifacts only within their own scope.
+The repository may use OpenSpec for its own planning artifacts, but packaged
+USW runtime and initialization remain standalone and do not invoke the OpenSpec
+CLI.

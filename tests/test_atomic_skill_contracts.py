@@ -18,45 +18,28 @@ def load(name: str, relative: str):
     return module
 
 
-FLOWS = load("atomic_flows", "skills/usw-initialize-project/scripts/flow_scenario.py")
-REGISTRY = load("atomic_registry", "skills/usw-run-flow/scripts/capability_registry.py")
-PROVIDERS = load("atomic_providers", "skills/usw-manage-artifacts/scripts/provider_artifacts.py")
-DEVELOPMENT = load("atomic_development", "skills/usw-execute-task/scripts/execute_scope.py")
-TESTING = load("atomic_testing", "skills/usw-verify-task/scripts/verify_scope.py")
+ARTIFACTS = load(
+    "atomic_artifacts",
+    "research/structured-runtime/legacy/usw-manage-artifacts/scripts/artifact_writer.py",
+)
 
 
 class AtomicSkillContractTests(unittest.TestCase):
-    def test_all_role_scenario_actions_resolve_to_production_capabilities(self):
-        templates = ROOT / "tests/fixtures/flow-scenarios"
-        actions = set()
-        for path in templates.glob("flow-scenario-*.md"):
-            actions.update(FLOWS.validate_scenario(path.read_text(encoding="utf-8")).actions)
-
-        self.assertEqual(actions, set(REGISTRY.ACTION_CAPABILITIES))
-        for action, skill_name in REGISTRY.ACTION_CAPABILITIES.items():
-            with self.subTest(action=action):
-                self.assertTrue((ROOT / "skills" / skill_name / "SKILL.md").is_file())
-                self.assertNotIn("stub", skill_name)
-
-        self.assertEqual(
-            "usw-refine-intent", REGISTRY.ACTION_CAPABILITIES["clarify-intent"]
-        )
-        self.assertEqual(
-            "usw-brainstorm-solutions",
-            REGISTRY.ACTION_CAPABILITIES["select-approach"],
-        )
-        self.assertNotEqual(
-            REGISTRY.ACTION_CAPABILITIES["clarify-intent"],
-            REGISTRY.ACTION_CAPABILITIES["select-approach"],
-        )
+    def test_production_skills_do_not_import_research_runtime(self):
+        for path in (ROOT / "skills").rglob("*"):
+            if path.is_file() and "__pycache__" not in path.parts:
+                self.assertNotIn(
+                    "research/structured-runtime",
+                    path.read_text(encoding="utf-8"),
+                    path,
+                )
 
     def test_atomic_skills_declare_input_write_output_and_return_boundaries(self):
         skills = (
             "usw-initialize-project", "usw-manage-handoff",
-            "usw-brainstorm-solutions", "usw-refine-intent",
+            "usw-refine-intent",
             "usw-plan-small-steps", "usw-explain-me", "usw-create-flow",
-            "usw-run-flow",
-            "usw-manage-artifacts", "usw-execute-task", "usw-verify-task",
+            "usw-run-flow", "usw-find-flow",
         )
         for skill_name in skills:
             with self.subTest(skill=skill_name):
@@ -69,12 +52,36 @@ class AtomicSkillContractTests(unittest.TestCase):
         self.assertIn("не запускает микротаску", content)
         self.assertIn("task-level `plan.md`/`handoff.md`", content)
 
-    def test_standalone_adapter_writes_only_authorized_planning_artifact(self):
+    def test_handoff_skills_share_the_routed_operation_contract(self):
+        manage = (ROOT / "skills/usw-manage-handoff/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        run = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        initialize = (
+            ROOT / "skills/usw-initialize-project/SKILL.md"
+        ).read_text(encoding="utf-8")
+        fallback = (
+            ROOT
+            / "skills/usw-initialize-project/references/llm-fallback.md"
+        ).read_text(encoding="utf-8")
+
+        for content in (manage, run, initialize, fallback):
+            self.assertIn(".usw/handoffs/", content)
+        self.assertIn("assert-current", manage)
+        self.assertIn("несколько routes без selector", manage)
+        self.assertIn("independent top-level invocations", run)
+        self.assertIn("Nested child не владеет durable state", run)
+        self.assertIn("deterministic empty operation router", initialize)
+        self.assertIn("deterministic empty router", fallback)
+        self.assertNotIn("{{updated_at}}", fallback)
+
+    def test_writer_writes_only_authorized_planning_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
-            outcome = PROVIDERS.write_planning_artifact(
+            outcome = ARTIFACTS.write_planning_artifact(
                 project,
-                provider="standalone",
                 artifact_root="usw",
                 role="proposal",
                 relative_path="changes/example/proposal.md",
@@ -85,97 +92,15 @@ class AtomicSkillContractTests(unittest.TestCase):
             self.assertEqual(frozenset({"proposal"}), outcome.written_roles)
             self.assertEqual("proposal\n", (project / "usw/changes/example/proposal.md").read_text())
 
-    def test_unconnected_openspec_adapter_returns_error_without_fallback_write(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            outcome = PROVIDERS.write_planning_artifact(
-                project,
-                provider="openspec",
-                artifact_root="openspec",
-                role="proposal",
-                relative_path="changes/example/proposal.md",
-                content="proposal\n",
-                permitted_roles=frozenset({"proposal"}),
-            )
-            self.assertEqual("unsupported_provider_operation", outcome.outcome)
-            self.assertFalse((project / "openspec").exists())
-            self.assertFalse((project / "usw/changes/example/proposal.md").exists())
-
-    def test_development_and_testing_append_only_their_own_evidence(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            task = project / "usw/changes/example/tasks/1-test"
-            task.mkdir(parents=True)
-            (task / "task.md").write_text("task\n", encoding="utf-8")
-            development_file = task / "development-evidence.md"
-            testing_file = task / "testing-evidence.md"
-            dev = DEVELOPMENT.append_development_evidence(
-                project,
-                task,
-                evidence_id="dev-1",
-                contract_revision="c1",
-                source_identity="usw-source-v1:" + "a" * 64,
-                command="unit-test",
-                result="passed",
-                timestamp="2026-07-21T12:00:00Z",
-            )
-            test = TESTING.append_testing_evidence(
-                project,
-                task,
-                evidence_id="test-1",
-                contract_revision="c1",
-                source_identity="usw-source-v1:" + "a" * 64,
-                command="acceptance-test",
-                result="failed",
-                finding="F-1",
-                timestamp="2026-07-21T12:01:00Z",
-            )
-            self.assertEqual(frozenset({"development-evidence"}), dev.written_roles)
-            self.assertEqual(frozenset({"testing-evidence"}), test.written_roles)
-            self.assertIn("dev-1", development_file.read_text())
-            self.assertNotIn("test-1", development_file.read_text())
-            self.assertIn("test-1", testing_file.read_text())
-            self.assertNotIn("dev-1", testing_file.read_text())
-
-            wrong_role = DEVELOPMENT.append_development_evidence(
-                project,
-                testing_file,
-                evidence_id="dev-2",
-                contract_revision="c1",
-                source_identity="usw-source-v1:" + "a" * 64,
-                command="unit-test",
-                result="passed",
-                timestamp="2026-07-21T12:02:00Z",
-            )
-            self.assertEqual("invalid_evidence_path", wrong_role.outcome)
-
-    def test_evidence_writer_rejects_task_root_outside_project(self):
-        with tempfile.TemporaryDirectory() as project_dir, tempfile.TemporaryDirectory() as other_dir:
-            project = Path(project_dir)
-            task = Path(other_dir)
-            (task / "task.md").write_text("task\n", encoding="utf-8")
-            outcome = DEVELOPMENT.append_development_evidence(
-                project,
-                task,
-                evidence_id="dev-1",
-                contract_revision="c1",
-                source_identity="usw-source-v1:" + "a" * 64,
-                command="unit-test",
-                result="passed",
-                timestamp="2026-07-21T12:00:00Z",
-            )
-            self.assertEqual("invalid_evidence_path", outcome.outcome)
-
-    def test_standalone_adapter_rejects_symlinked_managed_path(self):
+    def test_writer_rejects_symlinked_managed_path(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             actual = project / "usw/actual"
             actual.mkdir(parents=True)
             (project / "usw/link").symlink_to(actual, target_is_directory=True)
             with self.assertRaisesRegex(ValueError, "symbolic link"):
-                PROVIDERS.write_planning_artifact(
+                ARTIFACTS.write_planning_artifact(
                     project,
-                    provider="standalone",
                     artifact_root="usw",
                     role="proposal",
                     relative_path="link/proposal.md",

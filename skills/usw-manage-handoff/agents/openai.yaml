@@ -1,4 +1,4 @@
 interface:
   display_name: "USW Handoff"
-  short_description: "Save and resume developer-local work state"
-  default_prompt: "Use $usw-manage-handoff to save or resume the current developer-local work state."
+  short_description: "Manage optional local work state"
+  default_prompt: "Use $usw-manage-handoff to save, inspect, resume or finish generic developer-local state when enabled."

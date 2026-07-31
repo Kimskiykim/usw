@@ -423,10 +423,10 @@ verification, blockers и next action без доступа к предыдущ�
 Невалидный новый checkpoint не повреждает последнее валидное состояние, а
 валидный checkpoint может исправить повреждённый current state.
 
-### AC-09. Provider-neutral resume
+### AC-09. Portable resume
 
 Checkpoint, созданный одним поддерживаемым coding agent, может быть прочитан и
-продолжен другим без provider-specific полей.
+продолжен другим без runtime-specific полей.
 
 ## 11. Нефункциональные требования
 

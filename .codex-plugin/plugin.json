@@ -1,7 +1,7 @@
 {
   "name": "usw",
-  "version": "0.1.0+codex.20260717085420",
-  "description": "Run standalone USW workflows with optional OpenSpec compatibility.",
+  "version": "0.2.0",
+  "description": "Create, find, and run text-first Markdown workflows.",
   "author": {
     "name": "USW contributors",
     "url": "https://github.com/Kimskiykim"
@@ -16,15 +16,16 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "USW",
-    "shortDescription": "Run standalone role-based development workflows.",
-    "longDescription": "Initializes a standalone USW workspace, orchestrates Analysis, Development and Testing scenarios, preserves evidence and review receipts, and optionally integrates with OpenSpec through explicit configuration.",
+    "shortDescription": "Create, find, and run Markdown workflows.",
+    "longDescription": "Creates, finds, and runs readable local or shared Markdown workflows through one model execution path with optional developer-local handoff state.",
     "developerName": "USW contributors",
     "category": "Developer Tools",
     "capabilities": [
       "Write"
     ],
     "defaultPrompt": [
-      "Run /usw-init to create a standalone workspace, use usw-run-flow for explicit role scenarios, and use /usw-handoff before a pause."
+      "Use /usw-find-flow to find an existing workflow for this intent without running it.",
+      "Run /usw-init to create a standalone workspace, then use usw-run-flow for a named Markdown workflow."
     ]
   }
 }

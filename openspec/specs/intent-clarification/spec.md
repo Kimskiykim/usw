@@ -51,7 +51,7 @@ belongs to the user.
 ### Requirement: A clarification may end without downstream work
 `usw-refine-intent` SHALL allow a session to finish with a standalone formulated
 outcome, a paused state, or unresolved questions. It MUST NOT require or imply a
-backlog item, OpenSpec change, implementation plan, executable task, or next flow.
+  backlog item, planning change, implementation plan, executable task, or next flow.
 
 #### Scenario: Formulation is sufficient
 - **WHEN** the user accepts the current formulation and requests no further work
@@ -64,19 +64,20 @@ backlog item, OpenSpec change, implementation plan, executable task, or next flo
   provider-owned writes to a separate authorized capability
 
 ### Requirement: Intent clarification is distinct from solution evaluation
-USW SHALL route the standard `clarify-intent` action to
-`usw-refine-intent`. Solution comparison SHALL remain a separate capability
-that accepts a bounded problem, compares approaches, recommends one, and returns
-without writing clarification state.
+USW SHALL keep `usw-refine-intent` available for iterative clarification.
+Solution comparison SHALL remain a separate capability that accepts a bounded
+problem, compares approaches, recommends one and returns without writing
+clarification state. A text flow MAY name either capability as readable
+guidance, but no validated Analysis runner or machine action routing is
+required.
 
-#### Scenario: Analysis needs missing intent details
-- **WHEN** a validated Analysis flow selects `clarify-intent`
-- **THEN** the runner invokes `usw-refine-intent` for one decision case
+#### Scenario: Text flow needs missing intent details
+- **WHEN** a Markdown flow explicitly asks to clarify unresolved intent
+- **THEN** the model may invoke `usw-refine-intent` for one decision case
 
-#### Scenario: Analysis needs an approach choice
-- **WHEN** a validated Analysis flow selects `select-approach`
-- **THEN** the runner invokes the solution-evaluation capability rather than
-  continuing the clarification dialogue implicitly
+#### Scenario: User needs an approach choice
+- **WHEN** the bounded problem is clear and the user requests solution comparison
+- **THEN** the solution-evaluation capability runs separately rather than continuing clarification implicitly
 
 ### Requirement: Existing shared refinement data is preserved
 USW MUST NOT automatically discover, read, move, merge, delete, or rewrite

@@ -1,12 +1,12 @@
 # Flow: dev-test
 
-Реализует выбранное OpenSpec-изменение, затем независимо проверяет соответствие
-результата change и отсутствие лишних изменений. Отдельно проверяет diff на
+Реализует выбранную USW-задачу, затем независимо проверяет соответствие
+результата task contract и отсутствие лишних изменений. Отдельно проверяет diff на
 избыточную сложность. Замечания reviewers не исправляются автоматически.
 
 ## Контракт
 
-- Версия: `1`
+- Версия: `version-2`
 
 ## Порядок действий
 
@@ -14,14 +14,14 @@
    снимок текущего рабочего дерева: status, изменённые файлы и существующий
    diff. Снимок нужен только для отделения уже имевшихся пользовательских
    изменений от изменений, внесённых этим flow.
-2. Скилл: `openspec-apply-change`
-   - Пишет: `implementation` `implementation-tests` `task-index`
+2. `implement-and-check` — основной чат реализует выбранную задачу в
+   согласованном scope и запускает названные локальные проверки.
 3. `critical-result-review` — передать независимому SUBAGENT
-   `critical-reviewer` OpenSpec change, результат реализации, task index и
-   baseline. Reviewer выполняет одно read-only ревью через скилл
+   `critical-reviewer` task contract, результат реализации, результаты
+   проверок и baseline. Reviewer выполняет одно read-only ревью через скилл
    `usw-structured-review`:
    - Scope: только изменения, внесённые flow после baseline, в сопоставлении с
-     proposal, design, delta specs и tasks выбранного change.
+     принятыми требованиями и checks выбранной задачи.
    - Review focus: полнота реализации требований и тестов; изменения вне
      согласованного scope; случайно затронутые файлы; смешение с существующими
      пользовательскими правками; необоснованные рефакторинги; согласованность
@@ -30,8 +30,7 @@
      отдельные списки ожидаемо и подозрительно затронутых файлов; пропущенные
      проверки; итоговый verdict `clean` или `needs-attention`. Ничего не
      исправлять.
-4. Скилл: `ponytail-review`
-   - Пишет: нет
+4. CALL SKILL `ponytail-review` для отдельного read-only complexity review.
 5. `present-reviews` — основной чат объединяет critical review и Ponytail
    review, добавляет собственную оценку и вызывает HUMAN `owner`; GATE: выбрать
    `iterate-findings`, `show-proposal` или `make-decision`.
@@ -46,10 +45,5 @@
    `owner`. Исправления, commit, push и другие mutations требуют отдельного
    явного решения человека и не входят в review-часть flow.
 
-## Полномочия записи
-
-- `implementation`
-- `implementation-tests`
-- `task-index`
-
-Reviewer и Ponytail не имеют полномочий записи.
+Flow не предоставляет полномочия. Реализация ограничена исходным запросом
+пользователя и обычными permission boundaries; reviewers остаются read-only.

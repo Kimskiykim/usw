@@ -2,8 +2,11 @@
 description: Resume work from the developer-local USW handoff.
 ---
 
-Resume the current developer-local work. Invoke the installed
-`usw-manage-handoff` skill in resume mode and follow its instructions. Continue
-from the saved next action only when it is still applicable and within the same
-flow/scope. Never automatically retry an `in_progress` operation without a
-result. Do not reproduce the workflow logic in this command.
+Resume developer-local work. Invoke the installed `usw-manage-handoff` skill
+in resume mode with an optional exact operation ID and follow its instructions.
+With no ID, follow the skill's zero/one/many rules and never choose among
+multiple operations automatically. Continue only after an explicit decision
+for the same routed operation; never automatically retry an `in_progress`
+operation. Legacy role-based state is read-only recovery context until explicit
+Finish. If handoff is disabled, explain that no router or operation file was
+read or changed. Do not reproduce workflow logic in this command.

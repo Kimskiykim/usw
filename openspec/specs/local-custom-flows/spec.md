@@ -1,48 +1,43 @@
 # local-custom-flows Specification
 
 ## Purpose
-TBD - created by archiving change add-local-custom-flows. Update Purpose after archive.
+Define safe local/shared selection without changing the text execution mode.
+
 ## Requirements
-### Requirement: Explicit local custom-flow selection
+
+### Requirement: Explicit origin selection
 The system SHALL treat `--local` and `-l` as equivalent explicit selectors for
-developer-local custom flows in both flow creation and flow execution.
+developer-local flows and `--shared` as the explicit shared selector.
 
-#### Scenario: Create a local custom flow
-- **WHEN** a user creates a named custom flow with `--local` or `-l`
-- **THEN** the system writes and validates only `.usw/flows/<name>.md`
+#### Scenario: Create a local flow
+- **WHEN** a user creates a named flow with `--local` or `-l`
+- **THEN** the system writes only `.usw/flows/<name>.md`
 
-#### Scenario: Run a local custom flow
-- **WHEN** a user runs a named custom flow with `--local` or `-l`
-- **THEN** the system loads only `.usw/flows/<name>.md`
+#### Scenario: Run a shared flow
+- **WHEN** a user runs a named flow with `--shared`
+- **THEN** the system loads only `<flows.root>/<name>.md`
 
-### Requirement: Shared behavior remains the default
-The system SHALL continue to use the configured `flows.root` when neither local
-selector is present.
+### Requirement: Implicit lookup is local-first
+Without an explicit selector the system SHALL look in `.usw/flows` first and
+then in configured `flows.root`.
 
-#### Scenario: Invoke without a local selector
-- **WHEN** a user creates or runs a custom flow without `--local` or `-l`
-- **THEN** the system uses `<flows.root>/<name>.md` with existing behavior
+#### Scenario: Both origins contain the same name
+- **WHEN** a local and shared flow have the same safe name
+- **THEN** the local file is selected and its origin is reported
 
-### Requirement: Local flows cannot replace standard role scenarios
-The system MUST reject local selection for the standard Analysis, Development,
-and Testing flows.
+### Requirement: Local и shared используют единый text path
+After origin selection USW SHALL create the same immutable Markdown invocation.
+Metadata, origin and `version-2` markers MUST NOT select a different executor.
+Identity SHALL include origin even when names and Markdown bytes are equal.
 
-#### Scenario: Select a standard flow locally
-- **WHEN** a user supplies `--local` or `-l` for a standard role flow
-- **THEN** the system stops before execution with a clear unsupported-selection error
-
-### Requirement: Resume preserves custom-flow origin
-The system SHALL distinguish local and shared custom flows in operation identity
-even when their names and Markdown bytes are equal.
-
-#### Scenario: Resume with a different origin
-- **WHEN** saved operation state belongs to one origin and resume loads the other origin
-- **THEN** the system rejects resume as a stale or different flow
+#### Scenario: Equal content in different origins
+- **WHEN** local and shared flows have equal names and Markdown
+- **THEN** each selected invocation has an origin-specific identity and the same execution semantics
 
 ### Requirement: Local flow paths stay inside safe local state
-The system MUST reject a local-flow root or target that traverses a symbolic link
-or resolves to a non-regular flow file.
+The system MUST reject a local root or target that traverses a symbolic link or
+resolves to a non-regular flow file.
 
 #### Scenario: Local flow path is unsafe
-- **WHEN** `.usw`, `.usw/flows`, or the selected flow file is an unsafe path type
-- **THEN** creation or execution stops before reading, writing, or invoking the flow
+- **WHEN** `.usw`, `.usw/flows`, an intermediate component or the selected file is unsafe
+- **THEN** creation or execution stops before reading, writing or invoking the flow

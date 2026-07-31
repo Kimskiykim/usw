@@ -18,12 +18,9 @@ class PackageLayoutTests(unittest.TestCase):
             "task/development-evidence.md": "Writer authority: Development only.",
             "task/testing-evidence.md": "Writer authority: Testing only.",
             "review/receipt.md": "## Reviewed artifact identities",
-            "flows/examples/analysis.md": "Ненормативный пример",
-            "flows/examples/development.md": "Ненормативный пример",
-            "flows/examples/testing.md": "Ненормативный пример",
             "flows/examples/chat-review.md": "# Flow: chat-review",
             "flows/examples/dev-test.md": "# Flow: dev-test",
-            "local/HANDOFF.md": "## Trusted source snapshot",
+            "local/HANDOFF.md": "## Operations",
             "usw.yaml": "root: usw/reviews",
         }
 
@@ -31,7 +28,6 @@ class PackageLayoutTests(unittest.TestCase):
             with self.subTest(template=relative_path):
                 content = (templates / relative_path).read_text(encoding="utf-8")
                 self.assertIn(fragment, content)
-        self.assertFalse((templates / "openspec/AGENTS.md").exists())
         self.assertEqual(
             set(),
             {path.name for path in (templates / "flows").glob("flow-scenario-*.md")},
@@ -53,45 +49,20 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertIn(fragment, skill)
         for fragment in (
-            "accept only providers `standalone` and `openspec`",
+            "reject the removed `artifacts.provider` field",
             "accept safe custom artifact, flow and review roots",
-            "Treat a real `openspec/` directory only as a provider hint",
             "repository tracking policy belongs to the\nuser",
-            "for provider `openspec`, do not create or modify",
             "Preserve every existing regular file byte-for-byte",
             "Never overwrite, merge, delete, chmod, or follow links",
-            "the five packaged examples",
-            "Do not create, migrate, or remove legacy `flow-scenario-*.md` files",
+            "the two packaged examples",
+            "Do not create, migrate, or remove legacy\n`flow-scenario-*.md` files",
         ):
             self.assertIn(fragment, fallback)
         for obsolete in (
             "Stop on custom configuration",
-            "Stop if an `openspec/` path exists",
             "git check-ignore",
         ):
             self.assertNotIn(obsolete, fallback)
-
-    def test_brainstorm_skill_has_required_structure_and_implicit_invocation(self):
-        skill_dir = ROOT / "skills" / "usw-brainstorm-solutions"
-        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-        metadata = (skill_dir / "agents" / "openai.yaml").read_text(
-            encoding="utf-8"
-        )
-
-        required_fragments = (
-            "## Короткий формат — основной для MVP",
-            "## Полный формат — для сложных задач",
-            "### Контекст и ограничения",
-            "### Проблема",
-            "### Причина",
-            "### Пути решения",
-            "### 1. Рекомендуемый подход",
-            "### Рекомендация",
-            "### Первый шаг",
-        )
-        for fragment in required_fragments:
-            self.assertIn(fragment, skill)
-        self.assertIn("allow_implicit_invocation: true", metadata)
 
     def test_plan_small_steps_skill_has_microtask_workflow_and_implicit_invocation(self):
         skill_dir = ROOT / "skills" / "usw-plan-small-steps"
@@ -156,169 +127,259 @@ class PackageLayoutTests(unittest.TestCase):
             self.assertIn(fragment, skill)
         self.assertIn("allow_implicit_invocation: true", metadata)
 
-    def test_create_flow_skill_defaults_to_ordinary_markdown(self):
+    def test_create_flow_defaults_to_ordinary_and_has_one_optional_reference(self):
         skill_dir = ROOT / "skills" / "usw-create-flow"
         skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-        version = (skill_dir / "references" / "version-1.md").read_text(
-            encoding="utf-8"
-        )
-        metadata = (skill_dir / "agents" / "openai.yaml").read_text(
-            encoding="utf-8"
-        )
+        metadata = (skill_dir / "agents/openai.yaml").read_text(encoding="utf-8")
 
         for fragment in (
             "## Подготовка",
-            "## Общие гарантии",
-            "## Граница выполнения",
-            "--local",
-            "`-l`",
-            ".usw/flows",
-            "ordinary Markdown",
-            "Не спрашивать\n   версию",
+            "## Создание и проверка",
+            "`--structured`",
+            "`-s`",
+            "Без него не читать reference",
+            "ordinary или `version-2` форму",
+            "не выполнять описанный flow",
         ):
             self.assertIn(fragment, skill)
-        for fragment in (
-            "../usw-run-flow/scripts/run_flow.py",
-            "--experimental-structured",
-            "$usw-run-flow --experimental-structured <name> <task>",
-            "## Проверка и отчёт",
-        ):
-            self.assertIn(fragment, version)
-        self.assertNotIn("   - Пишет:", version)
-        self.assertNotIn("\n## Полномочия записи\n", version)
-        self.assertIn("$usw-create-flow", metadata)
+        self.assertEqual(
+            {"version-2.md"},
+            {path.name for path in (skill_dir / "references").glob("*.md")},
+        )
         self.assertIn("allow_implicit_invocation: true", metadata)
 
-    def test_create_flow_skill_selects_structured_contract_explicitly(self):
+    def test_structured_reference_is_model_readable_not_validator_backed(self):
+        content = (
+            ROOT / "skills/usw-create-flow/references/version-2.md"
+        ).read_text(encoding="utf-8")
+        for fragment in ("version-2", "`CALL`", "`GATE`", "`LOOP`", "`PARALLEL`"):
+            self.assertIn(fragment, content)
+        for removed in (
+            "../usw-run-flow/scripts/run_flow.py",
+            "checkpoint-save",
+            "action-specific input map",
+            "$usw-run-flow --experimental-structured",
+        ):
+            self.assertNotIn(removed, content)
+        self.assertIn("не machine DSL", content)
+        self.assertIn("Применять только нужные маркеры", content)
+        self.assertIn("human decision point", content)
+
+    def test_create_flow_stays_within_authoring_scope(self):
         skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
             encoding="utf-8"
         )
-
-        for fragment in (
-            "`--structured`",
-            "`-s`",
-            "Допускать их вместе в любом порядке",
-            "Без `-s`/`--structured` сразу выбрать ordinary Markdown",
-            "не читать version-specific references",
+        self.assertIn("$usw-run-flow --local", skill)
+        self.assertIn("$usw-run-flow --shared", skill)
+        for removed in (
+            "Опциональный анализ",
+            "retired validator",
+            "--experimental-structured",
         ):
-            self.assertIn(fragment, skill)
+            self.assertNotIn(removed, skill)
 
-    def test_create_flow_structured_contract_is_validator_backed(self):
-        skill_dir = ROOT / "skills/usw-create-flow"
-        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-        structured = (
-            skill_dir / "references" / "version-2.md"
-        ).read_text(encoding="utf-8")
-
-        for fragment in (
-            "`version-2`",
-            "CALL",
-            "GATE",
-            "IF",
-            "ELIF",
-            "ELSE",
-            "LOOP",
-            "PARALLEL",
-            "## Необязательный binding входов и результатов",
-            "Не требовать action-specific input map",
-            "Не добавлять маркер",
-            "До validator выполнить лёгкую статическую проверку",
-            "../usw-run-flow/scripts/run_flow.py",
-            "$usw-run-flow --experimental-structured <name> <task>",
-        ):
-            self.assertIn(fragment, structured)
-        self.assertIn("без исполнения flow", skill)
-        self.assertNotIn("USING", structured)
-        for fragment in ("   - После:", "   - Пишет:", "## Полномочия записи"):
-            self.assertNotIn(fragment, structured)
-        self.assertFalse((skill_dir / "scripts").exists())
-
-    def test_create_flow_version_2_uses_typed_calls_and_nested_subagent_work(self):
-        structured = (
-            ROOT / "skills/usw-create-flow/references/version-2.md"
-        ).read_text(encoding="utf-8")
-
-        for fragment in (
-            "CALL SKILL",
-            "CALL SCRIPT",
-            "CALL FLOW",
-            "CALL SUBAGENT",
-            "CALL HUMAN",
-            "тип `MODEL` не разрешать",
-            "точная цель в backticks",
-            "Действия субагента",
-            "ближайшему enclosing subagent",
-            "глобально уникальное постоянное имя",
-            "не родительскому",
-        ):
-            self.assertIn(fragment, structured)
-
-    def test_create_flow_loads_only_the_selected_version_reference(self):
-        skill_dir = ROOT / "skills/usw-create-flow"
-        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-
-        for name in ("version-1.md", "version-2.md"):
-            self.assertTrue((skill_dir / "references" / name).is_file())
-            self.assertIn(f"references/{name}", skill)
-        self.assertEqual(
-            {"version-1.md", "version-2.md"},
-            {path.name for path in (skill_dir / "references").glob("*.md")},
-        )
-        for fragment in (
-            "не читать version-specific references",
-            "полностью прочитать только",
-            "читать только при явном",
-        ):
-            self.assertIn(fragment, skill)
-
-    def test_run_flow_skill_resolves_local_before_shared_by_default(self):
-        skill = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(
+    def test_create_flow_has_bounded_human_controlled_design_recipes(self):
+        skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
             encoding="utf-8"
         )
+        spec = (
+            ROOT
+            / "openspec/changes/add-guided-flow-authoring/specs"
+            / "guided-flow-authoring/spec.md"
+        ).read_text(encoding="utf-8")
 
+        recipe_names = (
+            "Проверка результата",
+            "Human decision",
+            "Подтверждение внешнего действия",
+            "Обработка ошибки",
+            "Ограниченная доработка",
+            "Независимые проверки",
+            "Повторное использование capability",
+        )
+        recipe_headings = [
+            line.removeprefix("### ")
+            for line in skill.splitlines()
+            if line.startswith("### ")
+        ]
+        self.assertEqual(list(recipe_names), recipe_headings)
+
+        for fragment in (
+            "## Подсказки по проектированию",
+            "три наиболее релевантные подсказки",
+            "`применить`, `изменить` или `пропустить`",
+            "Для ordinary Markdown",
+            "Только для `version-2`",
+            "`изменить` сначала показывает",
+            "для его записи пользователь должен отдельно",
+            "После revision не запускать design scan повторно",
+            "Примеры в рецептах ниже показывают только `version-2` форму",
+            "Не копировать их\nstructured markers в ordinary flow",
+        ):
+            self.assertIn(fragment, skill)
+
+        self.assertLess(
+            skill.index("Сообщить имя, origin, путь"),
+            skill.index("После успешного сохранения и отчёта"),
+        )
+
+        verification = skill.split("### Проверка результата", 1)[1].split(
+            "### Human decision", 1
+        )[0]
+        self.assertLess(
+            verification.index("Сначала добавить наблюдаемую проверку"),
+            verification.index("`GATE` предлагать только"),
+        )
+
+        human_decision = skill.split("### Human decision", 1)[1].split(
+            "### Подтверждение внешнего действия", 1
+        )[0]
+        external_approval = skill.split(
+            "### Подтверждение внешнего действия", 1
+        )[1].split("### Обработка ошибки", 1)[0]
+        error_handling = skill.split("### Обработка ошибки", 1)[1].split(
+            "### Ограниченная доработка", 1
+        )[0]
+        for recipe in (human_decision, external_approval, error_handling):
+            self.assertTrue(
+                "только когда" in recipe or "только если" in recipe
+            )
+
+        refinement = skill.split("### Ограниченная доработка", 1)[1].split(
+            "### Независимые проверки", 1
+        )[0]
+        for fragment in (
+            "read-only, идемпотентны или безопасно обратимы",
+            "критерий выхода и предел",
+            "approval и внешнее действие\nоставлять после выхода из цикла",
+        ):
+            self.assertIn(fragment, refinement)
+
+        parallel = skill.split("### Независимые проверки", 1)[1].split(
+            "### Повторное использование capability", 1
+        )[0]
+        self.assertIn(
+            "Не предлагать `PARALLEL` для зависимых действий", parallel
+        )
+
+        capability = skill.split(
+            "### Повторное использование capability", 1
+        )[1]
+        self.assertIn("текущем списке доступных skills", capability)
+        self.assertIn(
+            "Одного имени без присутствия в текущем списке", capability
+        )
+        self.assertNotIn("или CALL FLOW", capability)
+        self.assertIn("не предлагать `CALL FLOW`", capability)
+
+        for fragment in (
+            "`применить`, `изменить` and `пропустить`",
+            "present in the current available-skills list",
+            "does not write until a\n  later explicit `применить`",
+            "keeps that action and its approval outside the loop",
+        ):
+            self.assertIn(fragment, spec)
+
+    def test_run_flow_has_one_text_path_and_local_precedence(self):
+        skill_dir = ROOT / "skills/usw-run-flow"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
         for fragment in (
             "--local",
             "`-l`",
             "--shared",
             ".usw/flows",
-            "Без origin selector искать local flow первым, затем shared flow",
+            "Без selector искать local flow первым, затем shared",
             "--origin local",
+            "Использовать только возвращённый `markdown`",
+            "не machine DSL",
+            "independent top-level invocations",
+            "Exact Begin operation ID является root execution identity",
+            "`assert-current`",
+            "Nested child не владеет durable state",
+            "Только root пишет aggregate Outcome",
+            "Новый Begin создаёт другую route",
         ):
             self.assertIn(fragment, skill)
+        self.assertFalse((skill_dir / "references").exists())
 
-    def test_run_flow_loads_structured_runtime_by_progressive_disclosure(self):
-        skill_dir = ROOT / "skills/usw-run-flow"
-        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-        structured = (skill_dir / "references/version-2.md").read_text(
-            encoding="utf-8"
+    def test_readme_explains_routed_roots_nested_children_and_cleanup(self):
+        readme = " ".join(
+            (ROOT / "README.md").read_text(encoding="utf-8").split()
         )
+        for fragment in (
+            ".usw/HANDOFF.md` хранит только маршруты",
+            "чат UI:",
+            "чат backend:",
+            "USW не обнаруживает и не разрешает конфликты в product files",
+            "не получает собственную route",
+            "Только root агрегирует результаты детей",
+            "/usw-handoff finish <operation-id>",
+            "Для rollback",
+            "generic idle HANDOFF старой версии",
+            "не создаёт scheduler",
+        ):
+            self.assertIn(fragment, readme)
 
-        for fragment in (
-            "Только с `--experimental-structured`",
-            "references/version-2.md",
-            "Не открывать его для v1",
-            "Default-путь не вызывает strict validator",
-        ):
+    def test_find_flow_is_explicit_read_only_discovery(self):
+        skill_dir = ROOT / "skills/usw-find-flow"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        metadata = (skill_dir / "agents/openai.yaml").read_text(encoding="utf-8")
+
+        required_fragments = (
+            "одно описание намерения",
+            "Writes and side effects: none",
+            "`match`, `ambiguous` или `no-match`",
+            ".usw/flows",
+            "configured shared",
+            "safe kebab-case",
+            "не следовать symlink",
+            "safe `resolve`",
+            "Не искать packaged examples",
+            "готовую команду `$usw-run-flow`",
+            "Не запускать эту команду",
+            "не вызывать его",
+            "не читает и не изменяет HANDOFF",
+        )
+        for fragment in required_fragments:
             self.assertIn(fragment, skill)
-        for fragment in (
-            "CALL SKILL",
-            "CALL SCRIPT",
-            "CALL FLOW",
-            "CALL SUBAGENT",
-            "CALL HUMAN",
-            "один payload",
-            "loop_exhausted",
-            "запустить их одновременно",
-            "## Необязательный binding входов и результатов",
-            "Общая задача запуска доступна flow",
-        ):
-            self.assertIn(fragment, structured)
+        self.assertIn("allow_implicit_invocation: false", metadata)
+        self.assertFalse((skill_dir / "scripts").exists())
+        self.assertFalse((ROOT / "skills/usw-route-task").exists())
+        self.assertFalse((ROOT / "commands/usw-route-task.md").exists())
+
+    def test_research_snapshot_is_outside_package_surfaces(self):
+        snapshot = ROOT / "research/structured-runtime"
+        self.assertTrue((snapshot / "runtime/run_flow.py").is_file())
+        self.assertTrue((snapshot / "README.md").is_file())
+        self.assertFalse(snapshot.is_relative_to(ROOT / "skills"))
+        self.assertFalse(snapshot.is_relative_to(ROOT / "commands"))
+        preserved = {
+            path.relative_to(snapshot).as_posix()
+            for path in snapshot.rglob("*")
+            if path.is_file()
+            and "__pycache__" not in path.parts
+            and path.suffix not in {".pyc", ".pyo"}
+        }
+        self.assertEqual(38, len(preserved))
+        archived_designs = tuple(
+            (ROOT / "openspec/changes/archive").glob(
+                "*-refocus-text-first-workflows/design.md"
+            )
+        )
+        self.assertEqual(1, len(archived_designs))
+        design = archived_designs[0].read_text(encoding="utf-8")
+        for path in preserved:
+            self.assertIn(f"`{path}`", design)
 
     def test_public_commands_delegate_to_internal_skills(self):
         expectations = {
             "usw-init.md": "usw-initialize-project",
             "usw-handoff.md": "usw-manage-handoff",
             "usw-resume.md": "usw-manage-handoff",
+            "usw-find-flow.md": "usw-find-flow",
+            "usw-refine-intent.md": "usw-refine-intent",
+            "usw-plan-small-steps.md": "usw-plan-small-steps",
+            "usw-explain-me.md": "usw-explain-me",
         }
 
         for command_name, skill_name in expectations.items():
@@ -327,6 +388,16 @@ class PackageLayoutTests(unittest.TestCase):
                     encoding="utf-8"
                 )
                 self.assertIn(skill_name, command)
+        handoff = (ROOT / "commands/usw-handoff.md").read_text(
+            encoding="utf-8"
+        )
+        resume = (ROOT / "commands/usw-resume.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("exact current operation", handoff)
+        self.assertIn("zero/one/many", handoff)
+        self.assertIn("optional exact operation ID", resume)
+        self.assertIn("zero/one/many", resume)
 
     def test_qwen_extension_points_to_shared_skills(self):
         manifest = json.loads((ROOT / "qwen-extension.json").read_text(encoding="utf-8"))
@@ -339,9 +410,6 @@ class PackageLayoutTests(unittest.TestCase):
             (skills_dir / "usw-initialize-project" / "SKILL.md").is_file()
         )
         self.assertTrue((skills_dir / "usw-manage-handoff" / "SKILL.md").is_file())
-        self.assertTrue(
-            (skills_dir / "usw-brainstorm-solutions" / "SKILL.md").is_file()
-        )
         self.assertTrue((skills_dir / "usw-plan-small-steps" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-refine-intent" / "SKILL.md").is_file())
         self.assertFalse((skills_dir / "usw-refine-task").exists())
@@ -350,7 +418,17 @@ class PackageLayoutTests(unittest.TestCase):
         )
         self.assertTrue((skills_dir / "usw-create-flow" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-run-flow" / "SKILL.md").is_file())
-        for command_name in ("usw-init.md", "usw-handoff.md", "usw-resume.md"):
+        self.assertTrue((skills_dir / "usw-find-flow" / "SKILL.md").is_file())
+        for command_name in (
+            "usw-init.md",
+            "usw-handoff.md",
+            "usw-resume.md",
+            "usw-reviewer-llm-critic.md",
+            "usw-find-flow.md",
+            "usw-refine-intent.md",
+            "usw-plan-small-steps.md",
+            "usw-explain-me.md",
+        ):
             self.assertTrue((commands_dir / command_name).is_file())
 
     def test_gigacode_extension_points_to_shared_skills(self):
@@ -366,9 +444,6 @@ class PackageLayoutTests(unittest.TestCase):
             (skills_dir / "usw-initialize-project" / "SKILL.md").is_file()
         )
         self.assertTrue((skills_dir / "usw-manage-handoff" / "SKILL.md").is_file())
-        self.assertTrue(
-            (skills_dir / "usw-brainstorm-solutions" / "SKILL.md").is_file()
-        )
         self.assertTrue((skills_dir / "usw-plan-small-steps" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-refine-intent" / "SKILL.md").is_file())
         self.assertFalse((skills_dir / "usw-refine-task").exists())
@@ -377,7 +452,17 @@ class PackageLayoutTests(unittest.TestCase):
         )
         self.assertTrue((skills_dir / "usw-create-flow" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-run-flow" / "SKILL.md").is_file())
-        for command_name in ("usw-init.md", "usw-handoff.md", "usw-resume.md"):
+        self.assertTrue((skills_dir / "usw-find-flow" / "SKILL.md").is_file())
+        for command_name in (
+            "usw-init.md",
+            "usw-handoff.md",
+            "usw-resume.md",
+            "usw-reviewer-llm-critic.md",
+            "usw-find-flow.md",
+            "usw-refine-intent.md",
+            "usw-plan-small-steps.md",
+            "usw-explain-me.md",
+        ):
             self.assertTrue((commands_dir / command_name).is_file())
 
     def test_codex_marketplace_points_to_plugin(self):
@@ -402,9 +487,6 @@ class PackageLayoutTests(unittest.TestCase):
             (ROOT / "skills" / "usw-manage-handoff" / "SKILL.md").is_file()
         )
         self.assertTrue(
-            (ROOT / "skills" / "usw-brainstorm-solutions" / "SKILL.md").is_file()
-        )
-        self.assertTrue(
             (ROOT / "skills" / "usw-plan-small-steps" / "SKILL.md").is_file()
         )
         self.assertTrue((ROOT / "skills" / "usw-refine-intent" / "SKILL.md").is_file())
@@ -414,8 +496,19 @@ class PackageLayoutTests(unittest.TestCase):
         )
         self.assertTrue((ROOT / "skills" / "usw-create-flow" / "SKILL.md").is_file())
         self.assertTrue((ROOT / "skills" / "usw-run-flow" / "SKILL.md").is_file())
+        self.assertTrue((ROOT / "skills" / "usw-find-flow" / "SKILL.md").is_file())
         self.assertTrue((ROOT / "commands" / "usw-handoff.md").is_file())
         self.assertTrue((ROOT / "commands" / "usw-resume.md").is_file())
+        self.assertTrue(
+            (ROOT / "commands" / "usw-reviewer-llm-critic.md").is_file()
+        )
+        for command_name in (
+            "usw-find-flow.md",
+            "usw-refine-intent.md",
+            "usw-plan-small-steps.md",
+            "usw-explain-me.md",
+        ):
+            self.assertTrue((ROOT / "commands" / command_name).is_file())
 
     def test_claude_plugin_is_not_packaged(self):
         self.assertFalse((ROOT / ".claude-plugin").exists())
