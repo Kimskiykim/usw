@@ -19,6 +19,16 @@ sys.modules[SPEC.name] = HANDOFF
 SPEC.loader.exec_module(HANDOFF)
 
 
+def current_operation_shape(content: str) -> str:
+    lines = [
+        line
+        for line in content.splitlines()
+        if not line.startswith(("- Summary: ", "- Started: "))
+    ]
+    workspace = lines.index("## Workspace")
+    return "\n".join(lines[: workspace - 1]) + "\n"
+
+
 class HandoffStateTests(unittest.TestCase):
     identity = "usw-markdown:shared:" + "a" * 64
 
@@ -296,20 +306,26 @@ class HandoffStateTests(unittest.TestCase):
             self.assertEqual("in_progress", selected_status)
             self.assertIn(first, selected_content)
 
-            many = subprocess.run(
-                [sys.executable, str(SCRIPT), "resume", str(project)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            payload = json.loads(many.stdout)
-            self.assertEqual("selection_required", payload["status"])
-            self.assertEqual(
-                sorted((first, second)),
-                sorted(
-                    item["operation"] for item in payload["operations"]
-                ),
-            )
+            for command in ("show", "resume"):
+                many = subprocess.run(
+                    [sys.executable, str(SCRIPT), command, str(project)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                payload = json.loads(many.stdout)
+                self.assertEqual("selection_required", payload["status"])
+                operations = {
+                    item["operation"]: item for item in payload["operations"]
+                }
+                self.assertEqual({first, second}, set(operations))
+                self.assertEqual("first", operations[first]["summary"])
+                self.assertEqual("second", operations[second]["summary"])
+                for item in operations.values():
+                    self.assertEqual("review", item["flow"])
+                    self.assertEqual("in_progress", item["status"])
+                    self.assertEqual(item["started"], item["updated"])
+                    self.assertTrue(Path(item["path"]).is_file())
 
     def test_begin_binds_origin_flow_and_exact_input(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -343,6 +359,509 @@ class HandoffStateTests(unittest.TestCase):
                     handoff.read_text(encoding="utf-8")
                 ).operations,
             )
+
+    def test_begin_records_summary_start_and_workspace_context(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = self.initialize(directory)
+            subprocess.run(
+                ["git", "init", "-q", str(project)],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(project),
+                    "-c",
+                    "user.name=USW Test",
+                    "-c",
+                    "user.email=usw@example.invalid",
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    "initial",
+                ],
+                check=True,
+            )
+            revision = subprocess.run(
+                ["git", "-C", str(project), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+            path, _ = HANDOFF.begin_handoff(
+                project,
+                "review",
+                "shared",
+                self.identity,
+                "review authentication",
+                summary="  Review authentication safely  ",
+                expected_writes=("src/auth.py", "tests/test_auth.py"),
+            )
+            parsed = HANDOFF.parse_handoff(path.read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                "Review authentication safely",
+                parsed.metadata["Summary"],
+            )
+            self.assertEqual(
+                parsed.metadata["Started"],
+                parsed.metadata["Updated"],
+            )
+            self.assertEqual(
+                "\n".join(
+                    (
+                        f"- Base revision: {revision}",
+                        '- Expected writes: ["src/auth.py", "tests/test_auth.py"]',
+                        "- Observed changes: []",
+                    )
+                ),
+                parsed.sections["Workspace"],
+            )
+
+    def test_workspace_base_distinguishes_unborn_from_git_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = self.initialize(directory)
+            subprocess.run(
+                ["git", "init", "-q", str(project)],
+                check=True,
+            )
+
+            self.assertEqual("unborn", HANDOFF._workspace_base(project))
+
+            failed = subprocess.CompletedProcess(
+                args=("git",),
+                returncode=128,
+                stdout="",
+                stderr="fatal: cannot read git metadata",
+            )
+            with mock.patch.object(HANDOFF.subprocess, "run", return_value=failed):
+                self.assertEqual("unknown", HANDOFF._workspace_base(project))
+
+            symbolic = subprocess.CompletedProcess(
+                args=("git",),
+                returncode=0,
+                stdout="refs/heads/main\n",
+                stderr="",
+            )
+            with mock.patch.object(
+                HANDOFF.subprocess,
+                "run",
+                side_effect=(failed, symbolic, failed),
+            ):
+                self.assertEqual("unknown", HANDOFF._workspace_base(project))
+
+    def test_workspace_base_ignores_inherited_git_repository_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "project"
+            foreign = root / "foreign"
+            project.mkdir()
+            foreign.mkdir()
+            self.initialize(str(project))
+            for repository, message in (
+                (project, "project revision"),
+                (foreign, "foreign revision"),
+            ):
+                subprocess.run(
+                    ["git", "init", "-q", str(repository)],
+                    check=True,
+                )
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(repository),
+                        "-c",
+                        "user.name=USW Test",
+                        "-c",
+                        "user.email=usw@example.invalid",
+                        "commit",
+                        "--allow-empty",
+                        "-qm",
+                        message,
+                    ],
+                    check=True,
+                )
+            project_revision = subprocess.run(
+                ["git", "-C", str(project), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+            with mock.patch.dict(
+                os.environ,
+                {"GIT_DIR": str(foreign / ".git")},
+                clear=False,
+            ):
+                self.assertEqual(project_revision, HANDOFF._workspace_base(project))
+
+    def test_begin_derives_a_bounded_one_line_summary(self):
+        content = HANDOFF.render_begin(
+            "review",
+            "shared",
+            self.identity,
+            "  Review   authentication\n" + "carefully " * 30,
+        )
+
+        summary = HANDOFF.parse_handoff(content).metadata["Summary"]
+
+        self.assertLessEqual(len(summary), 120)
+        self.assertNotIn("\n", summary)
+        self.assertTrue(summary.startswith("Review authentication carefully"))
+
+    def test_invalid_started_timestamp_names_started_field(self):
+        content = HANDOFF.render_begin(
+            "review", "shared", self.identity, "input"
+        )
+        started = HANDOFF.parse_handoff(content).metadata["Started"]
+        content = content.replace(
+            f"- Started: {started}",
+            "- Started: not-a-timestamp",
+        )
+
+        with self.assertRaisesRegex(
+            HANDOFF.HandoffError,
+            "Started must be ISO 8601",
+        ):
+            HANDOFF.parse_handoff(content)
+
+    def test_workspace_hints_are_bounded(self):
+        with self.assertRaisesRegex(HANDOFF.HandoffError, "at most 32"):
+            HANDOFF.render_begin(
+                "review",
+                "shared",
+                self.identity,
+                "input",
+                expected_writes=tuple(f"area-{index}" for index in range(33)),
+            )
+        with self.assertRaisesRegex(HANDOFF.HandoffError, "bounded lines"):
+            HANDOFF.render_begin(
+                "review",
+                "shared",
+                self.identity,
+                "input",
+                expected_writes=("x" * 241,),
+            )
+
+    def test_workspace_rejects_non_string_hints(self):
+        content = HANDOFF.render_begin(
+            "review",
+            "shared",
+            self.identity,
+            "input",
+        ).replace("- Expected writes: []", "- Expected writes: [1]")
+
+        with self.assertRaisesRegex(HANDOFF.HandoffError, "bounded lines"):
+            HANDOFF.parse_handoff(content)
+
+    def test_cli_carries_workspace_hints_from_begin_to_outcome(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = self.initialize(directory)
+            begun = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "begin",
+                    str(project),
+                    "review",
+                    "shared",
+                    self.identity,
+                    "review auth",
+                    "--summary",
+                    "Review auth",
+                    "--expected-write",
+                    "src/auth.py",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            begin_payload = json.loads(begun.stdout)
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "outcome",
+                    str(project),
+                    "completed",
+                    "--operation",
+                    begin_payload["operation"],
+                    "--done",
+                    "Review complete.",
+                    "--position",
+                    "At the end.",
+                    "--next-action",
+                    "Finish the operation.",
+                    "--blocker",
+                    "None.",
+                    "--observed-change",
+                    "src/auth.py",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            state = HANDOFF.parse_handoff(
+                Path(begin_payload["path"]).read_text(encoding="utf-8")
+            )
+            _, expected, observed = HANDOFF._parse_workspace(
+                state.sections["Workspace"]
+            )
+            self.assertEqual("Review auth", state.metadata["Summary"])
+            self.assertEqual(("src/auth.py",), expected)
+            self.assertEqual(("src/auth.py",), observed)
+
+    def test_current_operation_shape_is_read_only_and_discoverable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = self.initialize(directory)
+            path, operation = HANDOFF.begin_handoff(
+                project,
+                "review",
+                "shared",
+                self.identity,
+                "review old operation",
+            )
+            path.write_text(
+                current_operation_shape(path.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+            before = path.read_bytes()
+
+            _, _, operations, legacy = HANDOFF.discover_handoffs(project)
+            selected_path, _, status = HANDOFF.read_handoff(project, operation)
+            HANDOFF.assert_current_handoff(project, operation)
+
+            self.assertFalse(legacy)
+            self.assertEqual(path, selected_path)
+            self.assertEqual("in_progress", status)
+            self.assertEqual(before, path.read_bytes())
+            self.assertEqual("review old operation", operations[0]["summary"])
+            self.assertEqual("unknown", operations[0]["started"])
+            self.assertEqual(
+                HANDOFF.parse_handoff(path.read_text(encoding="utf-8")).metadata[
+                    "Updated"
+                ],
+                operations[0]["updated"],
+            )
+
+    def test_outcome_preserves_workspace_context_and_records_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = self.initialize(directory)
+            path, operation = HANDOFF.begin_handoff(
+                project,
+                "review",
+                "shared",
+                self.identity,
+                "review auth",
+                summary="Review auth",
+                expected_writes=("src/auth.py",),
+            )
+            before = HANDOFF.parse_handoff(path.read_text(encoding="utf-8"))
+            base, expected, _ = HANDOFF._parse_workspace(
+                before.sections["Workspace"]
+            )
+
+            with mock.patch.object(
+                HANDOFF,
+                "_timestamp",
+                return_value="2026-07-31T12:00:00+00:00",
+            ):
+                HANDOFF.outcome_handoff(
+                    project,
+                    "completed",
+                    operation=operation,
+                    done="Authentication reviewed.",
+                    position="Review complete.",
+                    next_action="Finish the operation.",
+                    blocker="None.",
+                    observed_changes=("src/auth.py", "tests/test_auth.py"),
+                )
+
+            after = HANDOFF.parse_handoff(path.read_text(encoding="utf-8"))
+            after_base, after_expected, observed = HANDOFF._parse_workspace(
+                after.sections["Workspace"]
+            )
+            self.assertEqual(before.metadata["Started"], after.metadata["Started"])
+            self.assertEqual("2026-07-31T12:00:00+00:00", after.metadata["Updated"])
+            self.assertEqual((base, expected), (after_base, after_expected))
+            self.assertEqual(
+                ("src/auth.py", "tests/test_auth.py"),
+                observed,
+            )
+
+    def test_outcome_enriches_current_operation_without_inventing_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = self.initialize(directory)
+            path, operation = HANDOFF.begin_handoff(
+                project,
+                "review",
+                "shared",
+                self.identity,
+                "review old operation",
+            )
+            path.write_text(
+                current_operation_shape(path.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+
+            HANDOFF.outcome_handoff(
+                project,
+                "paused",
+                operation=operation,
+                done="Inspected one file.",
+                position="Before the remaining checks.",
+                next_action="Run the remaining checks.",
+                blocker="None.",
+                observed_changes=("src/review.py",),
+            )
+
+            enriched = HANDOFF.parse_handoff(path.read_text(encoding="utf-8"))
+            base, expected, observed = HANDOFF._parse_workspace(
+                enriched.sections["Workspace"]
+            )
+            self.assertEqual("review old operation", enriched.metadata["Summary"])
+            self.assertEqual("unknown", enriched.metadata["Started"])
+            self.assertEqual("unknown", base)
+            self.assertEqual((), expected)
+            self.assertEqual(("src/review.py",), observed)
+
+    def test_save_rejects_downgrade_to_current_operation_shape(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = self.initialize(directory)
+            path, operation = HANDOFF.begin_handoff(
+                project,
+                "review",
+                "shared",
+                self.identity,
+                "input",
+            )
+            candidate = (
+                project
+                / ".usw"
+                / HANDOFF.operation_candidate_relative_path(operation)
+            )
+            candidate.write_text(
+                current_operation_shape(path.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+            before = path.read_bytes()
+
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "downgrade"):
+                HANDOFF.save_handoff(project, operation, candidate)
+
+            self.assertEqual(before, path.read_bytes())
+            self.assertTrue(candidate.exists())
+
+    def test_save_upgrades_current_operation_with_unknown_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = self.initialize(directory)
+            path, operation = HANDOFF.begin_handoff(
+                project,
+                "review",
+                "shared",
+                self.identity,
+                "old input",
+            )
+            enriched = path.read_text(encoding="utf-8")
+            parsed = HANDOFF.parse_handoff(enriched)
+            path.write_text(
+                current_operation_shape(enriched),
+                encoding="utf-8",
+            )
+            candidate = (
+                project
+                / ".usw"
+                / HANDOFF.operation_candidate_relative_path(operation)
+            )
+            candidate.write_text(
+                enriched.replace(
+                    f'- Started: {parsed.metadata["Started"]}',
+                    "- Started: unknown",
+                ).replace(
+                    "- Base revision: not-git",
+                    "- Base revision: unknown",
+                ),
+                encoding="utf-8",
+            )
+
+            saved_path, status = HANDOFF.save_handoff(
+                project,
+                operation,
+                candidate,
+            )
+
+            upgraded = HANDOFF.parse_handoff(
+                saved_path.read_text(encoding="utf-8")
+            )
+            base, expected, observed = HANDOFF._parse_workspace(
+                upgraded.sections["Workspace"]
+            )
+            self.assertEqual("in_progress", status)
+            self.assertEqual(operation, upgraded.metadata["Operation"])
+            self.assertEqual('"old input"', upgraded.sections["Input"])
+            self.assertEqual("unknown", upgraded.metadata["Started"])
+            self.assertEqual(("unknown", (), ()), (base, expected, observed))
+            self.assertFalse(candidate.exists())
+
+    def test_save_preserves_started_and_workspace_baseline(self):
+        replacements = (
+            (
+                "started",
+                lambda content, parsed: content.replace(
+                    f'- Started: {parsed.metadata["Started"]}',
+                    "- Started: 2026-07-01T00:00:00+00:00",
+                ),
+            ),
+            (
+                "base revision",
+                lambda content, parsed: content.replace(
+                    "- Base revision: not-git",
+                    "- Base revision: unknown",
+                ),
+            ),
+            (
+                "expected writes",
+                lambda content, parsed: content.replace(
+                    '- Expected writes: ["src/auth.py"]',
+                    '- Expected writes: ["src/other.py"]',
+                ),
+            ),
+        )
+        for name, replace in replacements:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                project, _ = self.initialize(directory)
+                path, operation = HANDOFF.begin_handoff(
+                    project,
+                    "review",
+                    "shared",
+                    self.identity,
+                    "input",
+                    expected_writes=("src/auth.py",),
+                )
+                content = path.read_text(encoding="utf-8")
+                parsed = HANDOFF.parse_handoff(content)
+                candidate = (
+                    project
+                    / ".usw"
+                    / HANDOFF.operation_candidate_relative_path(operation)
+                )
+                candidate.write_text(
+                    replace(content, parsed),
+                    encoding="utf-8",
+                )
+
+                with self.assertRaisesRegex(
+                    HANDOFF.HandoffError,
+                    "immutable recovery context",
+                ):
+                    HANDOFF.save_handoff(project, operation, candidate)
+
+                self.assertEqual(content, path.read_text(encoding="utf-8"))
 
     def test_operation_identity_is_unique_and_changes_with_input_and_origin(self):
         first = HANDOFF.parse_handoff(
@@ -847,6 +1366,40 @@ class HandoffStateTests(unittest.TestCase):
             wrong.write_text(HANDOFF.render_idle(), encoding="utf-8")
             with self.assertRaisesRegex(HANDOFF.HandoffError, "candidate must"):
                 HANDOFF.save_handoff(project, operation, wrong)
+
+    def test_save_refreshes_updated_timestamp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = self.initialize(directory)
+            path, operation = HANDOFF.begin_handoff(
+                project, "review", "shared", self.identity, "input"
+            )
+            before = HANDOFF.parse_handoff(path.read_text(encoding="utf-8"))
+            candidate = (
+                project
+                / ".usw"
+                / HANDOFF.operation_candidate_relative_path(operation)
+            )
+            candidate.write_text(
+                path.read_text(encoding="utf-8").replace(
+                    "Before model execution.",
+                    "After one recoverable step.",
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(
+                HANDOFF,
+                "_timestamp",
+                return_value="2026-07-31T13:00:00+00:00",
+            ):
+                HANDOFF.save_handoff(project, operation, candidate)
+
+            saved = HANDOFF.parse_handoff(path.read_text(encoding="utf-8"))
+            self.assertNotEqual(before.metadata["Updated"], saved.metadata["Updated"])
+            self.assertEqual(
+                "2026-07-31T13:00:00+00:00",
+                saved.metadata["Updated"],
+            )
 
     def test_concurrent_operation_scoped_save_candidates_do_not_collide(self):
         with tempfile.TemporaryDirectory() as directory:

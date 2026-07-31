@@ -50,6 +50,11 @@ HANDOFF останавливает запуск с предложением `/us
 может зарегистрировать разные operation IDs; active или terminal route другой
 operation не является глобальной блокировкой.
 
+В Begin передать короткий one-line summary исходной задачи и bounded
+expected-write paths/areas, которые фактически следуют из user scope и flow.
+Если writes до исполнения неизвестны, не выдумывать их. Hints не расширяют
+разрешения и не означают, что concurrent operations изолированы.
+
 Exact Begin operation ID является root execution identity. Каждый root владеет
 только своим operation document. Конкурентность означает заявление
 пользователя о независимости; USW не сериализует и не разрешает пересекающиеся
@@ -117,6 +122,10 @@ Outcome exact root operation, передав ID, возвращённый Begin.
 statuses:
 
 `paused`, `blocked`, `decision_required`, `failed`, `completed`.
+
+В Outcome передать observed changed paths/areas только из фактического root
+result. Не выводить ownership operation из общего `git status`: concurrent
+process мог изменить те же файлы.
 
 Неожиданное прерывание или ошибка Outcome оставляет только эту operation
 `in_progress`; не повторять root или nested mutations автоматически.

@@ -12,6 +12,7 @@ import re
 import runpy
 import secrets
 import stat
+import subprocess
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -36,7 +37,7 @@ RECOVERABLE_STATUSES = {
 }
 TERMINAL_STATUSES = {"failed", "completed"}
 OUTCOME_STATUSES = NON_IDLE_STATUSES - {"in_progress"}
-SECTIONS = (
+CURRENT_SECTIONS = (
     "Input",
     "Done",
     "Current position",
@@ -45,11 +46,27 @@ SECTIONS = (
     "Checks",
     "References",
 )
+SECTIONS = (*CURRENT_SECTIONS, "Workspace")
+CURRENT_METADATA = {
+    "Updated",
+    "Status",
+    "Operation",
+    "Invocation",
+    "Flow",
+    "Origin",
+    "Flow identity",
+    "Input digest",
+}
+ENRICHED_METADATA = {*CURRENT_METADATA, "Summary", "Started"}
+MAX_SUMMARY_LENGTH = 120
+MAX_WORKSPACE_ITEMS = 32
+MAX_WORKSPACE_ITEM_LENGTH = 240
 FLOW_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 FLOW_IDENTITY = re.compile(r"^usw-markdown:(local|shared):[0-9a-f]{64}$")
 INVOCATION = re.compile(r"^[0-9a-f]{32}$")
 OPERATION_ID = re.compile(r"^usw-operation:([0-9a-f]{64})$")
+REVISION = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 LEGACY_HEADER = "| Subject | Role | Attempt | Current operation | Status | Updated |"
 ROUTER_HEADER = "# Developer Handoff Router"
 ROUTER_EMPTY = "No registered operations."
@@ -241,13 +258,156 @@ def _timestamp(value: datetime | None = None) -> str:
     return (value or datetime.now(timezone.utc)).isoformat(timespec="seconds")
 
 
-def _validate_timestamp(value: str) -> None:
+def _validate_timestamp(value: str, field_name: str) -> None:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as error:
-        raise HandoffError("invalid_handoff", "Updated must be ISO 8601") from error
+        raise HandoffError(
+            "invalid_handoff", f"{field_name} must be ISO 8601"
+        ) from error
     if parsed.tzinfo is None:
-        raise HandoffError("invalid_handoff", "Updated must include a timezone")
+        raise HandoffError(
+            "invalid_handoff", f"{field_name} must include a timezone"
+        )
+
+
+def _summary(value: str) -> str:
+    normalized = " ".join(value.split())
+    if not normalized:
+        raise HandoffError("invalid_summary", "Summary must be non-empty")
+    if len(normalized) <= MAX_SUMMARY_LENGTH:
+        return normalized
+    return normalized[: MAX_SUMMARY_LENGTH - 3].rstrip() + "..."
+
+
+def _workspace_items(values: tuple[str, ...] | list[str], name: str) -> tuple[str, ...]:
+    if len(values) > MAX_WORKSPACE_ITEMS:
+        raise HandoffError(
+            "invalid_workspace",
+            f"{name} supports at most {MAX_WORKSPACE_ITEMS} values",
+        )
+    normalized = []
+    for value in values:
+        item = value.strip() if isinstance(value, str) else ""
+        if (
+            not item
+            or len(item) > MAX_WORKSPACE_ITEM_LENGTH
+            or "\n" in item
+            or "\r" in item
+        ):
+            raise HandoffError(
+                "invalid_workspace",
+                f"{name} values must be non-empty bounded lines",
+            )
+        normalized.append(item)
+    return tuple(normalized)
+
+
+def _render_workspace(
+    base_revision: str,
+    expected_writes: tuple[str, ...] | list[str] = (),
+    observed_changes: tuple[str, ...] | list[str] = (),
+) -> str:
+    if base_revision not in {"unknown", "unborn", "not-git"} and not REVISION.fullmatch(
+        base_revision
+    ):
+        raise HandoffError("invalid_workspace", "invalid base revision")
+    expected = _workspace_items(expected_writes, "Expected writes")
+    observed = _workspace_items(observed_changes, "Observed changes")
+    return "\n".join(
+        (
+            f"- Base revision: {base_revision}",
+            "- Expected writes: "
+            + json.dumps(expected, ensure_ascii=False, separators=(", ", ": ")),
+            "- Observed changes: "
+            + json.dumps(observed, ensure_ascii=False, separators=(", ", ": ")),
+        )
+    )
+
+
+def _parse_workspace(content: str) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    prefixes = (
+        "- Base revision: ",
+        "- Expected writes: ",
+        "- Observed changes: ",
+    )
+    lines = content.splitlines()
+    if len(lines) != len(prefixes) or any(
+        not line.startswith(prefix) for line, prefix in zip(lines, prefixes)
+    ):
+        raise HandoffError("invalid_workspace", "invalid Workspace structure")
+    base_revision = lines[0][len(prefixes[0]) :]
+    try:
+        expected = json.loads(lines[1][len(prefixes[1]) :])
+        observed = json.loads(lines[2][len(prefixes[2]) :])
+    except json.JSONDecodeError as error:
+        raise HandoffError(
+            "invalid_workspace", "workspace values must be JSON arrays"
+        ) from error
+    if not isinstance(expected, list) or not isinstance(observed, list):
+        raise HandoffError(
+            "invalid_workspace", "workspace values must be JSON arrays"
+        )
+    rendered = _render_workspace(base_revision, expected, observed)
+    if rendered != content:
+        raise HandoffError("invalid_workspace", "Workspace must be canonical")
+    return base_revision, tuple(expected), tuple(observed)
+
+
+def _workspace_base(root: Path) -> str:
+    if not (root / ".git").exists():
+        return "not-git"
+    environment = os.environ.copy()
+    for name in (
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_INDEX_FILE",
+    ):
+        environment.pop(name, None)
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--verify", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=environment,
+        )
+    except OSError:
+        return "unknown"
+    revision = result.stdout.strip().lower()
+    if result.returncode == 0 and REVISION.fullmatch(revision):
+        return revision
+    if result.returncode == 0:
+        return "unknown"
+    try:
+        symbolic = subprocess.run(
+            ["git", "-C", str(root), "symbolic-ref", "-q", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=environment,
+        )
+    except OSError:
+        return "unknown"
+    head = symbolic.stdout.strip()
+    if symbolic.returncode != 0 or not head.startswith("refs/heads/"):
+        return "unknown"
+    try:
+        reference = subprocess.run(
+            ["git", "-C", str(root), "show-ref", "--verify", "--quiet", head],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=environment,
+        )
+    except OSError:
+        return "unknown"
+    if reference.returncode == 1 and not reference.stderr.strip():
+        return "unborn"
+    return "unknown"
 
 
 def render_idle(updated_at: datetime | None = None) -> str:
@@ -407,7 +567,7 @@ def parse_handoff(content: str) -> Handoff:
     metadata = _metadata(lines)
     if not {"Updated", "Status"} <= set(metadata):
         raise HandoffError("invalid_handoff", "missing Updated or Status")
-    _validate_timestamp(metadata["Updated"])
+    _validate_timestamp(metadata["Updated"], "Updated")
     status = metadata["Status"]
     order, sections = _sections(lines)
 
@@ -420,18 +580,14 @@ def parse_handoff(content: str) -> Handoff:
 
     if status not in NON_IDLE_STATUSES:
         raise HandoffError("invalid_handoff", f"unsupported status: {status}")
-    expected_metadata = {
-        "Updated",
-        "Status",
-        "Operation",
-        "Invocation",
-        "Flow",
-        "Origin",
-        "Flow identity",
-        "Input digest",
-    }
-    if set(metadata) != expected_metadata:
+    enriched = set(metadata) == ENRICHED_METADATA
+    if not enriched and set(metadata) != CURRENT_METADATA:
         raise HandoffError("invalid_handoff", "invalid active metadata fields")
+    if enriched:
+        if metadata["Summary"] != _summary(metadata["Summary"]):
+            raise HandoffError("invalid_handoff", "Summary must be canonical")
+        if metadata["Started"] != "unknown":
+            _validate_timestamp(metadata["Started"], "Started")
     if not FLOW_NAME.fullmatch(metadata["Flow"]):
         raise HandoffError("invalid_handoff", "unsafe flow name")
     if metadata["Origin"] not in {"local", "shared"}:
@@ -451,7 +607,10 @@ def parse_handoff(content: str) -> Handoff:
     )
     if metadata["Operation"] != expected_operation:
         raise HandoffError("invalid_handoff", "operation identity does not match")
-    if order != list(SECTIONS) or any(not sections[name] for name in SECTIONS):
+    expected_sections = SECTIONS if enriched else CURRENT_SECTIONS
+    if order != list(expected_sections) or any(
+        not sections[name] for name in expected_sections
+    ):
         raise HandoffError("invalid_handoff", "invalid active sections")
     try:
         exact_input = json.loads(sections["Input"])
@@ -468,6 +627,8 @@ def parse_handoff(content: str) -> Handoff:
         raise HandoffError("invalid_handoff", "Input does not match input digest")
     if len(sections["Next action"].splitlines()) != 1:
         raise HandoffError("invalid_handoff", "Next action must be one line")
+    if enriched:
+        _parse_workspace(sections["Workspace"])
     return Handoff(status, metadata, sections)
 
 
@@ -487,6 +648,8 @@ def _render_active(
             )
     lines = ["# Developer Handoff", ""]
     for key in (
+        "Summary",
+        "Started",
         "Updated",
         "Status",
         "Operation",
@@ -508,14 +671,20 @@ def render_begin(
     flow_identity: str,
     user_input: str,
     *,
+    summary: str | None = None,
+    base_revision: str = "not-git",
+    expected_writes: tuple[str, ...] = (),
     updated_at: datetime | None = None,
 ) -> str:
     if not user_input.strip():
         raise HandoffError("invalid_input", "input must be non-empty")
     input_digest = f"sha256:{hashlib.sha256(user_input.encode('utf-8')).hexdigest()}"
     invocation = secrets.token_hex(16)
+    timestamp = _timestamp(updated_at)
     metadata = {
-        "Updated": _timestamp(updated_at),
+        "Summary": _summary(summary if summary is not None else user_input),
+        "Started": timestamp,
+        "Updated": timestamp,
         "Status": "in_progress",
         "Operation": _operation_id(
             origin, flow_identity, input_digest, invocation
@@ -534,6 +703,7 @@ def render_begin(
         "Blocker": "None.",
         "Checks": "- not-run",
         "References": "- None.",
+        "Workspace": _render_workspace(base_revision, expected_writes),
     }
     content = _render_active(metadata=metadata, sections=sections)
     parse_handoff(content)
@@ -793,6 +963,10 @@ def _operation_summaries_locked(
                 "operation": operation,
                 "flow": current.metadata["Flow"],
                 "status": current.status,
+                "summary": current.metadata.get("Summary")
+                or _summary(json.loads(current.sections["Input"])),
+                "started": current.metadata.get("Started", "unknown"),
+                "updated": current.metadata["Updated"],
                 "path": str(path),
             }
         )
@@ -885,6 +1059,9 @@ def begin_handoff(
     origin: str,
     flow_identity: str,
     user_input: str,
+    *,
+    summary: str | None = None,
+    expected_writes: tuple[str, ...] = (),
 ) -> tuple[Path, str]:
     root = _enabled_root(project)
     with _locked_local_directory(root) as (_, descriptor):
@@ -894,7 +1071,15 @@ def begin_handoff(
                 "legacy_recovery_required",
                 "legacy HANDOFF is read-only; inspect or finish it before a new flow",
             )
-        candidate = render_begin(flow_name, origin, flow_identity, user_input)
+        candidate = render_begin(
+            flow_name,
+            origin,
+            flow_identity,
+            user_input,
+            summary=summary,
+            base_revision=_workspace_base(root),
+            expected_writes=expected_writes,
+        )
         operation = parse_handoff(candidate).metadata["Operation"]
         if operation in router.operations:
             raise HandoffError(
@@ -946,6 +1131,7 @@ def outcome_handoff(
     blocker: str,
     checks: tuple[str, ...] = (),
     references: tuple[str, ...] = (),
+    observed_changes: tuple[str, ...] = (),
 ) -> Path:
     if status not in OUTCOME_STATUSES:
         raise HandoffError("invalid_transition", f"invalid outcome status: {status}")
@@ -962,9 +1148,18 @@ def outcome_handoff(
         if any(not value.strip() for value in values) or len(next_action.splitlines()) != 1:
             raise HandoffError("invalid_outcome", "outcome fields must be non-empty")
         metadata = dict(current.metadata)
+        if "Summary" not in metadata:
+            metadata["Summary"] = _summary(json.loads(current.sections["Input"]))
+            metadata["Started"] = "unknown"
         metadata["Updated"] = _timestamp()
         metadata["Status"] = status
         sections = dict(current.sections)
+        if "Workspace" in sections:
+            base_revision, expected_writes, _ = _parse_workspace(
+                sections["Workspace"]
+            )
+        else:
+            base_revision, expected_writes = "unknown", ()
         sections.update(
             {
                 "Done": done.strip(),
@@ -974,6 +1169,11 @@ def outcome_handoff(
                 "Checks": "\n".join(f"- {value}" for value in checks) or "- not-run",
                 "References": (
                     "\n".join(f"- {value}" for value in references) or "- None."
+                ),
+                "Workspace": _render_workspace(
+                    base_revision,
+                    expected_writes,
+                    observed_changes,
                 ),
             }
         )
@@ -1023,6 +1223,14 @@ def save_handoff(
             raise HandoffError(
                 "invalid_transition", "terminal HANDOFF is inspect-or-finish only"
             )
+        current_enriched = "Summary" in current.metadata
+        parsed_enriched = "Summary" in parsed.metadata
+        if not parsed_enriched:
+            raise HandoffError(
+                "invalid_transition",
+                "save cannot downgrade or preserve the old operation shape; "
+                "use an enriched candidate",
+            )
         if parsed.metadata["Operation"] != current.metadata["Operation"]:
             raise HandoffError(
                 "stale_operation", "save cannot change operation identity"
@@ -1041,6 +1249,33 @@ def save_handoff(
                 "invalid_transition",
                 "save cannot change immutable operation context",
             )
+        parsed_base, parsed_expected, _ = _parse_workspace(
+            parsed.sections["Workspace"]
+        )
+        if current_enriched:
+            current_base, current_expected, _ = _parse_workspace(
+                current.sections["Workspace"]
+            )
+            immutable_recovery_changed = (
+                parsed.metadata["Started"] != current.metadata["Started"]
+                or parsed_base != current_base
+                or parsed_expected != current_expected
+            )
+        else:
+            immutable_recovery_changed = (
+                parsed.metadata["Started"] != "unknown"
+                or parsed_base != "unknown"
+                or bool(parsed_expected)
+            )
+        if immutable_recovery_changed:
+            raise HandoffError(
+                "invalid_transition",
+                "save cannot change or invent immutable recovery context",
+            )
+        metadata = dict(parsed.metadata)
+        metadata["Updated"] = _timestamp()
+        content = _render_active(metadata=metadata, sections=parsed.sections)
+        parse_handoff(content)
         _write_operation_at(root, descriptor, operation, content)
         with _opened_operation_directory(
             root, descriptor
@@ -1132,6 +1367,8 @@ def main(argv: list[str] | None = None) -> int:
     begin.add_argument("origin", choices=("local", "shared"))
     begin.add_argument("flow_identity")
     begin.add_argument("input")
+    begin.add_argument("--summary")
+    begin.add_argument("--expected-write", action="append", default=[])
     outcome = commands.add_parser("outcome")
     outcome.add_argument("project", type=Path)
     outcome.add_argument("status", choices=sorted(OUTCOME_STATUSES))
@@ -1142,6 +1379,7 @@ def main(argv: list[str] | None = None) -> int:
     outcome.add_argument("--blocker", required=True)
     outcome.add_argument("--check", action="append", default=[])
     outcome.add_argument("--reference", action="append", default=[])
+    outcome.add_argument("--observed-change", action="append", default=[])
     assert_current = commands.add_parser("assert-current")
     assert_current.add_argument("project", type=Path)
     assert_current.add_argument("operation")
@@ -1209,6 +1447,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.origin,
                 args.flow_identity,
                 args.input,
+                summary=args.summary,
+                expected_writes=tuple(args.expected_write),
             )
             _print(
                 {
@@ -1240,6 +1480,7 @@ def main(argv: list[str] | None = None) -> int:
                 blocker=args.blocker,
                 checks=tuple(args.check),
                 references=tuple(args.reference),
+                observed_changes=tuple(args.observed_change),
             )
             _print({"path": str(path), "status": args.status})
         return 0
