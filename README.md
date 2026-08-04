@@ -224,6 +224,27 @@ text flow → compiler → derived machine flow → durable state → iterator
 Compiler и iterator появятся только в отдельном change с измеримой потребностью
 в machine guarantees.
 
+## Оценка flow
+
+Явная команда `$usw-assess-flow` проверяет один существующий flow на
+исполняемость, логические разрывы, зависимости и потенциально бесконечные
+циклы, но не запускает flow и ничего не изменяет:
+
+```text
+$usw-assess-flow [--local|-l|--shared] <flow-name> [<scenario-input>]
+```
+
+Без origin selector используется local-first resolution. Необязательный
+scenario input добавляет трассу одного пути, но не скрывает проблемы других
+веток. Отчёт содержит terminal paths, dependency ledger, findings с evidence и
+один verdict: `executable`, `executable-with-risks`, `not-executable` или
+`insufficient-data`.
+
+Это evidence-backed семантическая оценка модели: она не является machine guarantee,
+parser-backed proof или recursive validation вызываемых flow.
+Assessment не читает HANDOFF, не создаёт runtime state и не применяет
+предложенные исправления.
+
 ## Поиск flow
 
 Команда `/usw-find-flow` по одному явному намерению ищет подходящий уже

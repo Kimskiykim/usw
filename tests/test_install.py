@@ -19,6 +19,7 @@ class InstallTests(unittest.TestCase):
         "usw-create-flow",
         "usw-run-flow",
         "usw-find-flow",
+        "usw-assess-flow",
         "usw-structured-review",
     )
     COMMAND_NAMES = (
@@ -27,6 +28,7 @@ class InstallTests(unittest.TestCase):
         "usw-resume.md",
         "usw-reviewer-llm-critic.md",
         "usw-find-flow.md",
+        "usw-assess-flow.md",
         "usw-refine-intent.md",
         "usw-plan-small-steps.md",
         "usw-explain-me.md",

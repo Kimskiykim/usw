@@ -1,7 +1,7 @@
 {
   "name": "usw",
   "version": "0.2.0",
-  "description": "Create, find, and run text-first Markdown workflows.",
+  "description": "Create, find, assess, and run text-first Markdown workflows.",
   "author": {
     "name": "USW contributors",
     "url": "https://github.com/Kimskiykim"
@@ -16,8 +16,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "USW",
-    "shortDescription": "Create, find, and run Markdown workflows.",
-    "longDescription": "Creates, finds, and runs readable local or shared Markdown workflows through one model execution path with optional developer-local handoff state.",
+    "shortDescription": "Create, find, assess, and run Markdown workflows.",
+    "longDescription": "Creates, finds, semantically assesses, and runs readable local or shared Markdown workflows through one model execution path with optional developer-local handoff state.",
     "developerName": "USW contributors",
     "category": "Developer Tools",
     "capabilities": [
@@ -25,6 +25,7 @@
     ],
     "defaultPrompt": [
       "Use /usw-find-flow to find an existing workflow for this intent without running it.",
+      "Use /usw-assess-flow to assess a named workflow without running or changing it.",
       "Run /usw-init to create a standalone workspace, then use usw-run-flow for a named Markdown workflow."
     ]
   }
