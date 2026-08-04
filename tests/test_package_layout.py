@@ -378,6 +378,108 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertFalse((ROOT / "skills/usw-route-task").exists())
         self.assertFalse((ROOT / "commands/usw-route-task.md").exists())
 
+    def test_assess_flow_is_explicit_semantic_read_only_analysis(self):
+        skill_dir = ROOT / "skills/usw-assess-flow"
+        skill_path = skill_dir / "SKILL.md"
+        metadata_path = skill_dir / "agents/openai.yaml"
+        command_path = ROOT / "commands/usw-assess-flow.md"
+
+        self.assertTrue(skill_path.is_file())
+        self.assertTrue(metadata_path.is_file())
+        self.assertTrue(command_path.is_file())
+
+        skill = skill_path.read_text(encoding="utf-8")
+        metadata = metadata_path.read_text(encoding="utf-8")
+        command = command_path.read_text(encoding="utf-8")
+
+        for fragment in (
+            "`--local`",
+            "`-l`",
+            "`--shared`",
+            "scenario input",
+            "safe `inspect`",
+            "returned `markdown`",
+            "не перечитывать `path`",
+            "`executable`",
+            "`executable-with-risks`",
+            "`not-executable`",
+            "`insufficient-data`",
+            "Terminal paths",
+            "Dependencies",
+            "Findings",
+            "Scenario trace",
+            "`blocking`",
+            "`risk`",
+            "`confirmed`",
+            "`missing`",
+            "`unverified`",
+            "явные `LOOP`",
+            "неявные циклы",
+            "необратимое внешнее действие",
+            "достижимый путь без следующего действия или terminal outcome — `blocking`",
+            "противоречащие обязательные действия на одном пути — `blocking`",
+            "finite terminal path → `executable`",
+            "bounded retry с terminal fallback → без blocking finding",
+            "A → B → A без выхода → `not-executable`",
+            "повторять до успеха без предела → `executable-with-risks`",
+            "missing mandatory dependency без fallback → `not-executable`",
+            "missing dependency с `decision_required` → не blocking",
+            "proven contract-invalid mandatory invocation без handled terminal fallback — `blocking`",
+            "mandatory call с retired selector без fallback → `not-executable`",
+            "approval один раз до цикла не делает повтор необратимого действия безопасным",
+            "irreversible action и его approval вне цикла",
+            "approval перед loop с irreversible action внутри → `not-executable`",
+            "необратимый side effect внутри цикла → `not-executable`",
+            "не проводить recursive assessment",
+            "не выполнять flow",
+            "не читать и не изменять HANDOFF",
+            "не создавать и не изменять файлы",
+            "не machine guarantee",
+        ):
+            self.assertIn(fragment, skill)
+
+        self.assertIn("allow_implicit_invocation: false", metadata)
+        self.assertIn("usw-assess-flow", command)
+        self.assertIn("Treat command arguments", command)
+        self.assertFalse((skill_dir / "scripts").exists())
+
+    def test_assess_flow_acceptance_evidence_is_checked_in(self):
+        changes = ROOT / "openspec/changes"
+        change = changes / "add-flow-assessment"
+        if not change.is_dir():
+            archived = sorted(
+                (changes / "archive").glob("*-add-flow-assessment")
+            )
+            self.assertTrue(archived)
+            change = archived[-1]
+        acceptance = change / "tasks/4.1-acceptance"
+        fixture_dir = acceptance / "fixtures"
+        reports_path = acceptance / "semantic-reports.md"
+        smoke = (acceptance / "smoke.md").read_text(encoding="utf-8")
+        expected_fixtures = {
+            "bounded-retry.md",
+            "finite.md",
+            "handled-missing-dependency.md",
+            "missing-dependency.md",
+            "unconditional-cycle.md",
+            "uncertain-retry.md",
+            "unsafe-repeat.md",
+        }
+
+        self.assertEqual(
+            expected_fixtures,
+            {path.name for path in fixture_dir.glob("*.md")},
+        )
+        self.assertTrue(reports_path.is_file())
+        reports = reports_path.read_text(encoding="utf-8")
+        for fixture in sorted(expected_fixtures):
+            stem = Path(fixture).stem
+            self.assertIn(f"[fixtures/{fixture}](fixtures/{fixture})", smoke)
+            self.assertIn(f"## {stem}", reports)
+        self.assertIn("[Raw semantic reports](semantic-reports.md)", smoke)
+        self.assertNotIn("Expected and observed result", smoke)
+        self.assertNotIn("were not added to the repository", smoke)
+
     def test_research_snapshot_is_outside_package_surfaces(self):
         snapshot = ROOT / "research/structured-runtime"
         self.assertTrue((snapshot / "runtime/run_flow.py").is_file())
@@ -408,6 +510,7 @@ class PackageLayoutTests(unittest.TestCase):
             "usw-handoff.md": "usw-manage-handoff",
             "usw-resume.md": "usw-manage-handoff",
             "usw-find-flow.md": "usw-find-flow",
+            "usw-assess-flow.md": "usw-assess-flow",
             "usw-refine-intent.md": "usw-refine-intent",
             "usw-plan-small-steps.md": "usw-plan-small-steps",
             "usw-explain-me.md": "usw-explain-me",
@@ -430,6 +533,33 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertIn("optional exact operation ID", resume)
         self.assertIn("zero/one/many", resume)
 
+    def test_assess_flow_is_documented_in_package_metadata(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        plugin = json.loads(
+            (ROOT / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
+        )
+        qwen = json.loads(
+            (ROOT / "qwen-extension.json").read_text(encoding="utf-8")
+        )
+        gigacode = json.loads(
+            (ROOT / "gigacode-extension.json").read_text(encoding="utf-8")
+        )
+
+        for fragment in (
+            "## Оценка flow",
+            "$usw-assess-flow [--local|-l|--shared] <flow-name>",
+            "`executable-with-risks`",
+            "`not-executable`",
+            "не запускает flow",
+            "не является machine guarantee",
+        ):
+            self.assertIn(fragment, readme)
+
+        self.assertIn("assess", plugin["description"])
+        self.assertIn("assess", plugin["interface"]["shortDescription"])
+        self.assertIn("assess", qwen["description"])
+        self.assertIn("assess", gigacode["description"])
+
     def test_qwen_extension_points_to_shared_skills(self):
         manifest = json.loads((ROOT / "qwen-extension.json").read_text(encoding="utf-8"))
 
@@ -450,12 +580,14 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertTrue((skills_dir / "usw-create-flow" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-run-flow" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-find-flow" / "SKILL.md").is_file())
+        self.assertTrue((skills_dir / "usw-assess-flow" / "SKILL.md").is_file())
         for command_name in (
             "usw-init.md",
             "usw-handoff.md",
             "usw-resume.md",
             "usw-reviewer-llm-critic.md",
             "usw-find-flow.md",
+            "usw-assess-flow.md",
             "usw-refine-intent.md",
             "usw-plan-small-steps.md",
             "usw-explain-me.md",
@@ -484,12 +616,14 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertTrue((skills_dir / "usw-create-flow" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-run-flow" / "SKILL.md").is_file())
         self.assertTrue((skills_dir / "usw-find-flow" / "SKILL.md").is_file())
+        self.assertTrue((skills_dir / "usw-assess-flow" / "SKILL.md").is_file())
         for command_name in (
             "usw-init.md",
             "usw-handoff.md",
             "usw-resume.md",
             "usw-reviewer-llm-critic.md",
             "usw-find-flow.md",
+            "usw-assess-flow.md",
             "usw-refine-intent.md",
             "usw-plan-small-steps.md",
             "usw-explain-me.md",
@@ -528,6 +662,7 @@ class PackageLayoutTests(unittest.TestCase):
         self.assertTrue((ROOT / "skills" / "usw-create-flow" / "SKILL.md").is_file())
         self.assertTrue((ROOT / "skills" / "usw-run-flow" / "SKILL.md").is_file())
         self.assertTrue((ROOT / "skills" / "usw-find-flow" / "SKILL.md").is_file())
+        self.assertTrue((ROOT / "skills" / "usw-assess-flow" / "SKILL.md").is_file())
         self.assertTrue((ROOT / "commands" / "usw-handoff.md").is_file())
         self.assertTrue((ROOT / "commands" / "usw-resume.md").is_file())
         self.assertTrue(
@@ -535,6 +670,7 @@ class PackageLayoutTests(unittest.TestCase):
         )
         for command_name in (
             "usw-find-flow.md",
+            "usw-assess-flow.md",
             "usw-refine-intent.md",
             "usw-plan-small-steps.md",
             "usw-explain-me.md",
