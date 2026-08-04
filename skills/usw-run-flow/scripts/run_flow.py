@@ -449,22 +449,43 @@ def main(argv: list[str] | None = None) -> int:
         return _migration_error()
 
     parser = argparse.ArgumentParser(description="Load a text-first USW flow")
-    parser.add_argument("command", choices=("resolve",))
-    parser.add_argument("project_root", type=Path)
-    parser.add_argument("shared_root", type=Path)
-    parser.add_argument("name")
-    parser.add_argument("input")
     parser.add_argument("--origin", choices=sorted(ORIGINS))
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    resolve = commands.add_parser("resolve")
+    resolve.add_argument("project_root", type=Path)
+    resolve.add_argument("shared_root", type=Path)
+    resolve.add_argument("name")
+    resolve.add_argument("input")
+    resolve.add_argument(
+        "--origin", choices=sorted(ORIGINS), default=argparse.SUPPRESS
+    )
+
+    inspect = commands.add_parser("inspect")
+    inspect.add_argument("project_root", type=Path)
+    inspect.add_argument("shared_root", type=Path)
+    inspect.add_argument("name")
+    inspect.add_argument(
+        "--origin", choices=sorted(ORIGINS), default=argparse.SUPPRESS
+    )
     args = parser.parse_args(arguments)
 
     try:
-        invocation = prepare_markdown_run(
-            args.project_root,
-            args.shared_root,
-            args.name,
-            args.input,
-            origin=args.origin,
-        )
+        if args.command == "inspect":
+            flow = resolve_markdown_flow(
+                args.project_root,
+                args.shared_root,
+                args.name,
+                origin=args.origin,
+            )
+        else:
+            invocation = prepare_markdown_run(
+                args.project_root,
+                args.shared_root,
+                args.name,
+                args.input,
+                origin=args.origin,
+            )
     except FlowError as error:
         _print_json(
             {"error": error.code, "detail": error.detail},
@@ -472,17 +493,29 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    _print_json(
-        {
-            "name": invocation.flow.name,
-            "origin": invocation.flow.origin,
-            "identity": invocation.flow.identity,
-            "path": str(invocation.flow.path),
-            "input": invocation.user_input,
-            "markdown": invocation.flow.markdown,
-            "warnings": list(invocation.warnings),
-        }
-    )
+    if args.command == "inspect":
+        _print_json(
+            {
+                "name": flow.name,
+                "origin": flow.origin,
+                "identity": flow.identity,
+                "path": str(flow.path),
+                "markdown": flow.markdown,
+                "warnings": [],
+            }
+        )
+    else:
+        _print_json(
+            {
+                "name": invocation.flow.name,
+                "origin": invocation.flow.origin,
+                "identity": invocation.flow.identity,
+                "path": str(invocation.flow.path),
+                "input": invocation.user_input,
+                "markdown": invocation.flow.markdown,
+                "warnings": list(invocation.warnings),
+            }
+        )
     return 0
 
 

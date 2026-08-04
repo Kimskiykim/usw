@@ -377,6 +377,106 @@ class TextFlowRunnerTests(unittest.TestCase):
                     self.assertEqual("structured_runtime_removed", error["error"])
                     self.assertIn("$usw-run-flow", error["detail"])
 
+    def test_cli_inspect_returns_exact_markdown_without_execution_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, shared = self.project(directory)
+            local = project / ".usw/flows"
+            local.mkdir(parents=True)
+            content = b"# Local flow\r\n\r\nFinish.\r\n"
+            (local / "review.md").write_bytes(content)
+            (shared / "review.md").write_text("shared\n", encoding="utf-8")
+            (project / ".usw/FLOW.json").write_text(
+                "legacy\n", encoding="utf-8"
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "inspect",
+                    str(project),
+                    str(shared),
+                    "review",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            report = json.loads(completed.stdout)
+            self.assertEqual("review", report["name"])
+            self.assertEqual("local", report["origin"])
+            self.assertEqual(
+                os.path.realpath(local / "review.md"), report["path"]
+            )
+            self.assertEqual(content.decode("utf-8"), report["markdown"])
+            self.assertEqual(
+                "usw-markdown:local:" + hashlib.sha256(content).hexdigest(),
+                report["identity"],
+            )
+            self.assertEqual([], report["warnings"])
+            self.assertNotIn("input", report)
+
+    def test_cli_inspect_supports_explicit_shared_origin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, shared = self.project(directory)
+            local = project / ".usw/flows"
+            local.mkdir(parents=True)
+            (local / "review.md").write_text("local\n", encoding="utf-8")
+            (shared / "review.md").write_text("shared\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "inspect",
+                    str(project),
+                    str(shared),
+                    "review",
+                    "--origin",
+                    "shared",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            report = json.loads(completed.stdout)
+            self.assertEqual("shared", report["origin"])
+            self.assertEqual("shared\n", report["markdown"])
+
+    def test_cli_resolve_accepts_origin_before_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, shared = self.project(directory)
+            local = project / ".usw/flows"
+            local.mkdir(parents=True)
+            (local / "review.md").write_text("local\n", encoding="utf-8")
+            (shared / "review.md").write_text("shared\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--origin",
+                    "shared",
+                    "resolve",
+                    str(project),
+                    str(shared),
+                    "review",
+                    "input",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            report = json.loads(completed.stdout)
+            self.assertEqual("shared", report["origin"])
+            self.assertEqual("shared\n", report["markdown"])
+
 
 if __name__ == "__main__":
     unittest.main()
