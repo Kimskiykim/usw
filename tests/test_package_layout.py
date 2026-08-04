@@ -216,8 +216,7 @@ class PackageLayoutTests(unittest.TestCase):
         )
         spec = (
             ROOT
-            / "openspec/changes/add-guided-flow-authoring/specs"
-            / "guided-flow-authoring/spec.md"
+            / "openspec/specs/guided-flow-authoring/spec.md"
         ).read_text(encoding="utf-8")
 
         recipe_names = (

@@ -1,105 +1,254 @@
 # live-operation-state Specification
 
 ## Purpose
-Define optional generic recovery state for one text-flow operation.
+Define optional routed recovery state for concurrent root text-flow operations
+and read-only parent verification for nested execution.
 
 ## Requirements
 
-### Requirement: Generic handoff хранит одну text operation
-When effective `handoff` is `true`, USW SHALL write Begin before model execution
-and Outcome at a natural stop. The Markdown summary SHALL contain flow, origin,
-flow identity, input digest, operation identity, status, completed work,
-narrative position, next action, blocker, checks and references.
+### Requirement: Generic handoff маршрутизирует text operations
+When effective `handoff` is `true`, `.usw/HANDOFF.md` SHALL be a validated
+Markdown router from each registered exact operation identity to one generated
+relative state path under `.usw/handoffs/`. Router membership SHALL determine
+whether an operation is registered, and the referenced operation document
+SHALL be authoritative for that operation's mutable status and recovery
+content.
 
-Allowed statuses SHALL be `idle`, `in_progress`, `paused`, `blocked`,
-`decision_required`, `failed` and `completed`. A permission boundary SHALL use
-`decision_required`.
+Every operation document SHALL contain root flow, origin, flow identity, input
+digest, operation identity, status, completed work, narrative position, next
+action, blocker, checks and references. Allowed operation statuses SHALL be
+`in_progress`, `paused`, `blocked`, `decision_required`, `failed` and
+`completed`. An empty router SHALL represent no registered work. A permission
+boundary in the root or a nested child SHALL use `decision_required`.
 
-#### Scenario: Новый text flow
-- **WHEN** HANDOFF is idle and a flow has been loaded safely
-- **THEN** an `in_progress` Begin is atomically written and its exact bytes are read back before execution
-- **AND** a mismatching readback fails without overwriting the observed competing state
+#### Scenario: New root operation
+- **WHEN** a root flow has been loaded safely and Begin creates a unique operation identity
+- **THEN** its `in_progress` operation document and router entry are atomically written and exact-byte verified before model execution
 
 #### Scenario: Natural pause
-- **WHEN** the model stops explicitly before completion
-- **THEN** Outcome records `paused`, current position and one next action
+- **WHEN** one root model stops explicitly before completion
+- **THEN** Outcome records `paused`, current position and one next action only in that root's operation document
+
+#### Scenario: Nested branches contribute to root outcome
+- **WHEN** nested flows return results before their root reaches a natural stop
+- **THEN** only that root executor writes its operation Outcome and includes the factual nested progress needed for recovery
 
 ### Requirement: Recoverable state требует explicit finish
 Generic `in_progress`, `paused`, `blocked` and `decision_required` states SHALL
-remain until explicit finish and SHALL block every new operation, including the
-same flow with a different input. Generic `failed` and `completed` states SHALL
-remain inspectable until explicit finish or SHALL be atomically replaced by the
-next Begin. Unexpected interruption after Begin SHALL remain `in_progress` and
-MUST NOT cause automatic retry.
+remain registered until Finish for their exact operation identity. They MUST
+NOT block Begin for an independent root operation. A recoverable root state MAY
+admit nested executions dispatched by its root executor with its exact current
+identity but MUST reject nested execution for any other identity or a terminal
+state.
+
+Generic `failed` and `completed` states SHALL remain inspectable until Finish
+for their exact identity. A new Begin SHALL create another operation and MUST
+NOT replace an unrelated terminal state. Unexpected interruption after
+registration SHALL remain `in_progress` and MUST NOT cause automatic retry.
 
 #### Scenario: Same flow receives new input
-- **WHEN** a recoverable handoff already exists
-- **THEN** a new Begin does not overwrite it and directs the user to resume or finish
+- **WHEN** a recoverable operation exists and the same flow begins with new input
+- **THEN** Begin registers a distinct operation identity without changing the first operation
+
+#### Scenario: Nested flow uses its active root
+- **WHEN** nested context names the exact registered recoverable root operation
+- **THEN** its read-only parent check succeeds without creating or changing durable state
+
+#### Scenario: Nested flow targets terminal root
+- **WHEN** nested context names a root operation whose status is `failed` or `completed`
+- **THEN** child execution stops without changing router or operation documents
 
 #### Scenario: New flow follows a terminal outcome
-- **WHEN** HANDOFF contains `failed` or `completed` and a flow has been loaded safely
-- **THEN** a new `in_progress` Begin atomically replaces the terminal operation without requiring finish
+- **WHEN** one registered operation is `failed` or `completed` and another root flow begins
+- **THEN** a new `in_progress` operation is registered while the terminal outcome remains inspectable
 
 #### Scenario: Interrupted invocation is resumed
-- **WHEN** resume sees `in_progress` without a terminal Outcome
-- **THEN** it reports recovery context without automatically repeating mutations
+- **WHEN** Resume selects an `in_progress` operation without terminal Outcome
+- **THEN** it reports that operation's recovery context without automatically repeating root or nested mutations
 
-### Requirement: Operation identity binds flow and input
+### Requirement: Operation identity binds flow, input and route
 The operation identity SHALL derive from flow origin, flow identity and exact
-input digest plus a unique invocation token generated by Begin. Begin MUST
-preserve the exact input in a representation that cannot create accidental
-handoff headings. Outcome MUST name the expected operation identity and SHALL
-be rejected if another operation or idle state is current. Every generic
-handoff read MUST verify that the decoded exact input matches its digest.
+input digest plus a unique invocation token generated by Begin. Its validated
+hex suffix SHALL determine the generated operation filename, and the router
+entry, requested identity and embedded document identity MUST agree for every
+state access.
+
+Begin MUST preserve the exact input in a representation that cannot create
+accidental handoff headings. Outcome, Save and Finish MUST name the expected
+operation identity and SHALL be rejected if its route is missing, points to
+another identity or no longer permits the requested transition. Every generic
+operation read MUST verify that the decoded exact input matches its digest.
 
 #### Scenario: Input changes
 - **WHEN** the same flow is requested with different input
-- **THEN** its proposed operation identity differs
+- **THEN** its proposed operation identity and route differ
 
 #### Scenario: Identical invocation repeats
-- **WHEN** the same flow and input begin again after explicit finish or a terminal outcome
-- **THEN** the new invocation token and operation identity differ from the prior run
+- **WHEN** the same flow and input begin again
+- **THEN** the new invocation token, operation identity and route differ from the prior run
 
 #### Scenario: Stale Outcome arrives
-- **WHEN** an Outcome names an operation that is no longer current
-- **THEN** HANDOFF remains unchanged and the stale writer is rejected
+- **WHEN** an Outcome names an operation that has been finished or is absent from the router
+- **THEN** router and every registered operation remain unchanged and the stale writer is rejected
 
 #### Scenario: Saved input is changed without changing identity
 - **WHEN** a Save candidate changes the decoded input but retains the prior digest and operation identity
-- **THEN** current HANDOFF remains unchanged and the candidate is rejected
+- **THEN** the registered operation remains unchanged and the candidate is rejected
+
+#### Scenario: Router and document identities disagree
+- **WHEN** a router entry resolves to an operation document with another embedded identity
+- **THEN** the access fails before mutation and neither file is changed
 
 ### Requirement: Handoff transitions are serialized
 Begin, Outcome, Save and Finish SHALL serialize their complete
-read-check-write transition. Save MUST NOT replace legacy state, clear state,
-rewrite a terminal operation, change operation identity, change immutable
-operation context or create an operation from idle.
+read-check-write transition under the project-local handoff lock. Begin SHALL
+write and verify the operation document before registering it and MUST NOT
+start model execution before both writes are confirmed. Outcome SHALL update
+only the selected operation document because mutable status is not duplicated
+in the router.
+
+Save MUST use an operation-scoped candidate and MUST NOT replace legacy state,
+rewrite a terminal operation, change operation identity or immutable context,
+or target an unregistered operation. Finish SHALL unregister only the selected
+identity before removing only its exact operation document and candidate.
 
 #### Scenario: Two Begin calls overlap
-- **WHEN** two processes observe the same idle HANDOFF concurrently
-- **THEN** exactly one creates `in_progress` and the other observes non-idle state
+- **WHEN** two processes create different operation identities concurrently
+- **THEN** both operations may be registered in serialized transitions without losing either router entry
 
-#### Scenario: Save targets legacy state
-- **WHEN** a generic candidate is saved while the current HANDOFF is legacy
-- **THEN** both current state and candidate remain unchanged
+#### Scenario: Concurrent operations write Outcome
+- **WHEN** two registered roots reach natural stops concurrently
+- **THEN** each Outcome changes only its exact operation document and both routes remain registered
 
-#### Scenario: Queued Save arrives after finish
-- **WHEN** a candidate for the prior operation is saved while HANDOFF is idle
-- **THEN** idle state and the candidate remain unchanged
+#### Scenario: Begin stops before registration
+- **WHEN** Begin cannot confirm its router entry after creating a candidate operation document
+- **THEN** model execution does not start and the candidate is removed on a handled failure or remains a non-routable orphan after a process crash
+
+#### Scenario: Finish selects one of two operations
+- **WHEN** Finish names one of two registered operation identities
+- **THEN** only that route and its exact files are removed while the other operation remains unchanged
+
+#### Scenario: Queued Save arrives after Finish
+- **WHEN** a candidate for a prior operation is saved after its route was removed
+- **THEN** every registered operation remains unchanged and the candidate is rejected
 
 ### Requirement: Legacy handoff доступен только для recovery
-A role-based HANDOFF SHALL remain readable through show and resume without
+A role-based HANDOFF SHALL remain readable through Show and Resume without
 automatic migration. Resume MUST NOT execute work or write generic Outcome over
-legacy content. Explicit finish SHALL replace it with generic idle state.
+legacy content. Legacy state SHALL block Begin, and explicit Finish SHALL
+replace it with an empty router.
 
 #### Scenario: Legacy active state
-- **WHEN** resume reads a role-based handoff
-- **THEN** it shows available recovery context and requires finish before a new flow
+- **WHEN** Resume reads a role-based handoff
+- **THEN** it shows available recovery context and requires Finish before a routed operation begins
 
 ### Requirement: Disabled capability does not touch HANDOFF
-When effective `handoff` is `false`, init, run, handoff and resume MUST NOT
-require, read, create or modify `.usw/HANDOFF.md` and SHALL explain that the
-capability is disabled.
+When effective `handoff` is `false`, initialization, root and nested execution,
+Show, Resume, Save and Finish MUST NOT require, read, create or modify
+`.usw/HANDOFF.md`, `.usw/handoffs/` or an operation-scoped candidate and SHALL
+explain that the capability is disabled.
 
-#### Scenario: Existing file while disabled
-- **WHEN** a HANDOFF file exists and configuration sets `handoff: false`
-- **THEN** the file remains byte-for-byte unchanged
+#### Scenario: Existing routed state while disabled
+- **WHEN** router or operation files exist and configuration sets `handoff: false`
+- **THEN** every local handoff artifact remains byte-for-byte unchanged
+
+### Requirement: Router supports deterministic discovery
+Show, Resume and Finish SHALL accept an exact operation identity. Without an
+identity they SHALL select the sole registered operation, report that no work
+exists for an empty router, or return a concise validated operation list and
+require a selection when multiple routes exist.
+
+#### Scenario: One operation is registered
+- **WHEN** Resume is invoked without an identity and exactly one route exists
+- **THEN** it shows that operation's recovery context
+
+#### Scenario: Multiple operations are registered
+- **WHEN** Resume is invoked without an identity and multiple routes exist
+- **THEN** it returns their identities, flows and statuses without resuming any operation
+
+### Requirement: Generic single-state handoff migrates safely
+When an enabled handoff command encounters the current generic single-state
+format, USW SHALL migrate idle to an empty router and SHALL migrate non-idle
+state by first exact-byte writing it to the path derived from its validated
+embedded operation identity and then replacing HANDOFF with the router. The
+single-state file MUST remain authoritative until router replacement succeeds.
+
+#### Scenario: Recoverable generic state migrates
+- **WHEN** a valid generic `paused` HANDOFF is first read by the routed runtime
+- **THEN** its exact operation content remains recoverable through a registered route
+
+#### Scenario: Migration fails before router replacement
+- **WHEN** the operation document cannot be confirmed during migration
+- **THEN** the original single-state HANDOFF remains authoritative and unchanged
+
+### Requirement: Active parent verification is read-only
+USW SHALL provide a read-only handoff operation that confirms whether an exact
+identity has a registered operation document in `in_progress`, `paused`,
+`blocked` or `decision_required`. The check MUST use the same safe router and
+operation validation rules as other reads and MUST NOT modify either file for
+success or failure.
+
+#### Scenario: Exact active parent is checked
+- **WHEN** the requested identity matches a registered recoverable operation
+- **THEN** verification succeeds and router and operation bytes remain unchanged
+
+#### Scenario: Stale parent is checked
+- **WHEN** the requested identity is absent, mismatched, idle, legacy or terminal
+- **THEN** verification fails and every local handoff artifact remains unchanged
+
+### Requirement: Operation document сохраняет bounded recovery context
+Every newly begun operation document SHALL contain a non-empty one-line
+`Summary`, immutable timezone-aware `Started`, latest `Updated`, and a
+`Workspace` section. The workspace section SHALL record the Git base revision
+observed at Begin, or an explicit `unborn`, `not-git` or `unknown` state when no
+revision can be observed; zero or more expected write hints supplied before
+execution; and zero or more changes factually reported at the latest Outcome.
+
+Summary and workspace values MUST remain informational: they MUST NOT change
+operation identity, grant write authority, or claim detection or ownership of
+concurrent product writes.
+
+#### Scenario: New operation begins
+- **WHEN** Begin registers a routed operation
+- **THEN** its document contains a bounded summary, equal initial Started and Updated timestamps, the observed base revision, expected write hints and no observed changes
+
+#### Scenario: Operation reaches an outcome
+- **WHEN** Outcome records a natural stop and reported changed areas
+- **THEN** Started, base revision and expected writes remain unchanged while Updated and observed changes reflect the confirmed Outcome
+
+#### Scenario: Git inspection fails
+- **WHEN** Git metadata exists but the base revision cannot be inspected and the repository is not positively identified as unborn
+- **THEN** Begin records base revision as `unknown` without claiming an unborn repository
+
+### Requirement: Enriched recovery context остаётся backwards-compatible
+USW SHALL read existing generic operation documents that lack Summary, Started
+and Workspace without changing their bytes during Show, Resume or parent
+verification. Discovery SHALL derive a bounded display summary from exact input
+and SHALL report unknown start time for such a document.
+
+An Outcome mutation of an existing document SHALL write the enriched shape,
+using explicit `unknown` for unavailable historical start and base revision.
+Save MUST NOT replace an enriched operation with the older shape or invent
+unavailable historical facts.
+
+#### Scenario: Existing operation is inspected
+- **WHEN** Show, Resume or parent verification reads an old routed operation document
+- **THEN** the document remains byte-for-byte unchanged and its recovery content remains usable
+
+#### Scenario: Existing operation receives Outcome
+- **WHEN** Outcome updates an old recoverable operation
+- **THEN** the operation is enriched with a derived summary, unknown historical fields and the newly reported observed changes
+
+#### Scenario: Save attempts a downgrade
+- **WHEN** an old-shape candidate targets an enriched operation
+- **THEN** Save rejects the candidate and leaves the registered operation unchanged
+
+### Requirement: Multi-operation discovery показывает human context
+When more than one operation is registered, Show and Resume SHALL list each
+operation's summary, flow, status, start time, latest update time, exact
+operation identity and state path. The exact operation identity SHALL remain
+the only selector.
+
+#### Scenario: Two operations use the same flow
+- **WHEN** discovery finds multiple registered operations with the same flow name
+- **THEN** their summaries and timestamps are returned with their distinct exact operation identities without resuming either operation
