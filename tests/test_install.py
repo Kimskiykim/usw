@@ -13,13 +13,10 @@ class InstallTests(unittest.TestCase):
     SKILL_NAMES = (
         "usw-initialize-project",
         "usw-manage-handoff",
-        "usw-refine-intent",
-        "usw-plan-small-steps",
-        "usw-explain-me",
         "usw-create-flow",
         "usw-run-flow",
         "usw-find-flow",
-        "usw-structured-review",
+        "usw-assess-flow",
     )
     COMMAND_NAMES = (
         "usw-init.md",
@@ -27,9 +24,7 @@ class InstallTests(unittest.TestCase):
         "usw-resume.md",
         "usw-reviewer-llm-critic.md",
         "usw-find-flow.md",
-        "usw-refine-intent.md",
-        "usw-plan-small-steps.md",
-        "usw-explain-me.md",
+        "usw-assess-flow.md",
     )
 
     def run_install(self, home: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -147,14 +142,24 @@ class InstallTests(unittest.TestCase):
                     "usw-execute-task",
                     "usw-verify-task",
                     "usw-route-task",
+                    "usw-refine-intent",
+                    "usw-plan-small-steps",
+                    "usw-explain-me",
+                    "usw-structured-review",
                 )
             ]
             for path in legacy_skills:
                 path.mkdir(parents=True)
                 (path / "SKILL.md").write_text("legacy\n", encoding="utf-8")
             legacy_commands = [
-                base / "usw-route-task.md"
+                base / name
                 for base in (home / ".qwen/commands", home / ".codex/prompts")
+                for name in (
+                    "usw-route-task.md",
+                    "usw-refine-intent.md",
+                    "usw-plan-small-steps.md",
+                    "usw-explain-me.md",
+                )
             ]
             for path in legacy_commands:
                 path.parent.mkdir(parents=True, exist_ok=True)

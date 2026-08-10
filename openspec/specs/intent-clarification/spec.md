@@ -1,102 +1,51 @@
 # intent-clarification Specification
 
 ## Purpose
-TBD - created by archiving change clarify-intent-skill-boundary. Update Purpose after archive.
+Define intent clarification as an ordinary adaptable Markdown-flow rather than
+an installed backend skill.
+
 ## Requirements
-### Requirement: Intent clarification has one bounded responsibility
-USW SHALL expose `usw-refine-intent` as a conversational capability whose only
-responsibilities are to conduct dialogue, clarify one decision case per user
-turn, and save local non-normative notes.
 
-#### Scenario: User brings an ambiguous idea
-- **WHEN** the user asks to formulate an idea, problem, request, or decision
-- **THEN** `usw-refine-intent` opens or resumes a local clarification session
-  and discusses only its current decision case
+### Requirement: Intent clarification is a packaged example flow
+USW SHALL package `refine-intent.md` under `<flows.root>/examples/`. It SHALL
+clarify at most one material decision per user turn and MUST NOT start planning
+or implementation.
 
-#### Scenario: User confirms a decision
-- **WHEN** the user unambiguously answers the current clarification question
-- **THEN** the capability records the decision and advances to at most one next
-  open case without starting planning or implementation
+#### Scenario: User copies the example
+- **WHEN** the user copies `refine-intent.md` to a runnable flow path
+- **THEN** the flow can be adapted and executed through the ordinary
+  `usw-run-flow` path without a `usw-refine-intent` skill or command
 
-### Requirement: Clarification artifacts are local and non-normative
-USW MUST store clarification sessions under `.usw/refinements/<refinement-id>/`
-with `session.md`, `decisions.md`, and an optional `outcome.md`. These artifacts
-MUST remain developer-local and MUST NOT be treated as backlog, specification,
-provider-owned planning state, or evidence of completed work.
+### Requirement: Clarification state is local and minimal
+The example SHALL use one developer-local Markdown file under
+`.usw/refinements/` for confirmed facts, assumptions, open questions,
+decisions and the current formulation. It MUST NOT treat that file as backlog,
+specification, planning state or evidence of completed implementation.
 
-The clarification capability MUST reject unsafe or symlinked local paths, but
-MUST NOT inspect or enforce Git tracked/ignore state. Repository tracking policy
-belongs to the user.
+#### Scenario: One decision is confirmed
+- **WHEN** the user unambiguously answers the current question
+- **THEN** the flow records that decision before selecting at most one next
+  material question
 
-#### Scenario: New clarification starts
-- **WHEN** no matching local session exists
-- **THEN** USW creates the session only under `.usw/refinements/` and does not
-  create or modify a shared refinement root
+#### Scenario: A decision is revised
+- **WHEN** the user replaces an earlier decision
+- **THEN** the prior decision remains visible as `superseded`
 
-#### Scenario: Clarification is resumed
-- **WHEN** a later invocation supplies the same refinement ID and compatible goal
-- **THEN** USW resumes from the saved local current case without reconstructing
-  accepted decisions from conversation history
-
-#### Scenario: Local path is unsafe
-- **WHEN** `.usw/refinements/` resolves through a symbolic link or outside the
-  project
-- **THEN** the capability stops before writing and reports a path error
-
-#### Scenario: Local clarification state is tracked
-- **WHEN** `.usw/refinements/` contains a Git-tracked entry
-- **THEN** the capability leaves tracking unchanged and continues according to
-  the local artifact contract
-
-### Requirement: A clarification may end without downstream work
-`usw-refine-intent` SHALL allow a session to finish with a standalone formulated
-outcome, a paused state, or unresolved questions. It MUST NOT require or imply a
-  backlog item, planning change, implementation plan, executable task, or next flow.
+### Requirement: Clarification may stop independently
+The flow SHALL allow a completed formulation, a human decision request or an
+unresolved stop without requiring another flow.
 
 #### Scenario: Formulation is sufficient
-- **WHEN** the user accepts the current formulation and requests no further work
-- **THEN** the capability writes the current outcome, marks the session ready,
-  returns its local references, and stops with no recommended flow required
+- **WHEN** no material questions remain
+- **THEN** the flow records the current formulation, returns its local reference
+  and completes without choosing downstream work
 
-#### Scenario: User later wants planning
-- **WHEN** the user explicitly requests promotion of a ready outcome into planning
-- **THEN** `usw-refine-intent` returns its references and leaves all
-  provider-owned writes to a separate authorized capability
+### Requirement: Removed skill state is preserved
+Installation with `--force` SHALL remove the obsolete
+`usw-refine-intent` skill and command but MUST NOT delete existing
+`.usw/refinements/` artifacts.
 
-### Requirement: Intent clarification is distinct from solution evaluation
-USW SHALL keep `usw-refine-intent` available for iterative clarification.
-Solution comparison SHALL remain a separate capability that accepts a bounded
-problem, compares approaches, recommends one and returns without writing
-clarification state. A text flow MAY name either capability as readable
-guidance, but no validated Analysis runner or machine action routing is
-required.
-
-#### Scenario: Text flow needs missing intent details
-- **WHEN** a Markdown flow explicitly asks to clarify unresolved intent
-- **THEN** the model may invoke `usw-refine-intent` for one decision case
-
-#### Scenario: User needs an approach choice
-- **WHEN** the bounded problem is clear and the user requests solution comparison
-- **THEN** the solution-evaluation capability runs separately rather than continuing clarification implicitly
-
-### Requirement: Existing shared refinement data is preserved
-USW MUST NOT automatically discover, read, move, merge, delete, or rewrite
-existing sessions under configured or historical shared refinement roots.
-Historical data MUST NOT block creation or resumption of local clarification
-state, including a local session with the same refinement ID.
-
-#### Scenario: Legacy shared session has the same ID
-- **WHEN** a historical shared session and a requested local clarification use
-  the same refinement ID
-- **THEN** USW leaves the shared session byte-for-byte unchanged and creates or
-  resumes only the local session without requiring migration
-
-### Requirement: Public skill identity reflects intent clarification
-The packaged capability SHALL be named `usw-refine-intent`; public metadata,
-documentation, runtime references, and tests SHALL use that identity instead of
-`usw-refine-task`.
-
-#### Scenario: Installed package is inspected
-- **WHEN** a supported harness discovers packaged skills
-- **THEN** it exposes `usw-refine-intent` with its bounded description and does
-  not advertise `usw-refine-task` as an equivalent active capability
+#### Scenario: Existing refinement notes are present
+- **WHEN** USW is upgraded after the skill is removed
+- **THEN** installed skill metadata is cleaned up and project-local notes remain
+  unchanged

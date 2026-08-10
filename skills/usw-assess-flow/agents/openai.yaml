@@ -1,0 +1,7 @@
+interface:
+  display_name: "Assess a USW flow"
+  short_description: "Check one flow without running it"
+  default_prompt: "Use $usw-assess-flow to assess one named local or shared Markdown flow for executability, logic and termination without running or changing it."
+
+policy:
+  allow_implicit_invocation: false

@@ -133,7 +133,12 @@ class TextFlowContractTests(unittest.TestCase):
     def test_examples_are_non_normative_text_flows(self):
         examples = ROOT / "skills/usw-initialize-project/templates/flows/examples"
         self.assertEqual(
-            {"chat-review.md", "dev-test.md"},
+            {
+                "chat-review.md",
+                "dev-test.md",
+                "plan-small-steps.md",
+                "refine-intent.md",
+            },
             {path.name for path in examples.glob("*.md")},
         )
         for path in examples.glob("*.md"):
@@ -147,7 +152,7 @@ class TextFlowContractTests(unittest.TestCase):
             "--reviewers auto|2|3",
             "Review profile: llm-critic | custom",
             "CALL COMMAND `/usw-reviewer-llm-critic`",
-            "выполняет ровно одно discovery review: CALL SKILL",
+            "выполняет ровно одно read-only discovery review",
             "Неизвестный profile",
             "Scope отсутствует или пуст",
             "high-impact trigger",

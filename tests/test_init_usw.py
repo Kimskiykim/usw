@@ -213,6 +213,8 @@ class InitializeUswTests(unittest.TestCase):
                 "usw.yaml",
                 "usw/flows/examples/chat-review.md",
                 "usw/flows/examples/dev-test.md",
+                "usw/flows/examples/plan-small-steps.md",
+                "usw/flows/examples/refine-intent.md",
             }
             actual_files = {
                 path.relative_to(project).as_posix()
@@ -229,6 +231,8 @@ class InitializeUswTests(unittest.TestCase):
             for name in (
                 "chat-review.md",
                 "dev-test.md",
+                "plan-small-steps.md",
+                "refine-intent.md",
             ):
                 example = project / "usw/flows/examples" / name
                 self.assertIn("Ненормативный пример", example.read_text(encoding="utf-8"))
@@ -247,7 +251,7 @@ class InitializeUswTests(unittest.TestCase):
             handoff_content = (project / ".usw/HANDOFF.md").read_text(encoding="utf-8")
             self.assertIn("# Developer Handoff Router\n", handoff_content)
             self.assertIn("## Operations\n", handoff_content)
-            self.assertIn("No registered operations.\n", handoff_content)
+            self.assertIn("| No registered operations |", handoff_content)
             self.assertNotIn("- Status:", handoff_content)
             self.assertNotIn("| Subject | Role |", handoff_content)
             self.assertFalse((project / ".usw/handoffs").exists())
@@ -471,7 +475,13 @@ class InitializeUswTests(unittest.TestCase):
         self.assertEqual(
             "# Developer Handoff Router\n\n"
             "## Operations\n\n"
-            "No registered operations.\n",
+            "| Task | Flow | Status | Operation | Updated |\n"
+            "|---|---|---|---|---|\n"
+            "| No registered operations | — | — | — | — |\n\n"
+            "## Cleanup\n\n"
+            "Completed and failed operations remain visible until explicit cleanup.\n\n"
+            "Remove all terminal operations: `/usw-handoff cleanup`\n\n"
+            "Remove one operation: `/usw-handoff finish <operation-id>`\n",
             content,
         )
 

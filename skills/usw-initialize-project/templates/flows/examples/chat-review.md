@@ -13,7 +13,6 @@
 
 ## Dependencies
 
-- bundled skill: `usw-structured-review`
 - bundled command: `usw-reviewer-llm-critic`
 
 Если обязательная dependency недоступна, вернуть `decision_required` до
@@ -103,7 +102,8 @@ review-budget-reason: <triggers и factors либо low-risk reason>
 Если initial budget равен 3, одновременно запустить CALL SUBAGENT `reviewer-c`.
 Каждому передать одинаковые resolved `Scope`, `Review focus` и
 `Output contract`, не передавая результаты других reviewers. Каждый subagent
-выполняет ровно одно discovery review: CALL SKILL `usw-structured-review`.
+выполняет ровно одно read-only discovery review непосредственно по этим трём
+блокам.
 
 Reviewers ничего не меняют. Tool-unavailable, пустой или не соответствующий
 output contract результат возвращает `decision_required`; автоматически не
@@ -131,8 +131,8 @@ output contract результат возвращает `decision_required`; а�
 - `reject` — evidence опровергает finding;
 - `abstain` — данных недостаточно.
 
-Voting является отдельным read-only вызовом CALL SKILL
-`usw-structured-review`. Его Scope — исходный scope и candidate ledger; Review
+Voting является отдельным read-only вызовом reviewer-а. Его Scope — исходный
+scope и candidate ledger; Review
 focus — проверить evidence каждого candidate; Output contract — `ID`, vote и
 краткое evidence для каждого ID.
 
@@ -152,8 +152,8 @@ focus — проверить evidence каждого candidate; Output contract 
   - Output contract: `ID`, explicit vote и краткое evidence для каждого
     unresolved ID.
 
-`reviewer-c` выполняет одно read-only validation review через CALL SKILL
-`usw-structured-review` и не возвращает discovery-format findings.
+`reviewer-c` выполняет одно read-only validation review по переданным Scope,
+Review focus и Output contract и не возвращает discovery-format findings.
 
 После трёх reviewers `support` либо `reject` становится majority verdict при
 минимум двух одинаковых votes: `2/3` или `3/3`. Если двух одинаковых

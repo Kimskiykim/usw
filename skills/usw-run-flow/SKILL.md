@@ -1,9 +1,17 @@
 ---
 name: usw-run-flow
-description: Run a task with any named shared or developer-local Markdown flow through one text-first model execution path.
+description: Run a task with any named shared or developer-local Markdown flow through one text-first model execution path. Use when the user explicitly says «запусти флоу», «запусти flow» or «run the flow» and names a flow, or invokes `$usw-run-flow`.
 ---
 
 # Run a USW flow
+
+## Activation
+
+Natural-language requests such as «запусти флоу `intent-to-spec` для этого intent»
+are explicit requests to invoke this skill. Extract the flow name and the
+remaining text as its input, then apply the same safe resolve rules as for the
+`$usw-run-flow` command. Do not start a flow when the user only discusses,
+reviews or creates a flow.
 
 Принимать безопасное kebab-case имя flow, исходный пользовательский input и
 необязательный origin selector.

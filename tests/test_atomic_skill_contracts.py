@@ -37,8 +37,7 @@ class AtomicSkillContractTests(unittest.TestCase):
     def test_atomic_skills_declare_input_write_output_and_return_boundaries(self):
         skills = (
             "usw-initialize-project", "usw-manage-handoff",
-            "usw-refine-intent",
-            "usw-plan-small-steps", "usw-explain-me", "usw-create-flow",
+            "usw-create-flow",
             "usw-run-flow", "usw-find-flow",
         )
         for skill_name in skills:
@@ -46,11 +45,6 @@ class AtomicSkillContractTests(unittest.TestCase):
                 content = (ROOT / "skills" / skill_name / "SKILL.md").read_text(encoding="utf-8").lower()
                 self.assertTrue("return point" in content or "return control" in content)
                 self.assertNotIn("call_next_skill", content)
-
-    def test_decomposition_does_not_execute_or_create_plan_handoff(self):
-        content = (ROOT / "skills/usw-plan-small-steps/SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("не запускает микротаску", content)
-        self.assertIn("task-level `plan.md`/`handoff.md`", content)
 
     def test_handoff_skills_share_the_routed_operation_contract(self):
         manage = (ROOT / "skills/usw-manage-handoff/SKILL.md").read_text(

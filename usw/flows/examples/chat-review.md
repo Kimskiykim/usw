@@ -45,10 +45,10 @@ per-action cursor. При неоднозначности основной чат
 1. `parallel-reviews` — PARALLEL:
    - `review-a` — передать Reviewer A его три блока: CALL SUBAGENT `reviewer-a`.
      - Действия субагента:
-       1. `run-review-a` — выполнить одно ревью: CALL SKILL `usw-structured-review`.
+       1. `run-review-a` — выполнить одно read-only ревью строго по переданным Scope, Review focus и Output contract.
    - `review-b` — передать Reviewer B его три блока: CALL SUBAGENT `reviewer-b`.
      - Действия субагента:
-       1. `run-review-b` — выполнить одно ревью: CALL SKILL `usw-structured-review`.
+       1. `run-review-b` — выполнить одно read-only ревью строго по переданным Scope, Review focus и Output contract.
 2. `prepare-presentation` — основному чату объединить отчёты, добавить личную оценку, показать результат и запросить режим продолжения: CALL HUMAN `owner`; GATE: выбрать `iterate-findings`, `show-proposal` или `make-decision`.
    - IF `iterate-findings`: продолжить к `handle-follow-up`.
    - ELIF `show-proposal`: продолжить к `handle-follow-up`.

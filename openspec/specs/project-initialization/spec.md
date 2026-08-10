@@ -14,12 +14,12 @@ byte-for-byte.
 Немедленный inventory SHALL включать:
 
 - `usw.yaml`;
-- `<flows.root>/examples/{chat-review.md,dev-test.md}`;
+- `<flows.root>/examples/{chat-review.md,dev-test.md,plan-small-steps.md,refine-intent.md}`;
 - `.usw/.gitignore`;
-- generic idle `.usw/HANDOFF.md` только при effective `handoff: true`.
+- empty routed `.usw/HANDOFF.md` только при effective `handoff: true`.
 
 При `handoff: false` initialization MUST NOT читать, создавать или изменять
-`.usw/HANDOFF.md`.
+`.usw/HANDOFF.md`, `.usw/handoffs/` или operation-scoped candidates.
 
 Initialization MUST NOT создавать, удалять, перемещать или перезаписывать legacy
 `flow-scenario-analysis.md`, `flow-scenario-development.md` или
@@ -27,15 +27,15 @@ Initialization MUST NOT создавать, удалять, перемещать
 
 #### Scenario: Default workspace инициализируется
 - **WHEN** пользователь запускает `/usw-init` без существующей configuration
-- **THEN** отсутствующий default standalone inventory создаётся, а существующие files сохраняются
+- **THEN** отсутствующий default standalone inventory с empty HANDOFF router создаётся, а существующие files сохраняются
 
 #### Scenario: Новый workspace без handoff
 - **WHEN** project configuration содержит `handoff: false`
-- **THEN** flow roots и остальной workspace создаются без `HANDOFF.md`
+- **THEN** flow roots и остальной workspace создаются без router и operation directory
 
 #### Scenario: Capability снова включена
 - **WHEN** `handoff` меняется с `false` на `true`, а HANDOFF отсутствует
-- **THEN** повторный init создаёт generic idle HANDOFF без изменения других files
+- **THEN** повторный init создаёт empty HANDOFF router без изменения других files
 
 #### Scenario: Legacy role scenario уже существует
 - **WHEN** configured flow root содержит один или несколько legacy `flow-scenario-*` files
@@ -43,13 +43,13 @@ Initialization MUST NOT создавать, удалять, перемещать
 
 ### Requirement: Lazy artifacts не материализуются initialization
 `/usw-init` MUST NOT создавать `.usw/flows/`, `.usw/refinements/`,
-`<artifacts.root>/changes/`, `<artifacts.root>/templates/` или
+`.usw/handoffs/`, `<artifacts.root>/changes/`, `<artifacts.root>/templates/` или
 `<reviews.root>/`. Эти directories SHALL создаваться только capability, которой
 пользователь явно поручил первое соответствующее действие.
 
 #### Scenario: Initialization завершена без lazy artifacts
 - **WHEN** `/usw-init` успешно завершает новый workspace
-- **THEN** local flow, refinement, change, template и review directories отсутствуют до первого соответствующего действия
+- **THEN** local flow, refinement, routed operation, change, template и review directories отсутствуют до первого соответствующего действия
 
 ### Requirement: Git tracking policy принадлежит пользователю
 Initialization SHALL создавать отсутствующий `.usw/.gitignore` с локальным ignore default, но MUST NOT проверять Git tracked state, отклонять workspace из-за ignore rules либо изменять root `.gitignore` или `.git/info/exclude`.

@@ -22,6 +22,8 @@ DEFAULT_SPECIALIZED_ROOTS = {
 FLOW_EXAMPLE_PATHS = (
     "chat-review.md",
     "dev-test.md",
+    "plan-small-steps.md",
+    "refine-intent.md",
 )
 
 

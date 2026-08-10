@@ -76,6 +76,51 @@ class HandoffStateTests(unittest.TestCase):
         self.assertEqual(content, HANDOFF.render_router([first, second]))
         self.assertNotIn("Status", content)
 
+    def test_runtime_router_shows_task_flow_status_operation_and_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, handoff = self.initialize(directory)
+            _, operation = HANDOFF.begin_handoff(
+                project,
+                "chat-review",
+                "shared",
+                self.identity,
+                "Review the payment change",
+                summary="Review payment change",
+            )
+            HANDOFF.outcome_handoff(
+                project,
+                "completed",
+                operation=operation,
+                done="Review completed.",
+                position="At the terminal boundary.",
+                next_action="Clean up the terminal handoff.",
+                blocker="None.",
+            )
+
+            content = handoff.read_text(encoding="utf-8")
+            self.assertIn(
+                "| Task | Flow | Status | Operation | Updated |", content
+            )
+            self.assertIn(
+                "| Review payment change | `chat-review` | `completed` |",
+                content,
+            )
+            self.assertIn(
+                f"[`{operation.removeprefix('usw-operation:')[:8]}…`]",
+                content,
+            )
+            self.assertIn("`/usw-handoff cleanup`", content)
+            self.assertNotIn("usw-routes", content)
+            self.assertEqual((operation,), HANDOFF.validate_router(content))
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "table row"):
+                HANDOFF.validate_router(
+                    content.replace(
+                        operation.removeprefix("usw-operation:")[:8],
+                        "deadbeef",
+                        1,
+                    )
+                )
+
     def test_router_rejects_duplicate_malformed_and_arbitrary_paths(self):
         operation = "usw-operation:" + "1" * 64
         entry = (
@@ -203,7 +248,7 @@ class HandoffStateTests(unittest.TestCase):
 
             self.assertEqual(handoff.resolve(), path)
             self.assertEqual("idle", status)
-            self.assertEqual(HANDOFF.render_router(), content)
+            self.assertEqual(HANDOFF.render_readable_router(), content)
             self.assertEqual(content, handoff.read_text(encoding="utf-8"))
             self.assertFalse((project / ".usw/handoffs").exists())
 
@@ -1134,6 +1179,35 @@ class HandoffStateTests(unittest.TestCase):
             )
             self.assertFalse(path.exists())
 
+    def test_cleanup_removes_terminal_operations_and_preserves_active_ones(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, handoff = self.initialize(directory)
+            terminal_path, terminal = HANDOFF.begin_handoff(
+                project, "review", "shared", self.identity, "terminal"
+            )
+            active_path, active = HANDOFF.begin_handoff(
+                project, "review", "shared", self.identity, "active"
+            )
+            HANDOFF.outcome_handoff(
+                project,
+                "completed",
+                operation=terminal,
+                done="Done.",
+                position="At the terminal boundary.",
+                next_action="Clean up.",
+                blocker="None.",
+            )
+
+            _, removed = HANDOFF.cleanup_handoffs(project)
+
+            self.assertEqual((terminal,), removed)
+            self.assertFalse(terminal_path.exists())
+            self.assertTrue(active_path.exists())
+            self.assertEqual(
+                (active,),
+                HANDOFF.validate_router(handoff.read_text(encoding="utf-8")),
+            )
+
     def test_finish_requires_selection_and_preserves_competing_operation(self):
         with tempfile.TemporaryDirectory() as directory:
             project, handoff = self.initialize(directory)
@@ -1541,7 +1615,10 @@ class HandoffStateTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(HANDOFF.HandoffError, "operation identity"):
                 HANDOFF.save_handoff(project, operation, candidate)
-            self.assertIn(operation, handoff.read_text(encoding="utf-8"))
+            self.assertIn(
+                HANDOFF.operation_relative_path(operation),
+                handoff.read_text(encoding="utf-8"),
+            )
 
             legacy = (
                 "# Developer Handoff\n\n"
