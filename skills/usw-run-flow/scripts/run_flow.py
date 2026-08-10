@@ -93,6 +93,23 @@ def _absolute(path: Path, *, relative_to: Path | None = None) -> Path:
     return Path(os.path.abspath(path))
 
 
+def _uses_windows_path_fallback() -> bool:
+    return os.name == "nt"
+
+
+def _symlink_component(path: Path) -> Path | None:
+    """Return the first symlink component, if any."""
+    for component in (path, *path.parents):
+        if component == Path(component.anchor):
+            break
+        try:
+            if component.is_symlink():
+                return component
+        except OSError:
+            return component
+    return None
+
+
 @contextmanager
 def _open_directory(
     project_root: Path, candidate: Path, label: str
@@ -105,6 +122,30 @@ def _open_directory(
         raise FlowError(
             "unsafe_flow_root", f"{label} escapes project root: {candidate}"
         ) from error
+
+    if _uses_windows_path_fallback():
+        if _symlink_component(original_root) is not None:
+            raise FlowError(
+                "unsafe_project_root", f"project root contains a symlink: {original_root}"
+            )
+        if not original_root.is_dir():
+            raise FlowError(
+                "unsafe_project_root", f"project root is not a real directory: {original_root}"
+            )
+        current = original_root
+        for part in relative.parts:
+            current /= part
+            if _symlink_component(current) is not None:
+                raise FlowError(
+                    "unsafe_flow_root",
+                    f"{label} traverses a symlink: {current}",
+                )
+            if not current.is_dir():
+                raise FlowError("missing_flow_root", f"{label} is missing: {current}")
+        # Windows has no dir_fd/openat equivalent; retain the same checks by
+        # validating every path component before the final file read.
+        yield current, current
+        return
 
     project_root = Path(os.path.realpath(original_root))
     current = project_root
@@ -138,7 +179,27 @@ def _open_directory(
         os.close(descriptor)
 
 
-def _read_regular_file(directory_descriptor: int, name: str, path: Path) -> bytes:
+def _read_regular_file(directory_descriptor: int | Path, name: str, path: Path) -> bytes:
+    if isinstance(directory_descriptor, Path):
+        if path.is_symlink():
+            raise FlowError("unsafe_flow_file", f"cannot open Markdown flow: {path}")
+        if not path.exists():
+            raise FlowError("missing_flow", f"Markdown flow is missing: {path}")
+        try:
+            mode = path.stat().st_mode
+        except OSError as error:
+            raise FlowError("unsafe_flow_file", f"cannot open Markdown flow: {path}") from error
+        if not stat.S_ISREG(mode):
+            raise FlowError(
+                "unsafe_flow_file", f"Markdown flow is not a regular file: {path}"
+            )
+        try:
+            return path.read_bytes()
+        except FileNotFoundError as error:
+            raise FlowError("missing_flow", f"Markdown flow is missing: {path}") from error
+        except OSError as error:
+            raise FlowError("unsafe_flow_file", f"cannot open Markdown flow: {path}") from error
+
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(name, flags, dir_fd=directory_descriptor)
@@ -224,6 +285,28 @@ def resolve_markdown_flow(
 
 
 def _legacy_flow_warning(project_root: Path) -> tuple[str, ...]:
+    if _uses_windows_path_fallback():
+        try:
+            with _open_directory(project_root, project_root, "project root") as (
+                project_path,
+                _,
+            ):
+                local_path = project_path / ".usw"
+                legacy_path = local_path / "FLOW.json"
+                if (
+                    local_path.is_symlink()
+                    or not local_path.is_dir()
+                    or legacy_path.is_symlink()
+                    or not legacy_path.exists()
+                ):
+                    return ()
+        except (FileNotFoundError, FlowError, OSError):
+            return ()
+        return (
+            "legacy .usw/FLOW.json belongs to the removed structured runtime "
+            "and was left untouched",
+        )
+
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
         os, "O_NOFOLLOW", 0
     )

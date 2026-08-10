@@ -278,6 +278,18 @@ class TextFlowRunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(RUNNER.FlowError, "missing_input"):
                 RUNNER.prepare_markdown_run(project, shared, "valid", "  ")
 
+    def test_windows_path_fallback_resolves_markdown_flow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, shared = self.project(os.path.realpath(directory))
+            (shared / "review.md").write_text("windows-safe\n", encoding="utf-8")
+
+            with mock.patch.object(RUNNER, "_uses_windows_path_fallback", return_value=True):
+                invocation = RUNNER.prepare_markdown_run(
+                    project, shared, "review", "input"
+                )
+
+            self.assertEqual("windows-safe\n", invocation.flow.markdown)
+
     def test_legacy_flow_json_is_only_warned_and_never_read(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)

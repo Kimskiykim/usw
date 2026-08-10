@@ -5,10 +5,10 @@ Define the exact non-normative text-first examples installed with USW.
 
 ## Requirements
 
-### Requirement: Initialization installs exactly two flow examples
-USW SHALL package and initialize exactly `chat-review.md` and `dev-test.md`
-under `<flows.root>/examples/`. The directory MUST NOT provide a hidden runtime
-fallback.
+### Requirement: Initialization installs exactly four flow examples
+USW SHALL package and initialize exactly `chat-review.md`, `dev-test.md`,
+`plan-small-steps.md` and `refine-intent.md` under `<flows.root>/examples/`.
+The directory MUST NOT provide a hidden runtime fallback.
 
 #### Scenario: Fresh project receives examples
 - **WHEN** initialization finds either example absent
@@ -31,16 +31,11 @@ lifecycle.
 - **WHEN** package tests inspect both assets
 - **THEN** they describe a model-executed process and an ordinary run command
 
-### Requirement: Packaged examples объявляют CALL dependencies
-Каждый packaged flow example SHALL иметь человекочитаемый dependency block.
-Каждый обязательный `CALL SKILL` SHALL быть объявлен как `bundled` либо
-`external`. Декларация external dependency SHALL означать намеренную
-интеграцию и MUST NOT приводить к её автоматической установке.
-
-#### Scenario: Bundled dependency
-- **WHEN** example объявляет `CALL SKILL usw-structured-review` как bundled
-- **THEN** package tests подтверждают наличие `skills/usw-structured-review`
-  и его включение в standalone installer
+### Requirement: Packaged examples объявляют внешние CALL dependencies
+Каждый обязательный `CALL SKILL` в packaged example SHALL быть объявлен как
+`external`. Декларация external dependency SHALL означать намеренную интеграцию
+и MUST NOT приводить к её автоматической установке. Процесс, который можно
+выразить самим Markdown-flow, MUST NOT требовать отдельного bundled skill.
 
 #### Scenario: External dependency
 - **WHEN** example объявляет `CALL SKILL ponytail-review` как external
@@ -63,8 +58,8 @@ explicit per-finding voting и отдельные human decisions.
   deterministic scheduler или machine cursor
 
 ### Requirement: Dependency test не становится runtime parser
-Dependency test SHALL извлекать только dependency declarations и буквальные
-`CALL SKILL` references из packaged examples. Он MUST NOT валидировать порядок
+Dependency test SHALL извлекать только external dependency declarations и
+буквальные `CALL SKILL` references из packaged examples. Он MUST NOT валидировать порядок
 действий, ветвления, voting semantics или исполнять flow.
 
 #### Scenario: Human-readable control text меняется

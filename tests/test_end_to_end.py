@@ -45,7 +45,10 @@ class TextFirstEndToEndTests(unittest.TestCase):
             self.assertIn(
                 operation, first_state.read_text(encoding="utf-8")
             )
-            self.assertIn(operation, router.read_text(encoding="utf-8"))
+            self.assertIn(
+                HANDOFF.operation_relative_path(operation),
+                router.read_text(encoding="utf-8"),
+            )
 
             HANDOFF.outcome_handoff(
                 project,

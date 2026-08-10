@@ -1,6 +1,6 @@
 interface:
   display_name: "Run USW flow"
   short_description: "Run one shared or local Markdown flow"
-  default_prompt: "Run the selected Markdown flow through the text-first model path and respect normal permission boundaries."
+  default_prompt: "Run the named Markdown flow (for example, when the user says ‘запусти флоу …’) through the text-first model path and respect normal permission boundaries."
 policy:
   allow_implicit_invocation: true

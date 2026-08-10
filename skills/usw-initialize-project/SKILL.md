@@ -24,7 +24,7 @@ After agreement, read and follow
 [references/llm-fallback.md](references/llm-fallback.md). If the user declines,
 stop without changes.
 
-Report whether `usw.yaml`, the configured flow root, the two flow examples,
+Report whether `usw.yaml`, the configured flow root, the four flow examples,
 `.usw/.gitignore`, and, when enabled, `.usw/HANDOFF.md` were created or already
 existed. Never overwrite an existing file. New local flows and intent
 clarification sessions create

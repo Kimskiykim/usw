@@ -1,1 +1,0 @@
-# Intent clarification decisions: {{title}}

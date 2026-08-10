@@ -15,7 +15,9 @@ USW — устанавливаемый самостоятельный workflow �
     └── flows/
         └── examples/
             ├── chat-review.md
-            └── dev-test.md
+            ├── dev-test.md
+            ├── plan-small-steps.md
+            └── refine-intent.md
 ```
 
 При effective `handoff: true` `.usw/HANDOFF.md` создаётся как пустой
@@ -26,7 +28,7 @@ router, operation directory или operation-scoped candidates.
 `.usw/.gitignore` с `*` — удобный local default, а решение о tracking остаётся
 за пользователем и не проверяется initializer-ом. `.usw/flows/` создаётся только
 при первом local custom flow, а `.usw/refinements/` — при первом уточнении
-намерения; `/usw-init` эти lazy directories не материализует. Два flow
+намерения; `/usw-init` эти lazy directories не материализует. Четыре flow
 examples создаются только в shared `<flows.root>/examples/`.
 
 `usw.yaml` версии 1 выбирает project-relative roots и optional top-level
@@ -49,11 +51,12 @@ Python-скрипта fallback не включает и всегда сообщ�
 
 ## Lifecycle и артефакты
 
-Инициализированные `chat-review` и `dev-test` — ненормативные примеры, а не
-автоматически активные flow. Runner не исполняет их на месте. Скопируйте нужный
-файл из `<flows.root>/examples/` в `<flows.root>/<name>.md`, адаптируйте под
-проект и только затем запускайте. Конкретные gates, writes и артефакты
-определяет скопированный project-owned flow.
+Инициализированные `chat-review`, `dev-test`, `plan-small-steps` и
+`refine-intent` — ненормативные примеры, а не автоматически активные flow.
+Runner не исполняет их на месте. Скопируйте нужный файл из
+`<flows.root>/examples/` в `<flows.root>/<name>.md`, адаптируйте под проект и
+только затем запускайте. Конкретные gates, writes и артефакты определяет
+скопированный project-owned flow.
 
 `tasks.md` — единственный completion source, `task.md` хранит task contract и
 milestones, `development-evidence.md` и `testing-evidence.md` имеют разных
@@ -69,9 +72,10 @@ product file инвалидирует.
 ### Routed handoff
 
 При включённом handoff каждый top-level запуск получает уникальный
-`usw-operation:<hex>` и собственный state-файл. `.usw/HANDOFF.md` хранит только
-маршруты от exact operation ID к этим файлам; status, проверки и recovery
-context живут в operation document.
+`usw-operation:<hex>` и собственный state-файл. `.usw/HANDOFF.md` показывает
+summary задачи, flow, status, exact operation ID и ссылку на state-файл.
+Operation document остаётся authoritative для status, проверок и recovery
+context.
 
 Перед паузой активного запуска сохраните только его актуальное состояние:
 
@@ -119,6 +123,11 @@ blocker, проверки, references и ровно одно следующее 
 
 Без ID Finish использует те же zero/one/many rules. Он удаляет только выбранную
 route и её operation files; остальные запуски остаются зарегистрированы.
+Чтобы безопасно убрать сразу все terminal entries и сохранить активные:
+
+```text
+/usw-handoff cleanup
+```
 
 Текущий generic single-state HANDOFF при первом обращении мигрирует в router
 без потери recovery content. Старый role-based HANDOFF остаётся read-only до
@@ -264,42 +273,14 @@ examples, внешние каталоги или другие проекты. Д
 используйте `$usw-create-flow`, для выбранного существующего —
 `$usw-run-flow`.
 
-## Декомпозиция на микротаски
+## Готовые процессы
 
-Команда `/usw-plan-small-steps` через backend skill превращает большую спецификацию или выбранный
-подход в небольшие исполняемые задачи. У каждой заранее есть результат,
-критерий готовности и проверка с ожидаемым наблюдением. Skill не выполняет
-задачи и не выбирает следующий scope: результат возвращается orchestrator.
-
-```text
-/usw-plan-small-steps Разбей миграцию API на микротаски.
-```
-
-## Итеративное уточнение намерения
-
-Команда `/usw-refine-intent` через backend skill ведёт обсуждение в режиме опросника: разбирает один
-decision case за ход, фиксирует подтверждённое решение и только затем переходит
-к следующему. Локальная ненормативная сессия, журнал решений и необязательный
-итог сохраняются в `.usw/refinements/<refinement-id>/`. Skill не создаёт
-backlog, planning change, planning artifacts или executable tasks:
-
-```text
-/usw-refine-intent Давай по одному решению уточним идею этой задачи.
-```
-
-Это breaking rename без alias: установленный `usw-refine-task` удаляется при
-`./install.sh --force`. Исторические `usw/refinements/` остаются нетронутыми.
-
-## Перевод предложений агента
-
-Команда `/usw-explain-me` через backend skill переводит план, рекомендацию, дифф, ошибку
-или статус кодингового агента на выбранный уровень подробности: от «как для
-хлебушка» до экспертного разбора. По умолчанию он подстраивается под запрос и
-не начинает менять код:
-
-```text
-/usw-explain-me Объясни это как для хлебушка: <вставьте ответ агента>
-```
+Декомпозиция задачи и пошаговое уточнение intent поставляются как обычные
+примеры `plan-small-steps.md` и `refine-intent.md`. Их можно скопировать,
+изменить и запустить теми же `$usw-create-flow` и `$usw-run-flow`, без отдельных
+skills и commands. `./install.sh --force` удаляет прежние компоненты
+`usw-plan-small-steps`, `usw-refine-intent`, `usw-structured-review` и
+`usw-explain-me`; существующие пользовательские артефакты не изменяются.
 
 ## Qwen Code
 

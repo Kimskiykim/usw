@@ -70,8 +70,24 @@ REVISION = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 LEGACY_HEADER = "| Subject | Role | Attempt | Current operation | Status | Updated |"
 ROUTER_HEADER = "# Developer Handoff Router"
 ROUTER_EMPTY = "No registered operations."
+ROUTER_CLEANUP = (
+    "Completed and failed operations remain visible until explicit cleanup."
+)
+ROUTER_CLEANUP_ALL = "`/usw-handoff cleanup`"
+ROUTER_CLEANUP_ONE = "`/usw-handoff finish <operation-id>`"
+ROUTER_DATA_START = "<!-- usw-routes"
+ROUTER_DATA_END = "-->"
 ROUTER_ENTRY = re.compile(
     r"^- `(usw-operation:([0-9a-f]{64}))` -> `handoffs/([0-9a-f]{64})\.md`$"
+)
+ROUTER_TABLE_HEADER = "| Task | Flow | Status | Operation | Updated |"
+ROUTER_TABLE_SEPARATOR = "|---|---|---|---|---|"
+ROUTER_TABLE_EMPTY = "| No registered operations | — | — | — | — |"
+ROUTER_TABLE_ENTRY = re.compile(
+    r"^\| .+ \| `[a-z0-9]+(?:-[a-z0-9]+)*` \| "
+    r"`(?:in_progress|paused|blocked|decision_required|failed|completed)` \| "
+    r"\[`([0-9a-f]{8})…`\]\(handoffs/([0-9a-f]{64})\.md\) \| "
+    r"`[^`\r\n]+` \|$"
 )
 SKILLS_ROOT = Path(__file__).parents[2]
 CONFIG = SimpleNamespace(
@@ -460,15 +476,49 @@ def render_router(operations: tuple[str, ...] | list[str] = ()) -> str:
     return "\n".join((ROUTER_HEADER, "", "## Operations", "", *body, ""))
 
 
-def parse_router(content: str) -> Router:
-    lines = content.splitlines()
-    if (
-        len(lines) < 5
-        or lines[:4] != [ROUTER_HEADER, "", "## Operations", ""]
-        or any(line.startswith(("# ", "## ")) for line in lines[4:])
-    ):
-        raise HandoffError("invalid_router", "invalid HANDOFF router structure")
-    entries = lines[4:]
+def render_readable_router(
+    operations: tuple[dict[str, str], ...] | list[dict[str, str]] = (),
+) -> str:
+    normalized = tuple(sorted(operations, key=lambda item: item["operation"]))
+    identities = tuple(item["operation"] for item in normalized)
+    if len(identities) != len(set(identities)):
+        raise HandoffError("invalid_router", "duplicate operation identity")
+    body = [
+        ROUTER_TABLE_HEADER,
+        ROUTER_TABLE_SEPARATOR,
+    ]
+    if not normalized:
+        body.append(ROUTER_TABLE_EMPTY)
+    for item in normalized:
+        operation = item["operation"]
+        suffix = _operation_suffix(operation)
+        summary = item["summary"].replace("\\", "\\\\").replace("|", "\\|")
+        path = operation_relative_path(operation)
+        body.append(
+            f"| {summary} | `{item['flow']}` | `{item['status']}` | "
+            f"[`{suffix[:8]}…`]({path}) | `{item['updated']}` |"
+        )
+    return "\n".join(
+        (
+            ROUTER_HEADER,
+            "",
+            "## Operations",
+            "",
+            *body,
+            "",
+            "## Cleanup",
+            "",
+            ROUTER_CLEANUP,
+            "",
+            f"Remove all terminal operations: {ROUTER_CLEANUP_ALL}",
+            "",
+            f"Remove one operation: {ROUTER_CLEANUP_ONE}",
+            "",
+        )
+    )
+
+
+def _parse_route_entries(entries: list[str]) -> Router:
     if entries == [ROUTER_EMPTY]:
         return Router(())
     if not entries or ROUTER_EMPTY in entries:
@@ -484,6 +534,98 @@ def parse_router(content: str) -> Router:
     if len(operations) != len(set(operations)):
         raise HandoffError("invalid_router", "duplicate operation identity")
     return Router(tuple(operations))
+
+
+def _parse_table_entries(entries: list[str]) -> Router:
+    if entries == [ROUTER_TABLE_EMPTY]:
+        return Router(())
+    operations = []
+    for line in entries:
+        matched = ROUTER_TABLE_ENTRY.fullmatch(line)
+        if matched is None or matched.group(1) != matched.group(2)[:8]:
+            raise HandoffError("invalid_router", "invalid HANDOFF table row")
+        operations.append(f"usw-operation:{matched.group(2)}")
+    if not operations or operations != sorted(operations):
+        raise HandoffError("invalid_router", "router rows must be non-empty and sorted")
+    if len(operations) != len(set(operations)):
+        raise HandoffError("invalid_router", "duplicate operation identity")
+    return Router(tuple(operations))
+
+
+def parse_router(content: str) -> Router:
+    lines = content.splitlines()
+    if len(lines) < 5 or lines[:4] != [ROUTER_HEADER, "", "## Operations", ""]:
+        raise HandoffError("invalid_router", "invalid HANDOFF router structure")
+    if lines[4] == ROUTER_TABLE_HEADER and ROUTER_DATA_START not in lines:
+        try:
+            cleanup_index = lines.index("## Cleanup")
+        except ValueError as error:
+            raise HandoffError(
+                "invalid_router", "invalid HANDOFF router structure"
+            ) from error
+        expected_cleanup = [
+            "## Cleanup",
+            "",
+            ROUTER_CLEANUP,
+            "",
+            f"Remove all terminal operations: {ROUTER_CLEANUP_ALL}",
+            "",
+            f"Remove one operation: {ROUTER_CLEANUP_ONE}",
+        ]
+        if (
+            len(lines) < 13
+            or lines[5] != ROUTER_TABLE_SEPARATOR
+            or lines[cleanup_index - 1] != ""
+            or lines[cleanup_index:] != expected_cleanup
+        ):
+            raise HandoffError("invalid_router", "invalid HANDOFF router structure")
+        return _parse_table_entries(lines[6 : cleanup_index - 1])
+    if ROUTER_DATA_START not in lines:
+        if "## Routes" in lines and "## Cleanup" in lines:
+            routes_index = lines.index("## Routes")
+            cleanup_index = lines.index("## Cleanup")
+            if (
+                cleanup_index <= routes_index + 2
+                or lines[routes_index + 1] != ""
+                or lines[cleanup_index - 1] != ""
+            ):
+                raise HandoffError(
+                    "invalid_router", "invalid HANDOFF router structure"
+                )
+            return _parse_route_entries(
+                lines[routes_index + 2 : cleanup_index - 1]
+            )
+        if any(line.startswith(("# ", "## ")) for line in lines[4:]):
+            raise HandoffError("invalid_router", "invalid HANDOFF router structure")
+        return _parse_route_entries(lines[4:])
+
+    try:
+        routes_index = lines.index(ROUTER_DATA_START)
+        routes_end = lines.index(ROUTER_DATA_END)
+        cleanup_index = lines.index("## Cleanup")
+    except ValueError as error:
+        raise HandoffError(
+            "invalid_router", "invalid HANDOFF router structure"
+        ) from error
+    cleanup = lines[cleanup_index:]
+    expected_cleanup = [
+        "## Cleanup",
+        "",
+        ROUTER_CLEANUP,
+        "",
+        f"Remove all terminal operations: {ROUTER_CLEANUP_ALL}",
+        "",
+        f"Remove one operation: {ROUTER_CLEANUP_ONE}",
+    ]
+    if (
+        routes_index < 5
+        or routes_end <= routes_index + 1
+        or cleanup_index != routes_end + 1
+        or lines[routes_index - 1] != ""
+        or cleanup != expected_cleanup
+    ):
+        raise HandoffError("invalid_router", "invalid HANDOFF router structure")
+    return _parse_route_entries(lines[routes_index + 1 : routes_end])
 
 
 def validate_router(content: str) -> tuple[str, ...]:
@@ -849,7 +991,7 @@ def _ensure_router_locked(
 
     current = parse_handoff(content)
     if current.status == "idle":
-        candidate = render_router()
+        candidate = render_readable_router()
         _atomic_write(
             directory_descriptor,
             path,
@@ -868,7 +1010,18 @@ def _ensure_router_locked(
             created = _install_operation_document(
                 operation_descriptor, operation_path, content
             )
-        candidate = render_router([operation])
+        candidate = render_readable_router(
+            (
+                {
+                    "operation": operation,
+                    "flow": current.metadata["Flow"],
+                    "status": current.status,
+                    "summary": current.metadata.get("Summary")
+                    or _summary(json.loads(current.sections["Input"])),
+                    "updated": current.metadata["Updated"],
+                },
+            )
+        )
         _atomic_write(
             directory_descriptor,
             path,
@@ -973,6 +1126,24 @@ def _operation_summaries_locked(
     return tuple(summaries)
 
 
+def _write_readable_router_locked(
+    root: Path,
+    directory_descriptor: int,
+    path: Path,
+    router: Router,
+) -> str:
+    candidate = render_readable_router(
+        _operation_summaries_locked(root, directory_descriptor, router)
+    )
+    _atomic_write(
+        directory_descriptor,
+        path,
+        candidate,
+        validator=parse_router,
+    )
+    return candidate
+
+
 def discover_handoffs(
     project: Path,
 ) -> tuple[Path, str, tuple[dict[str, str], ...], bool]:
@@ -981,10 +1152,20 @@ def discover_handoffs(
         path, router, content = _ensure_router_locked(root, descriptor)
         if router is None:
             return path, content, (), True
+        summaries = _operation_summaries_locked(root, descriptor, router)
+        readable = render_readable_router(summaries)
+        if content != readable:
+            _atomic_write(
+                descriptor,
+                path,
+                readable,
+                validator=parse_router,
+            )
+            content = readable
         return (
             path,
             content,
-            _operation_summaries_locked(root, descriptor, router),
+            summaries,
             False,
         )
 
@@ -1097,12 +1278,11 @@ def begin_handoff(
                     candidate,
                     allow_existing=False,
                 )
-            routed = render_router((*router.operations, operation))
-            _atomic_write(
+            _write_readable_router_locked(
+                root,
                 descriptor,
                 router_path,
-                routed,
-                validator=parse_router,
+                Router(tuple(sorted((*router.operations, operation)))),
             )
         except BaseException:
             if created:
@@ -1137,7 +1317,7 @@ def outcome_handoff(
         raise HandoffError("invalid_transition", f"invalid outcome status: {status}")
     root = _enabled_root(project)
     with _locked_local_directory(root) as (_, descriptor):
-        _, _, path, _, current = _registered_operation_locked(
+        router_path, router, path, _, current = _registered_operation_locked(
             root, descriptor, operation
         )
         if current.status not in RECOVERABLE_STATUSES:
@@ -1179,9 +1359,13 @@ def outcome_handoff(
         )
         candidate = _render_active(metadata=metadata, sections=sections)
         parse_handoff(candidate)
-        return _write_operation_at(
+        result = _write_operation_at(
             root, descriptor, operation, candidate
         )
+        _write_readable_router_locked(
+            root, descriptor, router_path, router
+        )
+        return result
 
 
 def save_handoff(
@@ -1199,7 +1383,7 @@ def save_handoff(
             "invalid_candidate", f"candidate must be {expected}"
         )
     with _locked_local_directory(root) as (_, descriptor):
-        _, _, target, _, current = _registered_operation_locked(
+        router_path, router, target, _, current = _registered_operation_locked(
             root, descriptor, operation
         )
         with _opened_operation_directory(
@@ -1277,6 +1461,9 @@ def save_handoff(
         content = _render_active(metadata=metadata, sections=parsed.sections)
         parse_handoff(content)
         _write_operation_at(root, descriptor, operation, content)
+        _write_readable_router_locked(
+            root, descriptor, router_path, router
+        )
         with _opened_operation_directory(
             root, descriptor
         ) as (_, operation_descriptor):
@@ -1301,7 +1488,7 @@ def finish_handoff(
             _atomic_write(
                 descriptor,
                 path,
-                render_router(),
+                render_readable_router(),
                 validator=parse_router,
             )
             return path
@@ -1322,11 +1509,11 @@ def finish_handoff(
             for current in router.operations
             if current != operation
         )
-        _atomic_write(
+        _write_readable_router_locked(
+            root,
             descriptor,
             path,
-            render_router(remaining),
-            validator=parse_router,
+            Router(remaining),
         )
         with _opened_operation_directory(
             root, descriptor
@@ -1343,6 +1530,54 @@ def finish_handoff(
         return path
 
 
+def cleanup_handoffs(project: Path) -> tuple[Path, tuple[str, ...]]:
+    root = _enabled_root(project)
+    with _locked_local_directory(root) as (_, descriptor):
+        path, router, _ = _ensure_router_locked(root, descriptor)
+        if router is None:
+            raise HandoffError(
+                "legacy_recovery_required",
+                "legacy HANDOFF must be finished explicitly",
+            )
+        terminal: list[str] = []
+        for operation in router.operations:
+            _, _, current = _read_operation_at(root, descriptor, operation)
+            if current.status in TERMINAL_STATUSES:
+                terminal.append(operation)
+        if not terminal:
+            _write_readable_router_locked(
+                root, descriptor, path, router
+            )
+            return path, ()
+
+        removed = tuple(terminal)
+        remaining = tuple(
+            operation
+            for operation in router.operations
+            if operation not in removed
+        )
+        _write_readable_router_locked(
+            root,
+            descriptor,
+            path,
+            Router(remaining),
+        )
+        with _opened_operation_directory(
+            root, descriptor
+        ) as (_, operation_descriptor):
+            for operation in removed:
+                for name in (
+                    operation_candidate_filename(operation),
+                    operation_filename(operation),
+                ):
+                    try:
+                        os.unlink(name, dir_fd=operation_descriptor)
+                    except FileNotFoundError:
+                        pass
+            os.fsync(operation_descriptor)
+        return path, removed
+
+
 def _print(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, sort_keys=True))
 
@@ -1357,6 +1592,8 @@ def main(argv: list[str] | None = None) -> int:
     finish = commands.add_parser("finish")
     finish.add_argument("project", nargs="?", default=".", type=Path)
     finish.add_argument("operation", nargs="?")
+    cleanup = commands.add_parser("cleanup")
+    cleanup.add_argument("project", nargs="?", default=".", type=Path)
     save = commands.add_parser("save")
     save.add_argument("project", type=Path)
     save.add_argument("operation")
@@ -1433,6 +1670,15 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                     "status": "finished",
                     "operation": args.operation,
+                }
+            )
+        elif args.command == "cleanup":
+            path, removed = cleanup_handoffs(args.project)
+            _print(
+                {
+                    "path": str(path),
+                    "status": "cleaned",
+                    "removed_operations": removed,
                 }
             )
         elif args.command == "save":

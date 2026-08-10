@@ -6,15 +6,15 @@ finding decisions, and a read-only review-to-fix handoff.
 
 ## Requirements
 
-### Requirement: Review profile отделён от executor
+### Requirement: Review profile задаёт контракт reviewer-а
 Adaptive review flow SHALL передавать каждому reviewer-у отдельные `Scope`,
-`Review focus` и `Output contract`, а выполнение одного ревью SHALL поручать
-`usw-structured-review`. Named review profile SHALL разворачиваться в эти три
-блока без подмены executor-а.
+`Review focus` и `Output contract`. Reviewer SHALL выполнять одно read-only
+review непосредственно по этим трём блокам; отдельный bundled executor skill
+не требуется. Named review profile SHALL разворачиваться в эти три блока.
 
 #### Scenario: Выбран LLM-critic profile
 - **WHEN** flow получает review profile `llm-critic`
-- **THEN** reviewer выполняет одно `usw-structured-review` с полным prompt
+- **THEN** reviewer выполняет одно read-only review с полным prompt
   `usw-reviewer-llm-critic` как review focus
 
 #### Scenario: Profile неизвестен

@@ -12,7 +12,11 @@ Markdown router from each registered exact operation identity to one generated
 relative state path under `.usw/handoffs/`. Router membership SHALL determine
 whether an operation is registered, and the referenced operation document
 SHALL be authoritative for that operation's mutable status and recovery
-content.
+content. The router SHALL also render a human-readable table of each task
+summary, flow, latest status, update time, exact operation identity and state
+path, plus explicit commands for single-operation Finish and terminal Cleanup.
+The table SHALL be the only route representation; a second hidden route list
+MUST NOT be required.
 
 Every operation document SHALL contain root flow, origin, flow identity, input
 digest, operation identity, status, completed work, narrative position, next
@@ -27,7 +31,7 @@ boundary in the root or a nested child SHALL use `decision_required`.
 
 #### Scenario: Natural pause
 - **WHEN** one root model stops explicitly before completion
-- **THEN** Outcome records `paused`, current position and one next action only in that root's operation document
+- **THEN** Outcome records `paused`, current position and one next action in that root's operation document and refreshes its human-readable router view
 
 #### Scenario: Nested branches contribute to root outcome
 - **WHEN** nested flows return results before their root reaches a natural stop
@@ -45,6 +49,8 @@ Generic `failed` and `completed` states SHALL remain inspectable until Finish
 for their exact identity. A new Begin SHALL create another operation and MUST
 NOT replace an unrelated terminal state. Unexpected interruption after
 registration SHALL remain `in_progress` and MUST NOT cause automatic retry.
+Cleanup SHALL explicitly remove all registered `failed` and `completed`
+operations while preserving every recoverable operation.
 
 #### Scenario: Same flow receives new input
 - **WHEN** a recoverable operation exists and the same flow begins with new input
@@ -61,6 +67,10 @@ registration SHALL remain `in_progress` and MUST NOT cause automatic retry.
 #### Scenario: New flow follows a terminal outcome
 - **WHEN** one registered operation is `failed` or `completed` and another root flow begins
 - **THEN** a new `in_progress` operation is registered while the terminal outcome remains inspectable
+
+#### Scenario: Terminal operations are cleaned up together
+- **WHEN** Cleanup is requested with terminal and recoverable operations registered
+- **THEN** only terminal routes and their exact files are removed while recoverable operations remain registered
 
 #### Scenario: Interrupted invocation is resumed
 - **WHEN** Resume selects an `in_progress` operation without terminal Outcome
@@ -100,17 +110,19 @@ operation read MUST verify that the decoded exact input matches its digest.
 - **THEN** the access fails before mutation and neither file is changed
 
 ### Requirement: Handoff transitions are serialized
-Begin, Outcome, Save and Finish SHALL serialize their complete
+Begin, Outcome, Save, Finish and Cleanup SHALL serialize their complete
 read-check-write transition under the project-local handoff lock. Begin SHALL
 write and verify the operation document before registering it and MUST NOT
 start model execution before both writes are confirmed. Outcome SHALL update
-only the selected operation document because mutable status is not duplicated
-in the router.
+only the selected authoritative operation document and then refresh the
+human-readable status snapshot in the router.
 
 Save MUST use an operation-scoped candidate and MUST NOT replace legacy state,
 rewrite a terminal operation, change operation identity or immutable context,
 or target an unregistered operation. Finish SHALL unregister only the selected
 identity before removing only its exact operation document and candidate.
+Cleanup SHALL first unregister all terminal identities and then remove only
+their exact operation documents and candidates.
 
 #### Scenario: Two Begin calls overlap
 - **WHEN** two processes create different operation identities concurrently
@@ -144,7 +156,7 @@ replace it with an empty router.
 
 ### Requirement: Disabled capability does not touch HANDOFF
 When effective `handoff` is `false`, initialization, root and nested execution,
-Show, Resume, Save and Finish MUST NOT require, read, create or modify
+Show, Resume, Save, Finish and Cleanup MUST NOT require, read, create or modify
 `.usw/HANDOFF.md`, `.usw/handoffs/` or an operation-scoped candidate and SHALL
 explain that the capability is disabled.
 
@@ -157,6 +169,10 @@ Show, Resume and Finish SHALL accept an exact operation identity. Without an
 identity they SHALL select the sole registered operation, report that no work
 exists for an empty router, or return a concise validated operation list and
 require a selection when multiple routes exist.
+
+The readable router view SHALL make the same selection practical without
+opening generated state files. Show MAY refresh that view from authoritative
+operation documents without changing operation membership or recovery state.
 
 #### Scenario: One operation is registered
 - **WHEN** Resume is invoked without an identity and exactly one route exists

@@ -44,8 +44,9 @@ Create only missing paths:
   `usw.yaml`;
 - create the configured flow root;
 - create `.usw/.gitignore` with `*` and a trailing newline;
-- create `<flows.root>/examples/` and copy exactly the two packaged examples
-  `chat-review.md` and `dev-test.md` there.
+- create `<flows.root>/examples/` and copy exactly the four packaged examples
+  `chat-review.md`, `dev-test.md`, `plan-small-steps.md` and
+  `refine-intent.md` there.
 
 Do not create `<artifacts.root>/changes/`, `<artifacts.root>/templates/`,
 `<reviews.root>/`, or `.usw/handoffs/`. Their exact destination is created by

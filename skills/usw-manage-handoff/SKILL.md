@@ -23,9 +23,12 @@ audit log, product-file lock или machine cursor.
 
 ## Routed state
 
-`.usw/HANDOFF.md` — validated Markdown router. Он хранит только exact operation
-IDs и generated relative paths. Mutable status и recovery context каждой
-operation находятся в `.usw/handoffs/<operation-hex>.md`.
+`.usw/HANDOFF.md` — validated Markdown router и человекочитаемая таблица текущих
+operations. Для каждой строки она показывает summary задачи, flow, status,
+Updated и operation как ссылку на generated relative path. Эта таблица является
+единственным router: exact operation ID восстанавливается из validated path.
+Operation document в `.usw/handoffs/<operation-hex>.md` остаётся authoritative
+для mutable status и recovery context.
 
 Operation document содержит flow name, origin, flow identity, input digest,
 operation identity, one-line `Summary`, immutable `Started`, latest `Updated` и
@@ -135,7 +138,8 @@ python3 <script> resume <project> [operation-id]
 - `in_progress` — mutation могла прерваться, не повторять автоматически;
 - `paused`, `blocked`, `decision_required` — показать recovery context и ждать
   явного продолжения той же operation;
-- `failed`, `completed` — показать terminal outcome до Finish;
+- `failed`, `completed` — показать terminal outcome и явные варианты Finish или
+  Cleanup;
 - legacy — показать role context только для recovery.
 
 ## Read-only parent check
@@ -164,5 +168,19 @@ Cleanup failure после unregistration может оставить безоп
 возвращает operation в recovery. Legacy Finish создаёт empty router. Не
 архивировать состояние и не изменять product files.
 
+## Cleanup
+
+Cleanup удаляет сразу все зарегистрированные terminal operations и не трогает
+`in_progress`, `paused`, `blocked` или `decision_required`:
+
+```text
+python3 <script> cleanup <project>
+```
+
+Сначала подтвердить новый router без terminal routes, затем удалить только их
+operation documents и candidates. Если terminal operations отсутствуют,
+вернуть пустой список и ничего не удалять. Legacy HANDOFF очищается только через
+explicit Finish.
+
 Return point: после одного подтверждённого Begin, Outcome, Save, Show, Resume,
-assert-current или Finish.
+assert-current, Finish или Cleanup.

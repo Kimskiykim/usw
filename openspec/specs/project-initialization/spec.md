@@ -14,7 +14,7 @@ byte-for-byte.
 Немедленный inventory SHALL включать:
 
 - `usw.yaml`;
-- `<flows.root>/examples/{chat-review.md,dev-test.md}`;
+- `<flows.root>/examples/{chat-review.md,dev-test.md,plan-small-steps.md,refine-intent.md}`;
 - `.usw/.gitignore`;
 - empty routed `.usw/HANDOFF.md` только при effective `handoff: true`.
 
