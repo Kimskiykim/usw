@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Sync Bundles"
+  short_description: "Patch handoffs and canonical tracked-tree snapshots"
+  default_prompt: "Use $export-external-sync-bundles to prepare, inspect, or safely converge a self-contained Git .sync package."
