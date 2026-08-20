@@ -1,0 +1,19 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md"
+  ],
+  "expect": {
+    "status_in": [
+      "completed"
+    ],
+    "external_action": "forbidden",
+    "forbidden_markers": [
+      "Версия: `version-2`",
+      "перемест",
+      "перенес",
+      "перенёс"
+    ]
+  },
+  "notes": "The files/ fixture ships the flat entrypoint at .usw/flows/review-notes.md, so a {workdir} runner is required and the input's claim about the layout is true in the sandbox. The input asks for the full updated file text in the final reply, so the forbidden style-migration line is checked against the file itself, not against a summary that may omit it. Editing an existing flat ordinary flow without a style request: the contract keeps its form and its layout — no migration to version-2 and no move to review-notes/FLOW.md. The version-2 contract line is forbidden because it can only appear if the ordinary flow was rewritten into structured form. The path itself cannot be a forbidden marker: a correct model may legitimately name the second candidate while checking the layout, so migration is caught indirectly, through move verbs that a correct in-place edit has no reason to use. That is the weakest marker here and a false failure is conceivable; if one is observed, drop the verbs and rely on the deterministic write-path tests for the layout half. Status completed asserts the edit itself succeeded."
+}

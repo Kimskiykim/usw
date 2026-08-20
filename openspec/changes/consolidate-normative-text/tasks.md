@@ -18,7 +18,7 @@
 - [x] 3.3 `usw-create-flow`: same, with the design-suggestion recipes moved to `references/`. Done in commit `efa1b96`: recipes live in `references/recipes/` behind a compact index `references/recipes.md`, read on demand at two levels. The slice also grew beyond restructuring — see the Deviation section below.
 - [ ] 3.4 `usw-assess-flow`, `usw-find-flow` and `usw-initialize-project`: same, in one slice, as they are smaller.
 - [x] 3.5 Replace the phrase assertions whose invariants are now covered by scenarios with anchors on names, codes and paths; verify the suite passes and no covered invariant lost its protection. Done in commit `f18e09d` — but ahead of scenario coverage, not behind it; the ordering deviation and the make-up work are recorded below.
-- [ ] 3.6 Behavior scenarios for `usw-create-flow`, restoring the protection its phrase assertions used to provide:
+- [x] 3.6 Behavior scenarios for `usw-create-flow`, restoring the protection its phrase assertions used to provide (rates in the create-flow baseline section below; the harness gained `required_markers`/`forbidden_markers`, per-run `{workdir}` directories with `files/` fixtures, and `--transcripts` to make them possible):
   - design scan picks at most three applicable recipes out of the fifteen in the catalog, by the catalog's conditions;
   - designing from a goal embeds the agreed blocks into the written flow and does not embed the rejected ones;
   - an overloaded draft triggers a complexity warning that suggests `$usw-assess-flow` but does not block the write;
@@ -78,6 +78,32 @@ one.
 Four scenarios at three runs each is a thin baseline. A single differing run
 moves a rate by a third, so a one-step drop is weak evidence on its own and is
 re-run before it is treated as a regression.
+
+## Create-flow scenarios baseline (3.6)
+
+Measured 2026-08-21, three runs each. Authoring scenarios need writes, so the
+runner differs from the execution baseline above by sandbox and working
+directory: `codex exec --sandbox workspace-write --skip-git-repo-check
+--ignore-user-config --ignore-rules --ephemeral -C {workdir} -`. Under the
+read-only runner every authoring scenario honestly reports `blocked` (observed
+0/5 before the switch), so these two baselines are not comparable to each other.
+
+- `create-design-scan: 3/3 [pass]`
+- `create-complexity-warning: 3/3 [pass]`
+- `create-flat-edit: 3/3 [pass]`
+- `create-revise-preview: 2/3 [unstable]` — one run closed without re-offering
+  `применить` for the previewed fragment.
+- `create-goal-blocks: 2/3 [unstable]` — one embedding translated the recipe's
+  `approve`/`change`/`cancel` tokens into Russian words, so the token markers
+  missed it. The flow itself was correct in the transcripts each time this was
+  diagnosed. Candidate skill improvement, deliberately not made now to avoid
+  re-measuring mid-change: the recipe catalog could state that backticked
+  contract tokens survive conversion to plain prose verbatim.
+
+Scenario design lessons recorded in each scenario's notes: an agent host's
+stdout is a summary, so content invariants need the input to ask for the full
+written file text in the reply; and markers must pin contract tokens, not any
+one Russian phrasing of a rule.
 
 ## Inventory (1.2)
 

@@ -16,8 +16,10 @@ import argparse
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import NamedTuple
 
@@ -34,9 +36,18 @@ TERMINAL_STATUSES = (
 )
 DEFAULT_RUNS = 3
 DEFAULT_TIMEOUT = 120.0
+WORKDIR_PLACEHOLDER = "{workdir}"
 
 SCENARIO_KEYS = frozenset({"instructions", "expect", "notes", "runs"})
-EXPECT_KEYS = frozenset({"status_in", "external_action", "contradiction_markers"})
+EXPECT_KEYS = frozenset(
+    {
+        "status_in",
+        "external_action",
+        "contradiction_markers",
+        "required_markers",
+        "forbidden_markers",
+    }
+)
 EXTERNAL_ACTION_VALUES = frozenset({"forbidden", "allowed"})
 
 EXIT_OK = 0
@@ -57,6 +68,9 @@ class Scenario(NamedTuple):
     status_in: tuple[str, ...]
     external_action: str
     contradiction_markers: tuple[str, ...]
+    required_markers: tuple[str, ...]
+    forbidden_markers: tuple[str, ...]
+    fixtures: Path | None
     runs: int | None
     notes: str
 
@@ -159,9 +173,14 @@ def load_scenario(directory: Path) -> Scenario:
             f"{name}: expect.external_action must be one of {sorted(EXTERNAL_ACTION_VALUES)}"
         )
 
-    markers = expect.get("contradiction_markers", [])
-    if not isinstance(markers, list) or any(not isinstance(item, str) or not item for item in markers):
-        raise ScenarioError(f"{name}: expect.contradiction_markers must be a list of non-empty strings")
+    marker_lists: dict[str, tuple[str, ...]] = {}
+    for key in ("contradiction_markers", "required_markers", "forbidden_markers"):
+        items = expect.get(key, [])
+        if not isinstance(items, list) or any(
+            not isinstance(item, str) or not item for item in items
+        ):
+            raise ScenarioError(f"{name}: expect.{key} must be a list of non-empty strings")
+        marker_lists[key] = tuple(items)
 
     runs = document.get("runs")
     if runs is not None and (not isinstance(runs, int) or isinstance(runs, bool) or runs < 1):
@@ -174,15 +193,28 @@ def load_scenario(directory: Path) -> Scenario:
     flow = _read_text(directory / "flow.md", scenario=name)
     user_input = _read_text(directory / "input.txt", scenario=name)
 
+    fixtures = directory / "files"
+    if fixtures.exists():
+        if not fixtures.is_dir() or fixtures.is_symlink():
+            raise ScenarioError(f"{name}: files must be a plain directory of fixture files")
+        for item in fixtures.rglob("*"):
+            if item.is_symlink():
+                raise ScenarioError(f"{name}: fixture {item.name} is a symlink")
+    else:
+        fixtures = None
+
     # A marker present in the scenario's own text cannot distinguish a model
-    # claim from our own prompt, so it would measure the scenario, not the model.
+    # claim from our own prompt: a contradiction or forbidden marker would fail
+    # on our own words, and a required marker would pass on them. Either way it
+    # would measure the scenario, not the model.
     own_text = f"{flow}\n{user_input}".lower()
-    for marker in markers:
-        if marker.lower() in own_text:
-            raise ScenarioError(
-                f"{name}: contradiction marker {marker!r} appears in the scenario's own "
-                "flow or input, so it cannot indicate a model claim"
-            )
+    for key, items in marker_lists.items():
+        for marker in items:
+            if marker.lower() in own_text:
+                raise ScenarioError(
+                    f"{name}: {key.replace('_', ' ').rstrip('s')} {marker!r} appears in "
+                    "the scenario's own flow or input, so it cannot indicate a model claim"
+                )
 
     return Scenario(
         name=name,
@@ -192,7 +224,10 @@ def load_scenario(directory: Path) -> Scenario:
         user_input=user_input,
         status_in=tuple(status_in),
         external_action=external_action,
-        contradiction_markers=tuple(markers),
+        contradiction_markers=marker_lists["contradiction_markers"],
+        required_markers=marker_lists["required_markers"],
+        forbidden_markers=marker_lists["forbidden_markers"],
+        fixtures=fixtures,
         runs=runs,
         notes=notes,
     )
@@ -246,7 +281,7 @@ def split_runner_command(command: str) -> list[str]:
     return tokens
 
 
-def run_once(command: str, prompt: str, timeout: float) -> RunOutcome:
+def run_once(command: str, prompt: str, timeout: float, workdir: str | None = None) -> RunOutcome:
     """Invoke the external runner. Runner trouble is never behavior data."""
 
     try:
@@ -255,6 +290,10 @@ def run_once(command: str, prompt: str, timeout: float) -> RunOutcome:
         return RunOutcome(text=None, runner_error=f"runner command is not parseable: {error}")
     if not argv:
         return RunOutcome(text=None, runner_error="runner command is empty")
+    if workdir is not None:
+        # Substituted per token after splitting, so a workdir containing
+        # spaces or backslashes never re-enters the quoting rules.
+        argv = [token.replace(WORKDIR_PLACEHOLDER, workdir) for token in argv]
 
     try:
         completed = subprocess.run(
@@ -333,26 +372,67 @@ def evaluate(text: str, scenario: Scenario, *, prompt: str | None = None) -> Ver
     elif external == "yes" and scenario.external_action == "forbidden":
         reasons.append("claimed an external action the scenario forbids")
 
+    lowered = text.lower()
     if scenario.external_action == "forbidden" and external == "no":
-        lowered = text.lower()
         for marker in scenario.contradiction_markers:
             if marker.lower() in lowered:
                 reasons.append(f"prose claims {marker!r} while the result line reports no action")
                 break
 
+    for marker in scenario.required_markers:
+        if marker.lower() not in lowered:
+            reasons.append(f"required marker {marker!r} is absent from the reply")
+
+    for marker in scenario.forbidden_markers:
+        if marker.lower() in lowered:
+            reasons.append(f"forbidden marker {marker!r} appears in the reply")
+
     return Verdict(not reasons, tuple(reasons))
 
 
 def evaluate_scenario(
-    scenario: Scenario, *, command: str, runs: int, timeout: float
+    scenario: Scenario,
+    *,
+    command: str,
+    runs: int,
+    timeout: float,
+    transcripts: Path | None = None,
 ) -> ScenarioResult:
     attempted = scenario.runs or runs
     prompt = build_prompt(scenario)
     passes = failures = runner_errors = 0
     reasons: list[str] = []
 
-    for _ in range(attempted):
-        outcome = run_once(command, prompt, timeout)
+    fresh_workdir = WORKDIR_PLACEHOLDER in command
+    if scenario.fixtures is not None and not fresh_workdir:
+        # Fixtures exist to be seen by the runner; without a per-run working
+        # directory they would be silently invisible, which is runner
+        # misconfiguration, never behavior data.
+        return ScenarioResult(
+            scenario=scenario.name,
+            attempted=attempted,
+            passes=0,
+            failures=0,
+            runner_errors=attempted,
+            reasons=(
+                f"runner error: scenario ships fixture files but the runner command "
+                f"has no {WORKDIR_PLACEHOLDER} placeholder",
+            ),
+        )
+
+    for attempt in range(attempted):
+        if fresh_workdir:
+            with tempfile.TemporaryDirectory(prefix="usw-eval-") as workdir:
+                if scenario.fixtures is not None:
+                    shutil.copytree(scenario.fixtures, workdir, dirs_exist_ok=True)
+                outcome = run_once(command, prompt, timeout, workdir=workdir)
+        else:
+            outcome = run_once(command, prompt, timeout)
+        if transcripts is not None:
+            record = outcome.text if outcome.text is not None else f"<runner error: {outcome.runner_error}>\n"
+            (transcripts / f"{scenario.name}-{attempt + 1}.txt").write_text(
+                record, encoding="utf-8", newline="\n"
+            )
         if outcome.text is None:
             runner_errors += 1
             reasons.append(f"runner error: {outcome.runner_error}")
@@ -417,6 +497,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runner", default=None, help="runner command; overrides USW_EVAL_RUNNER")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="per-run timeout in seconds")
     parser.add_argument("--list", action="store_true", help="list scenarios and exit")
+    parser.add_argument(
+        "--transcripts",
+        default=None,
+        help="directory to write each run's raw runner output for diagnosis",
+    )
     args = parser.parse_args(argv)
 
     if args.runs < 1:
@@ -451,8 +536,23 @@ def main(argv: list[str] | None = None) -> int:
         print(format_skip_report(tuple(scenario.name for scenario in scenarios)))
         return EXIT_OK
 
+    transcripts: Path | None = None
+    if args.transcripts is not None:
+        transcripts = Path(args.transcripts)
+        try:
+            transcripts.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            print(f"cannot create transcripts directory: {error}", file=sys.stderr)
+            return EXIT_SCENARIO_ERROR
+
     results = tuple(
-        evaluate_scenario(scenario, command=command, runs=args.runs, timeout=args.timeout)
+        evaluate_scenario(
+            scenario,
+            command=command,
+            runs=args.runs,
+            timeout=args.timeout,
+            transcripts=transcripts,
+        )
         for scenario in scenarios
     )
     print(format_report(results, command=command))

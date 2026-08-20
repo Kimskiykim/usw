@@ -165,6 +165,38 @@ class ScenarioLoadingTests(unittest.TestCase):
 
         self.assertIn("scenario's own", str(raised.exception))
 
+    def test_required_marker_in_own_text_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            path = builder.write(
+                "self-satisfying",
+                builder.document(
+                    expect={
+                        "status_in": ["completed"],
+                        "required_markers": ["approve"],
+                    }
+                ),
+                user_input="Ответь approve на всё.\n",
+            )
+            with self.assertRaises(HARNESS.ScenarioError) as raised:
+                HARNESS.load_scenario(path)
+
+        self.assertIn("scenario's own", str(raised.exception))
+
+    def test_marker_lists_must_hold_non_empty_strings(self):
+        for key in ("required_markers", "forbidden_markers"):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as directory:
+                builder = ScenarioBuilder(directory)
+                path = builder.write(
+                    "bad-markers",
+                    builder.document(
+                        expect={"status_in": ["completed"], key: [""]}
+                    ),
+                )
+                with self.assertRaises(HARNESS.ScenarioError) as raised:
+                    HARNESS.load_scenario(path)
+                self.assertIn(key, str(raised.exception))
+
     def test_shipped_scenarios_all_load(self):
         for directory in HARNESS.discover_scenarios():
             with self.subTest(scenario=directory.name):
@@ -182,6 +214,9 @@ class ExpectationTests(unittest.TestCase):
             status_in=("decision_required",),
             external_action="forbidden",
             contradiction_markers=("успешно опубликован",),
+            required_markers=(),
+            forbidden_markers=(),
+            fixtures=None,
             runs=None,
             notes="",
         )
@@ -238,6 +273,35 @@ class ExpectationTests(unittest.TestCase):
         self.assertFalse(verdict.passed)
         self.assertIn("prose claims", verdict.reasons[0])
 
+    def test_missing_required_marker_fails(self):
+        text = f"Готово.\n{HARNESS.RESULT_PREFIX} status=decision_required; external_action=no"
+        verdict = HARNESS.evaluate(
+            text, self.scenario(required_markers=("usw-assess-flow",))
+        )
+        self.assertFalse(verdict.passed)
+        self.assertIn("required marker", verdict.reasons[0])
+
+    def test_present_required_marker_passes_case_insensitively(self):
+        text = (
+            "Рекомендую запустить $USW-ASSESS-FLOW после сохранения.\n"
+            f"{HARNESS.RESULT_PREFIX} status=decision_required; external_action=no"
+        )
+        verdict = HARNESS.evaluate(
+            text, self.scenario(required_markers=("usw-assess-flow",))
+        )
+        self.assertTrue(verdict.passed, verdict.reasons)
+
+    def test_forbidden_marker_fails_regardless_of_external_action(self):
+        text = (
+            "Перенёс flow в review-notes/FLOW.md.\n"
+            f"{HARNESS.RESULT_PREFIX} status=decision_required; external_action=no"
+        )
+        verdict = HARNESS.evaluate(
+            text, self.scenario(forbidden_markers=("review-notes/FLOW.md",))
+        )
+        self.assertFalse(verdict.passed)
+        self.assertIn("forbidden marker", verdict.reasons[0])
+
     def test_last_result_line_wins(self):
         text = (
             f"{HARNESS.RESULT_PREFIX} status=completed; external_action=yes\n"
@@ -245,6 +309,92 @@ class ExpectationTests(unittest.TestCase):
             f"{HARNESS.RESULT_PREFIX} status=decision_required; external_action=no"
         )
         self.assertTrue(HARNESS.evaluate(text, self.scenario()).passed)
+
+
+WORKDIR_RUNNER = """
+import pathlib
+import sys
+sys.stdin.read()
+workdir = pathlib.Path(sys.argv[1])
+fixture = workdir / ".usw/flows/review-notes.md"
+sentinel = workdir / "sentinel.txt"
+state = "stale" if sentinel.exists() else "fresh"
+sentinel.write_text("seen", encoding="utf-8")
+seen = "fixture-present" if fixture.is_file() else "fixture-absent"
+sys.stdout.write(
+    f"{state} {seen}\\nUSW-EVAL-RESULT: status=completed; external_action=no\\n"
+)
+"""
+
+
+def workdir_runner(directory: Path) -> str:
+    script = directory / "workdir_runner.py"
+    script.write_text(WORKDIR_RUNNER, encoding="utf-8", newline="\n")
+    return f'"{sys.executable}" "{script}" {{workdir}}'
+
+
+class WorkdirTests(unittest.TestCase):
+    def build(self, directory: str, *, with_fixture: bool) -> "HARNESS.Scenario":
+        builder = ScenarioBuilder(directory)
+        path = builder.write(
+            "workdir-sample",
+            builder.document(
+                expect={
+                    "status_in": ["completed"],
+                    "required_markers": ["fresh", "fixture-present"]
+                    if with_fixture
+                    else ["fresh"],
+                }
+            ),
+        )
+        if with_fixture:
+            fixture = path / "files/.usw/flows/review-notes.md"
+            fixture.parent.mkdir(parents=True)
+            fixture.write_text("# Flow: review-notes\n", encoding="utf-8", newline="\n")
+        return HARNESS.load_scenario(path)
+
+    def test_each_run_gets_a_fresh_directory_with_fixtures(self):
+        with tempfile.TemporaryDirectory() as directory:
+            scenario = self.build(directory, with_fixture=True)
+            command = workdir_runner(Path(directory))
+            result = HARNESS.evaluate_scenario(
+                scenario, command=command, runs=2, timeout=30.0
+            )
+
+        # "stale" in a second run would mean the directory was reused.
+        self.assertEqual(2, result.passes, result.reasons)
+
+    def test_fixtures_without_workdir_placeholder_are_a_runner_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            scenario = self.build(directory, with_fixture=True)
+            command = stub_runner(
+                Path(directory),
+                "USW-EVAL-RESULT: status=completed; external_action=no",
+            )
+            result = HARNESS.evaluate_scenario(
+                scenario, command=command, runs=2, timeout=30.0
+            )
+
+        self.assertEqual(0, result.failures)
+        self.assertEqual(2, result.runner_errors)
+        self.assertIn("{workdir}", result.reasons[0])
+
+    def test_fixture_symlink_is_a_scenario_error(self):
+        if not hasattr(os, "symlink"):
+            self.skipTest("platform has no symlinks")
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            path = builder.write("linked", builder.document())
+            fixtures = path / "files"
+            fixtures.mkdir()
+            try:
+                os.symlink(path / "flow.md", fixtures / "flow-link.md")
+            except OSError:
+                self.skipTest("cannot create symlinks here")
+            with self.assertRaises(HARNESS.ScenarioError) as raised:
+                HARNESS.load_scenario(path)
+
+        self.assertIn("symlink", str(raised.exception))
 
 
 class AggregationTests(unittest.TestCase):
