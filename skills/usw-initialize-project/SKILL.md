@@ -3,59 +3,61 @@ name: usw-initialize-project
 description: Initialize a configured USW workspace and developer-local handoff state in the current project. Use when the usw-init command delegates initialization or the user asks to initialize USW in a project.
 ---
 
-# Initialize USW
+# Инициализация USW
 
-Resolve `scripts/init_usw.py` relative to this `SKILL.md`. Select its
-interpreter before making any project write:
+Найти `scripts/init_usw.py` относительно этого `SKILL.md`. До первой записи в
+проект выбрать интерпретатор:
 
-1. Try `python3`, then `python`.
-2. For each candidate, run
+1. Попробовать `python3`, затем `python`.
+2. Для каждого кандидата выполнить
    `<candidate> -c 'import sys; raise SystemExit(sys.version_info < (3, 10))'`.
-3. Use the first candidate that exits successfully and pass the current project
-   root as the script's only argument.
-4. Treat any non-zero result from `init_usw.py` as an initialization failure.
-   Report it and stop; never hide a script or configuration error with fallback.
+3. Использовать первого кандидата, завершившегося успешно, и передать script-у
+   текущий project root единственным аргументом.
+4. Любой ненулевой результат `init_usw.py` — ошибка инициализации: сообщить её
+   и остановиться; не скрывать ошибку script или configuration за fallback.
 
-If neither command provides Python 3.10 or newer, ask the user in their language
-whether to continue with LLM initialization under the same functional v1
-contract. Explain that existing files will not be overwritten but execution is
-less deterministic. Do not write anything until the user explicitly agrees.
-After agreement, read and follow
-[references/llm-fallback.md](references/llm-fallback.md). If the user declines,
-stop without changes.
+Если ни одна команда не даёт Python 3.10+, спросить пользователя на его языке,
+продолжать ли LLM-инициализацией под тем же функциональным v1 contract.
+Объяснить, что существующие файлы не будут перезаписаны, но исполнение менее
+детерминировано. Ничего не записывать до явного согласия пользователя. После
+согласия прочитать и выполнить
+[references/llm-fallback.md](references/llm-fallback.md). При отказе
+остановиться без изменений.
 
-Report whether `usw.yaml`, the configured flow root, the four flow examples,
-`.usw/.gitignore`, and, when enabled, `.usw/HANDOFF.md` were created or already
-existed. Never overwrite an existing file. New local flows and intent
-clarification sessions create
-`.usw/flows/` and `.usw/refinements/` only on first use.
+Сообщить, были ли `usw.yaml`, configured flow root, четыре flow examples,
+`.usw/.gitignore` и, при включённом handoff, `.usw/HANDOFF.md` созданы или уже
+существовали. Никогда не перезаписывать существующий файл. `.usw/flows/` и
+`.usw/refinements/` создаются только при первом local flow или уточнении
+намерения.
 
-The optional top-level `handoff` field accepts only boolean `true` or `false`;
-absence means `true`. When enabled, initialize `.usw/HANDOFF.md` with the
-deterministic empty operation router. Keep `.usw/handoffs/` lazy until the first
-Begin. When disabled, do not read, validate, create or modify either path or an
-operation-scoped candidate.
-Generate `.usw/.gitignore` as a convenience, but do not inspect or enforce Git
-tracking state; repository tracking policy belongs to the user.
+Optional top-level поле `handoff` принимает только boolean `true` или `false`;
+отсутствие означает `true`. При включённом handoff создать `.usw/HANDOFF.md`
+как детерминированный empty operation router. `.usw/handoffs/` остаётся lazy
+до первого Begin. При выключенном — не читать, не проверять, не создавать и не
+изменять оба пути и operation-scoped candidates.
+`.usw/.gitignore` создаётся как удобный default; tracked/ignore state Git не
+проверяется и не навязывается: политика tracking принадлежит пользователю.
 
-All configured roots and `.usw/` must be real directories inside the project
-root. Reject symbolic links and conflicting roots before any managed write.
+Все configured roots и `.usw/` должны быть реальными директориями внутри
+project root. Отклонить symlinks и пересекающиеся roots до первой managed
+записи.
 
-Capability boundary: inputs are a project root and existing configuration;
-permitted writes are initialization configuration, the missing flow root,
-non-normative flow examples, and developer-local initial state. Return the
-created or existing paths to the caller. Return point: after initialization
-reporting. Do not start a flow or call another skill.
-If initialization fails after a partial write, report the possible partial
-workspace and recommend fixing the cause and rerunning; create-only behavior
-preserves existing files on retry.
+Capability boundary: входы — project root и существующая configuration;
+разрешённые записи — initialization configuration, отсутствующий flow root,
+ненормативные flow examples и developer-local initial state. Вернуть caller-у
+созданные и уже существовавшие пути. Return point: после отчёта об
+инициализации; не запускать flow и не вызывать другой skill.
+Если инициализация упала после частичной записи, сообщить о возможном partial
+workspace и порекомендовать устранить причину и повторить запуск:
+create-only поведение сохраняет существующие файлы при retry.
 
-Do not pre-create artifact storage. In particular, initialization does not
-create `<artifacts.root>/changes/`, `<artifacts.root>/templates/`,
-`<reviews.root>/`, or `.usw/handoffs/`; the capability that needs an artifact
-creates its exact destination on first use.
+Не создавать artifact storage заранее. В частности, инициализация не создаёт
+`<artifacts.root>/changes/`, `<artifacts.root>/templates/`, `<reviews.root>/`
+и `.usw/handoffs/`: точный destination создаёт та capability, которой он
+впервые нужен.
 
-The bundled files under `templates/flows/examples/` are guidance, not runtime
-fallbacks or normative flow contracts. Copy exactly `chat-review.md` and
-`dev-test.md` to `<flows.root>/examples/`. Never create, migrate, or delete
-legacy `flow-scenario-*.md` files.
+Файлы в `templates/flows/examples/` — guidance, а не runtime fallback или
+нормативные контракты flow. Скопировать в `<flows.root>/examples/` ровно
+четыре packaged examples: `chat-review.md`, `dev-test.md`,
+`plan-small-steps.md` и `refine-intent.md`. Никогда не создавать, не
+мигрировать и не удалять legacy `flow-scenario-*.md` файлы.

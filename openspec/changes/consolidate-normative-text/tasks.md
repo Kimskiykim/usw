@@ -28,9 +28,9 @@
 
 ## 4. Language consistency
 
-- [ ] 4.1 Translate `usw-initialize-project` and its `references/` to Russian, keeping command names, error codes and identifiers unchanged; re-measure any scenario touching it.
-- [ ] 4.2 Remove stray English sentences from the normative bodies of the other skills and the specs, leaving technical tokens in place.
-- [ ] 4.3 Confirm no shipped skill mixes languages in its normative body and that frontmatter `description` fields are untouched.
+- [x] 4.1 Translate `usw-initialize-project` and its `references/` to Russian, keeping command names, error codes and identifiers unchanged; re-measure any scenario touching it. Done 2026-08-21: SKILL.md and `references/llm-fallback.md` are Russian with commands, config keys, paths and code snippets verbatim. No behavior scenario touches this skill, so there was nothing to re-measure. The translation also surfaced and fixed a real drift: the skill said to copy two examples while the script, the fallback, README and flow-examples all say four (`chat-review.md`, `dev-test.md`, `plan-small-steps.md`, `refine-intent.md`).
+- [x] 4.2 Remove stray English sentences from the normative bodies of the other skills and the specs, leaving technical tokens in place. The section-3 rewrites already left no English sentences in any skill body or reference (verified by sweep); embedded English noun-phrases (`root executor`, `package resource`, Begin/Outcome) are the project's established terms and stay. Deliberate residual, recorded rather than silently done: several spec bodies under `openspec/specs/` are wholly English (for example text-flow-execution, live-operation-state), which is full translation work, not stray-sentence removal — that is the author's call flagged in design.md's open questions and is not folded into this task. Command stubs under `commands/` are English dispatch metadata, outside the normative-body scope.
+- [x] 4.3 Confirm no shipped skill mixes languages in its normative body and that frontmatter `description` fields are untouched. Confirmed: all six skills and their references are single-language Russian bodies with technical tokens in original form; every frontmatter `description` is byte-identical to its pre-change value.
 
 ## 5. Acceptance
 
