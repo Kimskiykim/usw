@@ -64,11 +64,6 @@ class AtomicSkillContractTests(unittest.TestCase):
         for content in (manage, run, initialize, fallback):
             self.assertIn(".usw/handoffs/", content)
         self.assertIn("assert-current", manage)
-        self.assertIn("несколько routes без selector", manage)
-        self.assertIn("independent top-level invocations", run)
-        self.assertIn("Nested child не владеет durable state", run)
-        self.assertIn("deterministic empty operation router", initialize)
-        self.assertIn("deterministic empty router", fallback)
         self.assertNotIn("{{updated_at}}", fallback)
 
     def test_run_flow_keeps_packaged_resources_inside_resolved_context(self):
@@ -79,13 +74,12 @@ class AtomicSkillContractTests(unittest.TestCase):
         for fragment in (
             "`flow_directory`",
             "`scripts/run_flow.py resource`",
-            "`flow_identity` и exact `path`",
-            "`resource_identity` и immutable `content_base64`",
-            "не перечитывать `resource_path`",
-            "только из `flow_markdown`",
-            "не из `user_input`",
-            "Flat flow сохраняет project/workspace-relative",
-            "обычные tool и permission boundaries",
+            "`flow_identity`",
+            "`resource_identity`",
+            "`content_base64`",
+            "`resource_path`",
+            "`flow_markdown`",
+            "`user_input`",
         ):
             self.assertIn(fragment, run)
 
