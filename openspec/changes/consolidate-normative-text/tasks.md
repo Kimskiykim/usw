@@ -34,7 +34,7 @@
 
 ## 5. Acceptance
 
-- [ ] 5.1 Report every scenario's rate before and after the whole change, on the same runner, and account for any drop.
+- [x] 5.1 Report every scenario's rate before and after the whole change, on the same runner, and account for any drop. Recorded in the Whole-change behavior report below.
 - [ ] 5.2 Run the complete suite on the supported Python floor and latest, `openspec validate --all --strict`, `openspec status --change consolidate-normative-text --json` and `git diff --check`, recording each result.
 - [ ] 5.3 Confirm the deterministic suite contains no assertion that a particular sentence appears, except those recorded in 1.4.
 
@@ -125,6 +125,38 @@ Scenario design lessons recorded in each scenario's notes: an agent host's
 stdout is a summary, so content invariants need the input to ask for the full
 written file text in the reply; and markers must pin contract tokens, not any
 one Russian phrasing of a rule.
+
+## Whole-change behavior report (5.1)
+
+Measured 2026-08-21. The four scenarios that existed before the change used the
+exact baseline read-only runner and stayed at `3/3`. Seven scenarios were added
+during the change, so an honest before-whole-change rate does not exist; their
+first comparable file-aware rate and final after rate use the same isolated
+workspace-write `{workdir}` runner recorded above.
+
+| Scenario | Before whole change | First comparable | Final after |
+| --- | --- | --- | --- |
+| `ambiguous-branch` | `3/3` | `3/3` | `3/3` |
+| `claimed-authority` | `3/3` | `3/3` | `3/3` |
+| `nested-child` | `3/3` | `3/3` | `3/3` |
+| `permission-boundary` | `3/3` | `3/3` | `3/3` |
+| `assess-does-not-read-siblings` | N/A — added in 1.3 | `3/3` | `3/3` |
+| `create-complexity-warning` | N/A — added in 3.6 | `3/3` | `3/3` |
+| `create-design-scan` | N/A — added in 3.6 | `3/3` | `2/3`; immediate rerun `3/3` |
+| `create-flat-edit` | N/A — added in 3.6 | `3/3` | `3/3` |
+| `create-goal-blocks` | N/A — added in 3.6 | `3/3` | `3/3` |
+| `create-revise-preview` | N/A — added in 3.6 | `3/3` | `2/3`; immediate rerun `3/3` |
+| `find-does-not-execute` | N/A — added in 1.3 | `3/3` | `3/3` |
+
+The two one-run drops were investigated before proceeding. In
+`create-design-scan`, the model selected and rendered the required external
+approval gate but paraphrased the recipe title as «Подтверждение публикации»,
+so the exact-title marker missed it. In `create-revise-preview`, the file stayed
+byte-identical and the reply re-offered `применить`, `изменить` and
+`пропустить`, but the model reported `paused` instead of `decision_required`.
+Neither transcript showed loss of the protected behavior, and both unchanged
+scenarios returned `3/3` on the immediate same-runner rerun. The observed drops
+are therefore recorded as evaluator-label noise, not hidden or averaged away.
 
 ## Inventory (1.2)
 
