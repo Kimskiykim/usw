@@ -49,6 +49,27 @@ class ScenarioBuilder:
         return document
 
 
+SLEEPING_RUNNER = """
+import sys
+import time
+sys.stdin.read()
+time.sleep(30)
+"""
+
+
+def sleeping_runner(directory: Path) -> str:
+    """A runner that drains stdin before hanging.
+
+    A child that never reads leaves the prompt in the pipe buffer, and what
+    happens then is platform-specific; draining first makes the timeout the
+    only thing under test.
+    """
+
+    script = directory / "sleeping_runner.py"
+    script.write_text(SLEEPING_RUNNER, encoding="utf-8", newline="\n")
+    return f'"{sys.executable}" "{script}"'
+
+
 def stub_runner(directory: Path, payload: str) -> str:
     script = directory / "stub_runner.py"
     script.write_text(STUB_RUNNER.format(payload=payload), encoding="utf-8", newline="\n")
@@ -277,7 +298,7 @@ class AggregationTests(unittest.TestCase):
             scenario = self.scenario_with(directory, "sample")
             result = HARNESS.evaluate_scenario(
                 scenario,
-                command=f"{sys.executable} -c 'import time; time.sleep(5)'",
+                command=sleeping_runner(Path(directory)),
                 runs=1,
                 timeout=0.4,
             )
@@ -390,6 +411,30 @@ def captured_output():
     stream = io.StringIO()
     with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
         yield stream
+
+
+class RunnerCommandSplitTests(unittest.TestCase):
+    """The Windows branch never executes on POSIX, so force it explicitly."""
+
+    def split_as_windows(self, command: str) -> list[str]:
+        with mock.patch.object(HARNESS.os, "name", "nt"):
+            return HARNESS.split_runner_command(command)
+
+    def test_windows_paths_keep_their_backslashes(self):
+        argv = self.split_as_windows(r"C:\Python\python.exe -p runner")
+        self.assertEqual([r"C:\Python\python.exe", "-p", "runner"], argv)
+
+    def test_quoted_arguments_lose_only_their_quotes(self):
+        argv = self.split_as_windows(r'C:\Python\python.exe -c "import sys; sys.exit(3)"')
+        self.assertEqual(
+            [r"C:\Python\python.exe", "-c", "import sys; sys.exit(3)"], argv
+        )
+
+    def test_posix_splitting_is_unchanged(self):
+        self.assertEqual(
+            ["/usr/bin/python3", "-c", "import sys"],
+            HARNESS.split_runner_command("/usr/bin/python3 -c 'import sys'"),
+        )
 
 
 if __name__ == "__main__":
