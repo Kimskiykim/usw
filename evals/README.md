@@ -38,8 +38,8 @@ runner output to `<dir>/<scenario>-<run>.txt` — the only way to see why a
 marker did or did not match, since the report keeps reasons, not replies.
 
 Exit codes: `0` for skipped or fully passing, `1` when a behavior failure was
-observed, `2` for a malformed scenario or bad invocation. Runner errors are never
-counted as behavior failures.
+observed, `2` for a malformed scenario, bad invocation or runner error. Runner
+errors are never counted as behavior failures.
 
 ## The runner contract
 
@@ -120,6 +120,11 @@ case-insensitively against the reply after the prompt echo is stripped:
   behavior whose failure mode leaves a specific trace (a migrated path, a
   contract line from the wrong style).
 
+`file_expectations` maps workdir-relative paths to checks over the actual file:
+`exists` (default `true`), `equals_flow`, `required_markers` and
+`forbidden_markers`. These scenarios require `{workdir}`. Escaping paths and
+symlinks fail the run.
+
 A marker that already occurs in the scenario's own `flow.md` or `input.txt` is
 a scenario error: it would measure the scenario's text, not the model's claim.
 Markers are substring checks over one reply, so they are the weakest assertion
@@ -147,8 +152,9 @@ recorded as a failure rather than resolved in the model's favour.
 ## What this cannot tell you
 
 Real hosts wrap instructions in their own system prompts and expose real tools;
-this harness supplies text and reads text. Treat results as a lower bound on
-instruction quality, not a prediction of host behavior.
+this harness supplies a prompt and inspects only the reply plus explicitly
+declared workdir files. Treat results as a lower bound on instruction quality,
+not a prediction of host behavior.
 
 The harness is excluded from `unittest discover -s tests` structurally, by living
 outside that root, and is never installed by `install.sh`. Its own logic is

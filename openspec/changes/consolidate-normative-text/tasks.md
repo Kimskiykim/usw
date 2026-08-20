@@ -18,9 +18,9 @@
 - [x] 3.3 `usw-create-flow`: same, with the design-suggestion recipes moved to `references/`. Done in commit `efa1b96`: recipes live in `references/recipes/` behind a compact index `references/recipes.md`, read on demand at two levels. The slice also grew beyond restructuring — see the Deviation section below.
 - [ ] 3.4 `usw-assess-flow`, `usw-find-flow` and `usw-initialize-project`: same, in one slice, as they are smaller.
 - [x] 3.5 Replace the phrase assertions whose invariants are now covered by scenarios with anchors on names, codes and paths; verify the suite passes and no covered invariant lost its protection. Done in commit `f18e09d` — but ahead of scenario coverage, not behind it; the ordering deviation and the make-up work are recorded below.
-- [x] 3.6 Behavior scenarios for `usw-create-flow`, restoring the protection its phrase assertions used to provide (rates in the create-flow baseline section below; the harness gained `required_markers`/`forbidden_markers`, per-run `{workdir}` directories with `files/` fixtures, and `--transcripts` to make them possible):
+- [x] 3.6 Behavior scenarios for `usw-create-flow`, restoring the protection its phrase assertions used to provide (rates in the create-flow baseline section below; the harness gained reply markers, per-run `{workdir}` directories, `files/` fixtures, actual-file expectations, and `--transcripts`):
   - design scan picks at most three applicable recipes out of the fifteen in the catalog, by the catalog's conditions;
-  - designing from a goal embeds the agreed blocks into the written flow and does not embed the rejected ones;
+  - designing from a goal embeds the agreed blocks into the written flow;
   - an overloaded draft triggers a complexity warning that suggests `$usw-assess-flow` but does not block the write;
   - `изменить` previews without writing; only a later explicit `применить` writes;
   - editing an existing flat ordinary flow neither migrates it to `version-2` nor moves it between layouts.
@@ -106,6 +106,10 @@ rules were added to `guided-flow-authoring` (delta and main spec) first. After
 those edits, same runner, three runs each, 2026-08-21: all five scenarios
 `3/3 [pass]`.
 
+Audit follow-up: authoring scenarios now inspect declared files before the
+temporary workdir is removed. A runner that only claims success no longer
+passes, and runner errors return non-zero instead of `0/0 [pass]`.
+
 Scenario design lessons recorded in each scenario's notes: an agent host's
 stdout is a summary, so content invariants need the input to ask for the full
 written file text in the reply; and markers must pin contract tokens, not any
@@ -141,5 +145,7 @@ Classification of what the assertions stand for:
   it. Each needs a scenario before its phrases go.
 - **Invariants no honest scenario can express**: durable-state discipline in a
   nested child, where the only signal is the model's own prose and a substring
-  check cannot separate a claim from its negation. These keep their assertions,
-  recorded here as deliberate rather than overlooked.
+  check cannot separate a claim from its negation; and semantic absence of a
+  rejected design block, whose ordinary-Markdown wording is intentionally
+  variable. These keep deliberate phrase assertions rather than false marker
+  coverage.

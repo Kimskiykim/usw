@@ -83,6 +83,15 @@ class AtomicSkillContractTests(unittest.TestCase):
         ):
             self.assertIn(fragment, run)
 
+    def test_create_flow_keeps_rejected_blocks_out(self):
+        """Deliberate phrase assertion: semantic absence has no honest marker."""
+
+        create = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("отклонённые блоки не встраивать", create)
+
     def test_writer_writes_only_authorized_planning_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)

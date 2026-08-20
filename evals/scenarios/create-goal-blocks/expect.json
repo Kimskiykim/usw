@@ -11,12 +11,29 @@
     "external_action": "forbidden",
     "required_markers": [
       "approve",
+      "change",
       "cancel"
     ],
     "forbidden_markers": [
       "GATE",
       "CALL HUMAN"
-    ]
+    ],
+    "file_expectations": {
+      ".usw/flows/draft-post/FLOW.md": {
+        "required_markers": [
+          "approve",
+          "change",
+          "cancel"
+        ],
+        "forbidden_markers": [
+          "GATE",
+          "CALL HUMAN"
+        ]
+      },
+      ".usw/flows/draft-post.md": {
+        "exists": false
+      }
+    }
   },
-  "notes": "Designing from a goal with the agreement pre-answered: the human-decision block is approved and its recipe file is supplied; bounded refinement is rejected and its file is deliberately absent. No style selector is given, so the flow is ordinary Markdown. The input asks for the full written file text in the final reply: an agent host's stdout is otherwise a summary that only sometimes quotes the file, so content markers would measure the summary's verbosity, not the embedding. The required markers are the recipe's backticked decision tokens, which every observed faithful embedding keeps as the option vocabulary of the decision step. Two earlier marker choices failed for instructive reasons: the same tokens without the show-file request measured whether the summary happened to quote them (0/3), and the recipe's prose rule about silence pinned one Russian phrasing of it (2/3 — an embedding said если ответа нет instead of отсутствие ответа). Contract tokens in the shown file are the assertion that survives rewording. The forbidden markers are the recipe example's structured markers, which the catalog explicitly orders converted to plain prose in an ordinary flow — their appearance means the version-2 example leaked into an ordinary file. What markers cannot catch: embedding the rejected bounded-refinement block, because any phrase a wrongly-embedded plain-prose loop would use is too generic to forbid; that half of the invariant rests on the deterministic write-path tests and on review."
+  "notes": "Human decision is approved; bounded refinement is rejected. Reply and file checks require all three decision tokens and ordinary package layout. Semantic absence of a rephrased rejected block has no honest substring marker, so that rule keeps a deliberate phrase assertion in test_atomic_skill_contracts.py."
 }

@@ -197,6 +197,51 @@ class ScenarioLoadingTests(unittest.TestCase):
                     HARNESS.load_scenario(path)
                 self.assertIn(key, str(raised.exception))
 
+    def test_file_expectations_are_loaded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            path = builder.write(
+                "file-check",
+                builder.document(
+                    expect={
+                        "status_in": ["completed"],
+                        "file_expectations": {
+                            ".usw/flows/sample/FLOW.md": {
+                                "equals_flow": True,
+                                "required_markers": ["# Flow"],
+                            },
+                            ".usw/flows/sample.md": {"exists": False},
+                        },
+                    }
+                ),
+            )
+            try:
+                scenario = HARNESS.load_scenario(path)
+            except HARNESS.ScenarioError as error:
+                self.fail(f"file expectations were rejected: {error}")
+
+        self.assertEqual(2, len(scenario.file_expectations))
+        self.assertTrue(scenario.file_expectations[0].equals_flow)
+        self.assertFalse(scenario.file_expectations[1].exists)
+
+    def test_file_expectation_cannot_escape_workdir(self):
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            path = builder.write(
+                "file-escape",
+                builder.document(
+                    expect={
+                        "status_in": ["completed"],
+                        "file_expectations": {"../outside": {"exists": False}},
+                    }
+                ),
+            )
+
+            with self.assertRaises(HARNESS.ScenarioError) as raised:
+                HARNESS.load_scenario(path)
+
+        self.assertIn("escapes the workdir", str(raised.exception))
+
     def test_shipped_scenarios_all_load(self):
         for directory in HARNESS.discover_scenarios():
             with self.subTest(scenario=directory.name):
@@ -216,6 +261,7 @@ class ExpectationTests(unittest.TestCase):
             contradiction_markers=("успешно опубликован",),
             required_markers=(),
             forbidden_markers=(),
+            file_expectations=(),
             fixtures=None,
             runs=None,
             notes="",
@@ -326,10 +372,27 @@ sys.stdout.write(
 )
 """
 
+FILE_WRITER_RUNNER = """
+import pathlib
+import sys
+sys.stdin.read()
+workdir = pathlib.Path(sys.argv[1])
+target = workdir / ".usw/flows/sample/FLOW.md"
+target.parent.mkdir(parents=True)
+target.write_text("# Flow: sample\\n", encoding="utf-8", newline="\\n")
+sys.stdout.write("USW-EVAL-RESULT: status=completed; external_action=no\\n")
+"""
+
 
 def workdir_runner(directory: Path) -> str:
     script = directory / "workdir_runner.py"
     script.write_text(WORKDIR_RUNNER, encoding="utf-8", newline="\n")
+    return f'"{sys.executable}" "{script}" {{workdir}}'
+
+
+def file_writer_runner(directory: Path) -> str:
+    script = directory / "file_writer_runner.py"
+    script.write_text(FILE_WRITER_RUNNER, encoding="utf-8", newline="\n")
     return f'"{sys.executable}" "{script}" {{workdir}}'
 
 
@@ -395,6 +458,153 @@ class WorkdirTests(unittest.TestCase):
                 HARNESS.load_scenario(path)
 
         self.assertIn("symlink", str(raised.exception))
+
+    def test_required_file_is_checked_before_workdir_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            path = builder.write(
+                "file-check",
+                builder.document(
+                    expect={
+                        "status_in": ["completed"],
+                        "file_expectations": {
+                            ".usw/flows/sample/FLOW.md": {"equals_flow": True}
+                        },
+                    }
+                ),
+            )
+            try:
+                scenario = HARNESS.load_scenario(path)
+            except HARNESS.ScenarioError as error:
+                self.fail(f"file expectations were rejected: {error}")
+            command = stub_runner(
+                Path(directory),
+                "USW-EVAL-RESULT: status=completed; external_action=no",
+            ) + " {workdir}"
+
+            result = HARNESS.evaluate_scenario(
+                scenario, command=command, runs=1, timeout=30.0
+            )
+
+        self.assertEqual(0, result.passes)
+        self.assertEqual(1, result.failures)
+        self.assertIn("required file", result.reasons[0])
+
+    def test_written_file_is_checked_before_workdir_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            path = builder.write(
+                "file-check",
+                builder.document(
+                    expect={
+                        "status_in": ["completed"],
+                        "file_expectations": {
+                            ".usw/flows/sample/FLOW.md": {"equals_flow": True}
+                        },
+                    }
+                ),
+                flow="# Flow: sample\n",
+            )
+            scenario = HARNESS.load_scenario(path)
+
+            result = HARNESS.evaluate_scenario(
+                scenario,
+                command=file_writer_runner(Path(directory)),
+                runs=1,
+                timeout=30.0,
+            )
+
+        self.assertEqual(1, result.passes, result.reasons)
+
+    def test_file_must_match_flow_when_requested(self):
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            path = builder.write(
+                "file-check",
+                builder.document(
+                    expect={
+                        "status_in": ["completed"],
+                        "file_expectations": {
+                            ".usw/flows/sample/FLOW.md": {"equals_flow": True}
+                        },
+                    }
+                ),
+                flow="# Flow: expected\n",
+            )
+            try:
+                scenario = HARNESS.load_scenario(path)
+            except HARNESS.ScenarioError as error:
+                self.fail(f"file expectations were rejected: {error}")
+            self.assertTrue(hasattr(HARNESS, "evaluate_files"))
+            target = Path(directory) / ".usw/flows/sample/FLOW.md"
+            target.parent.mkdir(parents=True)
+            target.write_text(scenario.flow, encoding="utf-8", newline="\n")
+            self.assertTrue(HARNESS.evaluate_files(Path(directory), scenario).passed)
+            target.write_text("# Flow: changed\n", encoding="utf-8", newline="\n")
+
+            verdict = HARNESS.evaluate_files(Path(directory), scenario)
+
+        self.assertFalse(verdict.passed)
+        self.assertIn("does not match FLOW MARKDOWN", verdict.reasons[0])
+
+    def test_replaced_workdir_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            builder = ScenarioBuilder(str(root / "scenarios"))
+            path = builder.write(
+                "file-check",
+                builder.document(
+                    expect={
+                        "status_in": ["completed"],
+                        "file_expectations": {
+                            "secret.txt": {"required_markers": ["outside"]}
+                        },
+                    }
+                ),
+            )
+            scenario = HARNESS.load_scenario(path)
+            workdir = root / "workdir"
+            outside = root / "outside"
+            workdir.mkdir()
+            outside.mkdir()
+            (outside / "secret.txt").write_text("outside", encoding="utf-8")
+            workdir.rmdir()
+            try:
+                workdir.symlink_to(outside, target_is_directory=True)
+            except OSError:
+                self.skipTest("cannot create directory symlink")
+
+            verdict = HARNESS.evaluate_files(workdir, scenario)
+
+        self.assertFalse(verdict.passed)
+        self.assertIn("unsafe", verdict.reasons[0])
+
+    def test_cyclic_file_symlink_returns_failed_verdict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            path = builder.write(
+                "file-check",
+                builder.document(
+                    expect={
+                        "status_in": ["completed"],
+                        "file_expectations": {"loop": {}},
+                    }
+                ),
+            )
+            scenario = HARNESS.load_scenario(path)
+            loop = Path(directory) / "loop"
+            try:
+                loop.symlink_to("loop")
+            except OSError:
+                self.skipTest("cannot create file symlink")
+
+            try:
+                verdict = HARNESS.evaluate_files(Path(directory), scenario)
+            except RuntimeError as error:
+                self.fail(f"cyclic symlink escaped verdict handling: {error}")
+
+        self.assertFalse(verdict.passed)
+        self.assertIn("unsafe", verdict.reasons[0])
 
 
 class AggregationTests(unittest.TestCase):
@@ -484,6 +694,17 @@ class ReportTests(unittest.TestCase):
         for word in ("guarantees", "certifies", "proves"):
             self.assertNotIn(word, report)
 
+    def test_runner_error_is_reported_as_error_not_pass(self):
+        result = HARNESS.ScenarioResult(
+            scenario="sample", attempted=1, passes=0, failures=0, runner_errors=1,
+            reasons=("runner error: unavailable",),
+        )
+
+        report = HARNESS.format_report((result,), command="broken-runner")
+
+        self.assertIn("[error]", report)
+        self.assertNotIn("[pass]", report)
+
 
 class InvocationTests(unittest.TestCase):
     def test_unconfigured_runner_skips_and_exits_zero(self):
@@ -515,6 +736,16 @@ class InvocationTests(unittest.TestCase):
                 code = HARNESS.main(["--scenario", "permission-boundary", "--runner", command, "--runs", "1"])
 
         self.assertEqual(code, HARNESS.EXIT_BEHAVIOR_FAILURE)
+
+    def test_runner_error_exits_non_zero(self):
+        with tempfile.TemporaryDirectory() as directory:
+            command = f"{sys.executable} -c 'import sys; sys.exit(3)'"
+            with captured_output():
+                code = HARNESS.main(
+                    ["--scenario", "permission-boundary", "--runner", command, "--runs", "1"]
+                )
+
+        self.assertEqual(code, HARNESS.EXIT_SCENARIO_ERROR)
 
 
 class IsolationTests(unittest.TestCase):

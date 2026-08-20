@@ -46,9 +46,13 @@ EXPECT_KEYS = frozenset(
         "contradiction_markers",
         "required_markers",
         "forbidden_markers",
+        "file_expectations",
     }
 )
 EXTERNAL_ACTION_VALUES = frozenset({"forbidden", "allowed"})
+FILE_EXPECTATION_KEYS = frozenset(
+    {"exists", "equals_flow", "required_markers", "forbidden_markers"}
+)
 
 EXIT_OK = 0
 EXIT_BEHAVIOR_FAILURE = 1
@@ -57,6 +61,14 @@ EXIT_SCENARIO_ERROR = 2
 
 class ScenarioError(Exception):
     """A scenario is malformed. Never reported as a skip or a pass."""
+
+
+class FileExpectation(NamedTuple):
+    path: str
+    exists: bool
+    equals_flow: bool
+    required_markers: tuple[str, ...]
+    forbidden_markers: tuple[str, ...]
 
 
 class Scenario(NamedTuple):
@@ -70,6 +82,7 @@ class Scenario(NamedTuple):
     contradiction_markers: tuple[str, ...]
     required_markers: tuple[str, ...]
     forbidden_markers: tuple[str, ...]
+    file_expectations: tuple[FileExpectation, ...]
     fixtures: Path | None
     runs: int | None
     notes: str
@@ -182,6 +195,55 @@ def load_scenario(directory: Path) -> Scenario:
             raise ScenarioError(f"{name}: expect.{key} must be a list of non-empty strings")
         marker_lists[key] = tuple(items)
 
+    raw_file_expectations = expect.get("file_expectations", {})
+    if not isinstance(raw_file_expectations, dict):
+        raise ScenarioError(f"{name}: expect.file_expectations must be an object")
+    file_expectations: list[FileExpectation] = []
+    for relative, options in raw_file_expectations.items():
+        if not isinstance(relative, str) or not relative:
+            raise ScenarioError(f"{name}: file expectation path must be a non-empty string")
+        relative_path = Path(relative)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise ScenarioError(f"{name}: file expectation escapes the workdir: {relative}")
+        if not isinstance(options, dict):
+            raise ScenarioError(f"{name}: file expectation for {relative} must be an object")
+        unknown_file_keys = sorted(set(options) - FILE_EXPECTATION_KEYS)
+        if unknown_file_keys:
+            raise ScenarioError(
+                f"{name}: unknown file expectation keys for {relative}: "
+                f"{', '.join(unknown_file_keys)}"
+            )
+        exists = options.get("exists", True)
+        equals_flow = options.get("equals_flow", False)
+        if not isinstance(exists, bool) or not isinstance(equals_flow, bool):
+            raise ScenarioError(
+                f"{name}: exists and equals_flow for {relative} must be booleans"
+            )
+        file_markers: dict[str, tuple[str, ...]] = {}
+        for key in ("required_markers", "forbidden_markers"):
+            items = options.get(key, [])
+            if not isinstance(items, list) or any(
+                not isinstance(item, str) or not item for item in items
+            ):
+                raise ScenarioError(
+                    f"{name}: file expectation {key} for {relative} must be "
+                    "a list of non-empty strings"
+                )
+            file_markers[key] = tuple(items)
+        if not exists and (equals_flow or any(file_markers.values())):
+            raise ScenarioError(
+                f"{name}: absent file expectation for {relative} cannot inspect content"
+            )
+        file_expectations.append(
+            FileExpectation(
+                path=relative,
+                exists=exists,
+                equals_flow=equals_flow,
+                required_markers=file_markers["required_markers"],
+                forbidden_markers=file_markers["forbidden_markers"],
+            )
+        )
+
     runs = document.get("runs")
     if runs is not None and (not isinstance(runs, int) or isinstance(runs, bool) or runs < 1):
         raise ScenarioError(f"{name}: runs must be a positive integer")
@@ -227,6 +289,7 @@ def load_scenario(directory: Path) -> Scenario:
         contradiction_markers=marker_lists["contradiction_markers"],
         required_markers=marker_lists["required_markers"],
         forbidden_markers=marker_lists["forbidden_markers"],
+        file_expectations=tuple(file_expectations),
         fixtures=fixtures,
         runs=runs,
         notes=notes,
@@ -390,6 +453,74 @@ def evaluate(text: str, scenario: Scenario, *, prompt: str | None = None) -> Ver
     return Verdict(not reasons, tuple(reasons))
 
 
+def evaluate_files(
+    workdir: Path, scenario: Scenario, *, trusted_root: Path | None = None
+) -> Verdict:
+    """Evaluate workspace files before the disposable workdir is removed."""
+
+    reasons: list[str] = []
+    is_junction = getattr(workdir, "is_junction", None)
+    if workdir.is_symlink() or (is_junction is not None and is_junction()):
+        return Verdict(False, ("workdir root is unsafe",))
+    try:
+        resolved_root = workdir.resolve()
+    except (OSError, RuntimeError) as error:
+        return Verdict(False, (f"workdir root is unsafe: {error}",))
+    root = trusted_root or resolved_root
+    if resolved_root != root:
+        return Verdict(False, ("workdir root changed during runner execution",))
+    for expectation in scenario.file_expectations:
+        candidate = workdir / expectation.path
+        current = workdir
+        linked = False
+        for part in Path(expectation.path).parts:
+            current /= part
+            if current.is_symlink():
+                linked = True
+                break
+        if linked:
+            reasons.append(f"file expectation path is unsafe: {expectation.path}")
+            continue
+        try:
+            resolved = candidate.resolve(strict=False)
+        except (OSError, RuntimeError) as error:
+            reasons.append(
+                f"file expectation path is unsafe: {expectation.path}: {error}"
+            )
+            continue
+        if resolved != root and root not in resolved.parents:
+            reasons.append(f"file expectation path is unsafe: {expectation.path}")
+            continue
+        present = candidate.exists()
+        if not expectation.exists:
+            if present:
+                reasons.append(f"forbidden file exists: {expectation.path}")
+            continue
+        if not present or not candidate.is_file():
+            reasons.append(f"required file is missing: {expectation.path}")
+            continue
+        try:
+            content = candidate.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            reasons.append(f"cannot read expected file {expectation.path}: {error}")
+            continue
+        if expectation.equals_flow and content != scenario.flow:
+            reasons.append(f"{expectation.path} does not match FLOW MARKDOWN")
+        lowered = content.lower()
+        for marker in expectation.required_markers:
+            if marker.lower() not in lowered:
+                reasons.append(
+                    f"required file marker {marker!r} is absent from {expectation.path}"
+                )
+        for marker in expectation.forbidden_markers:
+            if marker.lower() in lowered:
+                reasons.append(
+                    f"forbidden file marker {marker!r} appears in {expectation.path}"
+                )
+
+    return Verdict(not reasons, tuple(reasons))
+
+
 def evaluate_scenario(
     scenario: Scenario,
     *,
@@ -404,10 +535,8 @@ def evaluate_scenario(
     reasons: list[str] = []
 
     fresh_workdir = WORKDIR_PLACEHOLDER in command
-    if scenario.fixtures is not None and not fresh_workdir:
-        # Fixtures exist to be seen by the runner; without a per-run working
-        # directory they would be silently invisible, which is runner
-        # misconfiguration, never behavior data.
+    if (scenario.fixtures is not None or scenario.file_expectations) and not fresh_workdir:
+        # Workspace inputs and assertions need a per-run working directory.
         return ScenarioResult(
             scenario=scenario.name,
             attempted=attempted,
@@ -415,17 +544,23 @@ def evaluate_scenario(
             failures=0,
             runner_errors=attempted,
             reasons=(
-                f"runner error: scenario ships fixture files but the runner command "
+                f"runner error: scenario needs a workspace but the runner command "
                 f"has no {WORKDIR_PLACEHOLDER} placeholder",
             ),
         )
 
     for attempt in range(attempted):
+        file_verdict = Verdict(True, ())
         if fresh_workdir:
             with tempfile.TemporaryDirectory(prefix="usw-eval-") as workdir:
+                trusted_root = Path(workdir).resolve()
                 if scenario.fixtures is not None:
                     shutil.copytree(scenario.fixtures, workdir, dirs_exist_ok=True)
                 outcome = run_once(command, prompt, timeout, workdir=workdir)
+                if outcome.text is not None:
+                    file_verdict = evaluate_files(
+                        Path(workdir), scenario, trusted_root=trusted_root
+                    )
         else:
             outcome = run_once(command, prompt, timeout)
         if transcripts is not None:
@@ -438,11 +573,12 @@ def evaluate_scenario(
             reasons.append(f"runner error: {outcome.runner_error}")
             continue
         verdict = evaluate(outcome.text, scenario, prompt=prompt)
-        if verdict.passed:
+        combined_reasons = verdict.reasons + file_verdict.reasons
+        if verdict.passed and file_verdict.passed:
             passes += 1
         else:
             failures += 1
-            reasons.extend(verdict.reasons)
+            reasons.extend(combined_reasons)
 
     return ScenarioResult(
         scenario=scenario.name,
@@ -457,7 +593,11 @@ def evaluate_scenario(
 def format_report(results: tuple[ScenarioResult, ...], *, command: str) -> str:
     lines = ["USW behavior evaluation", f"Runner: {command}", ""]
     for result in results:
-        marker = "unstable" if result.unstable else ("pass" if result.failures == 0 else "fail")
+        marker = (
+            "error"
+            if result.runner_errors
+            else ("unstable" if result.unstable else ("pass" if result.failures == 0 else "fail"))
+        )
         lines.append(
             f"- {result.scenario}: {result.passes}/{result.evaluated} observed passes "
             f"of {result.attempted} attempted [{marker}]"
@@ -556,6 +696,8 @@ def main(argv: list[str] | None = None) -> int:
         for scenario in scenarios
     )
     print(format_report(results, command=command))
+    if any(result.runner_errors for result in results):
+        return EXIT_SCENARIO_ERROR
     return EXIT_BEHAVIOR_FAILURE if any(result.failures for result in results) else EXIT_OK
 
 

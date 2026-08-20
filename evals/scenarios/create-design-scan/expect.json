@@ -14,7 +14,12 @@
     "forbidden_markers": [
       "Обработка списка элементов",
       "Ожидание внешнего события"
-    ]
+    ],
+    "file_expectations": {
+      ".usw/flows/publish-docs/FLOW.md": {
+        "equals_flow": true
+      }
+    }
   },
   "notes": "The saved flow has three catalog-condition gaps: an external upload with no approval, an unbounded retry, and no result verification. The catalog is supplied, so the scan must select by its conditions, at most three recipes, safety first. The required marker checks that the clearly top-ranked recipe is named; the forbidden markers check that recipes whose conditions plainly do not hold (no element list, no external event to wait for) are not recommended for completeness — naming an inapplicable recipe even as a one-liner is the failure this scenario exists to catch. What markers cannot catch: selecting four applicable recipes instead of three, since substring checks cannot count. Status is completed because the user pre-skips every suggestion; a model that blocks on the pre-answered choices fails the status check."
 }

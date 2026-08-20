@@ -12,7 +12,12 @@
     "external_action": "forbidden",
     "required_markers": [
       "применить"
-    ]
+    ],
+    "file_expectations": {
+      ".usw/flows/tag-release/FLOW.md": {
+        "equals_flow": true
+      }
+    }
   },
-  "notes": "The flow pushes a tag with no approval, so the scan's first suggestion is external-action approval, whose recipe file is supplied. The user answers изменить with a direction and explicitly gives no further decisions, so the reply must show a revised fragment that is not written: writing it needs a separate explicit применить that never arrives. Both completed and decision_required are honest terminal statuses for that state — the flow itself was created, only the optional revision is pending — so status alone cannot discriminate. The required marker применить is the observable trace of the invariant: a correct reply still offers the pending применить for the previewed fragment, while a model that already applied the revision has closed that offer (применил and применён do not contain применить, so its own claim does not satisfy the marker). What this cannot catch: a model that both applies the revision and boilerplates the three options afterwards."
+  "notes": "The user chooses изменить but never применить. The reply must re-offer применить, and the saved file must remain byte-for-byte equal to FLOW MARKDOWN."
 }
