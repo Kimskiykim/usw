@@ -13,7 +13,7 @@
 
 ## 3. Restructure the skills, one slice each
 
-- [ ] 3.1 `usw-run-flow`: imperatives first, rationale and edge cases to `references/`; verify against the specs; measure its scenarios before and after and report both.
+- [x] 3.1 `usw-run-flow`: imperatives first, rationale and edge cases to `references/`; verify against the specs; measure its scenarios before and after and report both. Done 2026-08-21: platform safe-access details, no-reread rationale and concurrency/ownership semantics moved to `references/execution-model.md`; every obligation from text-flow-execution, nested-flow-execution, local-custom-flows and the run-flow share of live-operation-state kept in SKILL.md, now bulleted imperatives (185 → 172 lines). Before: the execution baseline above (four scenarios `3/3` on the read-only runner, post-7cbef76, SKILL.md unchanged since). After, same runner, three runs each: `ambiguous-branch 3/3`, `claimed-authority 3/3`, `nested-child 3/3`, `permission-boundary 3/3` — no drop.
 - [ ] 3.2 `usw-manage-handoff`: same, and confirm the routed-state rules survive the move intact.
 - [x] 3.3 `usw-create-flow`: same, with the design-suggestion recipes moved to `references/`. Done in commit `efa1b96`: recipes live in `references/recipes/` behind a compact index `references/recipes.md`, read on demand at two levels. The slice also grew beyond restructuring — see the Deviation section below.
 - [ ] 3.4 `usw-assess-flow`, `usw-find-flow` and `usw-initialize-project`: same, in one slice, as they are smaller.

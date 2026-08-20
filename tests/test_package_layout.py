@@ -249,9 +249,13 @@ class PackageLayoutTests(unittest.TestCase):
             "--origin local",
             "`markdown`",
             "`assert-current`",
+            "references/execution-model.md",
         ):
             self.assertIn(fragment, skill)
-        self.assertFalse((skill_dir / "references").exists())
+        self.assertEqual(
+            {"execution-model.md"},
+            {path.name for path in (skill_dir / "references").glob("*.md")},
+        )
 
     def test_readme_explains_routed_roots_nested_children_and_cleanup(self):
         readme = " ".join(

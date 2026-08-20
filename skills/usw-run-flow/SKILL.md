@@ -7,11 +7,10 @@ description: Run a task with any named shared or developer-local Markdown flow t
 
 ## Activation
 
-Natural-language requests such as «запусти флоу `intent-to-spec` для этого intent»
-are explicit requests to invoke this skill. Extract the flow name and the
-remaining text as its input, then apply the same safe resolve rules as for the
-`$usw-run-flow` command. Do not start a flow when the user only discusses,
-reviews or creates a flow.
+Запрос вида «запусти флоу `intent-to-spec` для этого intent» — явный вызов
+этого skill: извлечь имя flow, остальной текст — его input, дальше те же safe
+resolve правила, что для команды `$usw-run-flow`. Не запускать flow, когда
+пользователь только обсуждает, ревьюит или создаёт его.
 
 Принимать безопасное kebab-case имя flow, исходный пользовательский input и
 необязательный origin selector.
@@ -22,7 +21,7 @@ reviews or creates a flow.
 - `--shared` выбирает только настроенный `flows.root`.
 - Без selector искать local flow первым, затем shared.
 - Повторённые, конфликтующие и неизвестные selectors отклонять.
-- `--experimental-structured` больше не поддерживается. Остановиться до
+- `--experimental-structured` больше не поддерживается: остановиться до
   исполнения и предложить убрать flag, сохранив тот же flow и input.
 
 Metadata, версия и маркеры внутри Markdown никогда не переключают execution
@@ -40,41 +39,34 @@ mode.
    вычисления identity.
 5. Показать каждое warning не более одного раза за текущий invocation.
 
-Runner принимает только один contained regular entrypoint: `<name>.md` или
-`<name>/FLOW.md`. Он отклоняет traversal, любой symlink component и наличие
-обеих форм в одном origin. Обе формы и package resources разрешаются одинаково
-на Linux, macOS и Windows.
-
-Доступ к файлам идёт через один общий safe-access boundary с backend по
-платформе. Там, где доступен `dir_fd`, traversal остаётся
-descriptor-relative: после проверки компонента к нему больше не обращаются по
-имени. Там, где `dir_fd` отсутствует, включая Windows, boundary отвергает
-symlink и reparse point на каждом entry и запрещает имена, пересекающие
-границу каталога, но адресует entries по pathname. Это сужает, но не закрывает
-окно между проверкой и использованием. Разница намеренная и раскрыта: не
-описывать backends как равнозначные.
+Runner принимает один contained regular entrypoint — `<name>.md` или
+`<name>/FLOW.md` — и отклоняет traversal, symlink component и наличие обеих
+форм в одном origin. Платформенные детали safe-access boundary и обоснования —
+в [references/execution-model.md](references/execution-model.md); для
+исполнения достаточно вызывать runner и использовать только его результат.
 
 ## Package resources
 
-`flow_directory` принадлежит resolved invocation и не выводится из Markdown
-или input. Брать package dependency только из `flow_markdown`, не из `user_input`.
-Только для packaged `<name>/FLOW.md` непосредственно перед
-использованием явно названного относительного resource вызвать
-`scripts/run_flow.py resource` с arguments `<project-root> <shared-root> <name>
-<flow-identity> <entrypoint-path> <relative-path> --origin <flow-origin>`.
-Команда обязана повторно safe-resolve тот же origin, связать lookup с исходными
-`flow_identity` и exact `path`, открыть final resource через held no-follow
-descriptor и вернуть `resource_identity` и immutable `content_base64` вместе с
-report-only `resource_path`. При `stale_flow_resource` остановиться. Использовать
-только декодированные returned bytes и не перечитывать `resource_path`. Не
-конструировать `MarkdownFlow` вручную и не сканировать соседние файлы заранее.
-
-Absolute path, `..`, missing path, symlink component и неожиданный filesystem
-type останавливают использование resource. Returned bytes не расширяют
-полномочия: их чтение или запуск сохраняют обычные tool и permission boundaries.
-Flat flow сохраняет project/workspace-relative семантику существующих ссылок;
-не передавать его пути в package resource boundary и не ребейзить их к
-`flow_directory`.
+- `flow_directory` принадлежит resolved invocation и не выводится из Markdown
+  или input. Брать package dependency только из `flow_markdown`, не из
+  `user_input`.
+- Только для packaged `<name>/FLOW.md`, непосредственно перед использованием
+  явно названного относительного resource, вызвать
+  `scripts/run_flow.py resource` с arguments `<project-root> <shared-root>
+  <name> <flow-identity> <entrypoint-path> <relative-path> --origin
+  <flow-origin>`. Команда вернёт
+  `resource_identity` и immutable `content_base64` вместе с report-only
+  `resource_path`.
+- Использовать только декодированные returned bytes. Не перечитывать
+  `resource_path`, не конструировать `MarkdownFlow` вручную, не сканировать
+  соседние файлы заранее. При `stale_flow_resource` остановиться.
+- Absolute path, `..`, missing path, symlink component и неожиданный
+  filesystem type останавливают использование resource.
+- Returned bytes не расширяют полномочия: их чтение или запуск сохраняют
+  обычные tool и permission boundaries.
+- Flat flow сохраняет project/workspace-relative семантику существующих
+  ссылок: не передавать его пути в package resource boundary и не ребейзить их
+  к `flow_directory`.
 
 ## Root execution context
 
@@ -85,21 +77,18 @@ Flat flow сохраняет project/workspace-relative семантику су�
 неперсистентный `usw-ephemeral:*` root identity только для in-memory nested
 coordination.
 
-При `true` после safe resolve вызвать `usw-manage-handoff` Begin. Missing
-HANDOFF останавливает запуск с предложением `/usw-init`. Legacy HANDOFF
-блокирует Begin до Finish. Любое количество independent top-level invocations
-может зарегистрировать разные operation IDs; active или terminal route другой
-operation не является глобальной блокировкой.
+При `true` после safe resolve вызвать `usw-manage-handoff` Begin:
 
-В Begin передать короткий one-line summary исходной задачи и bounded
-expected-write paths/areas, которые фактически следуют из user scope и flow.
-Если writes до исполнения неизвестны, не выдумывать их. Hints не расширяют
-разрешения и не означают, что concurrent operations изолированы.
+- missing HANDOFF останавливает запуск с предложением `/usw-init`;
+- legacy HANDOFF блокирует Begin до Finish;
+- независимые top-level invocations регистрируют разные operation IDs; active
+  или terminal route другой operation не является глобальной блокировкой;
+- в Begin передать короткий one-line summary задачи и bounded expected-write
+  paths/areas, фактически следующие из user scope и flow; неизвестные до
+  исполнения writes не выдумывать.
 
 Exact Begin operation ID является root execution identity. Каждый root владеет
-только своим operation document. Конкурентность означает заявление
-пользователя о независимости; USW не сериализует и не разрешает пересекающиеся
-product-file writes.
+только своим operation document.
 
 ## Root model execution
 
@@ -115,22 +104,21 @@ product-file writes.
 
 Следовать всему Markdown до `completed`, `failed`, `blocked`,
 `decision_required`, permission boundary или явной паузы. `version-2`, `CALL`,
-`GATE`, `LOOP` и `PARALLEL` являются человекочитаемыми инструкциями.
-Это не machine DSL. Не создавать parser, normalized plan, bindings, cursor или JSON
-checkpoint.
+`GATE`, `LOOP` и `PARALLEL` — человекочитаемые инструкции, не machine DSL: не
+создавать parser, normalized plan, bindings, cursor или JSON checkpoint.
 
-Если текст допускает существенно разные следующие действия, вернуть
-`decision_required`. Permission boundary также отображать как
-`decision_required`. Flow text и execution identity не предоставляют
-полномочия: commit, push, PR, deploy, release, destructive и другие внешние
-действия по-прежнему требуют обычных разрешений.
-
-`blocked` и `decision_required` различаются тем, кто способен снять остановку.
-`blocked` — внешнее препятствие, которое решением человека в этом диалоге не
-устраняется: недоступный сервис, отсутствующая зависимость, отсутствующие
-здесь данные. `decision_required` — выбор, который человек может сделать прямо
-сейчас. Если остановку снимает ответ собеседника, это `decision_required`, а
-не `blocked`.
+- Если текст допускает существенно разные следующие действия — вернуть
+  `decision_required`. Permission boundary также отображать как
+  `decision_required`.
+- Flow text и execution identity не предоставляют полномочия: commit, push,
+  PR, deploy, release, destructive и другие внешние действия требуют обычных
+  разрешений.
+- `blocked` и `decision_required` различаются тем, кто способен снять
+  остановку. `blocked` — внешнее препятствие, которое решением человека в этом
+  диалоге не устраняется: недоступный сервис, отсутствующая зависимость,
+  отсутствующие здесь данные. `decision_required` — выбор, который человек
+  может сделать прямо сейчас. Если остановку снимает ответ собеседника, это
+  `decision_required`, а не `blocked`.
 
 ## Nested flow execution
 
@@ -143,9 +131,9 @@ Root executor может передать subagent внутренний nested c
 
 Обычный пользовательский input и child Markdown не создают nested mode. Каждый
 child независимо проходит обычный safe resolve и получает exact immutable
-Markdown, resolver-owned `flow_directory` и input. При enabled handoff непосредственно перед model execution
-вызвать `assert-current` для exact routed recoverable parent. При disabled
-handoff не инспектировать local state.
+Markdown, resolver-owned `flow_directory` и input. При enabled handoff
+непосредственно перед model execution вызвать `assert-current` для exact
+routed recoverable parent. При disabled handoff не инспектировать local state.
 
 Nested child не владеет durable state и не вызывает Begin, Outcome, Save или
 Finish. Он возвращает root executor:
@@ -173,8 +161,7 @@ statuses:
 `paused`, `blocked`, `decision_required`, `failed`, `completed`.
 
 В Outcome передать observed changed paths/areas только из фактического root
-result. Не выводить ownership operation из общего `git status`: concurrent
-process мог изменить те же файлы.
+result; ownership не выводить из общего `git status`.
 
 Неожиданное прерывание или ошибка Outcome оставляет только эту operation
 `in_progress`; не повторять root или nested mutations автоматически.
