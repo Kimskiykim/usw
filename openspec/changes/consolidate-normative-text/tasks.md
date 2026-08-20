@@ -2,7 +2,7 @@
 
 - [x] 1.1 Record the baseline: run every behavior scenario on one runner and write down the observed rates, so a later drop is attributable rather than arguable.
 - [x] 1.2 Inventory every phrase-level assertion over instruction text, naming for each the invariant it stands for and whether a behavior scenario can express it. Recorded in the Inventory section below.
-- [ ] 1.3 For each invariant that a scenario can express, add the scenario and observe it passing. Assertions stay untouched in this task.
+- [ ] 1.3 For each invariant that a scenario can express, add the scenario and observe it passing. Remaining assertions stay untouched in this task (the create-flow assertions were already removed in 3.5; this task covers the other skills). Blocks 3.1, 3.2 and 3.4: no skill is restructured before its invariants have scenario coverage.
 - [ ] 1.4 Record the invariants that no honest scenario can cover — durable-state discipline is the known case — and keep their phrase assertions, marked as deliberate.
 
 ## 2. Reconcile the normative source
@@ -24,7 +24,7 @@
   - an overloaded draft triggers a complexity warning that suggests `$usw-assess-flow` but does not block the write;
   - `изменить` previews without writing; only a later explicit `применить` writes;
   - editing an existing flat ordinary flow neither migrates it to `version-2` nor moves it between layouts.
-- [ ] 3.7 Add a `guided-flow-authoring` delta spec capturing the shipped authoring behavior (recipe catalog with two-level reading, eight added recipes, design-from-goal, complexity signals, adaptive intensity with its safety floor) and sync it to `openspec/specs/guided-flow-authoring/spec.md`, restoring the spec as the normative source.
+- [ ] 3.7 The `guided-flow-authoring` delta spec already exists and is synced to `openspec/specs/guided-flow-authoring/spec.md`; verify it fully captures the shipped authoring behavior (recipe catalog with two-level reading, eight added recipes, design-from-goal, complexity signals, adaptive intensity with its safety floor), fill any gaps, and close.
 
 ## 4. Language consistency
 
@@ -37,6 +37,12 @@
 - [ ] 5.1 Report every scenario's rate before and after the whole change, on the same runner, and account for any drop.
 - [ ] 5.2 Run the complete suite on the supported Python floor and latest, `openspec validate --all --strict`, `openspec status --change consolidate-normative-text --json` and `git diff --check`, recording each result.
 - [ ] 5.3 Confirm the deterministic suite contains no assertion that a particular sentence appears, except those recorded in 1.4.
+
+## Agreed order (recorded 2026-08-21)
+
+1.3–1.4 → 2.1–2.3 → 3.1/3.2/3.4 → 3.7 (verify-and-close) → 4.1–4.3 → 5.1–5.3.
+1.3 is a hard blocker for the skill restructures — see the Deviation section for
+why this ordering is the change's safety property.
 
 ## Deviation (recorded 2026-08-21)
 
@@ -108,7 +114,12 @@ those edits, same runner, three runs each, 2026-08-21: all five scenarios
 
 Audit follow-up: authoring scenarios now inspect declared files before the
 temporary workdir is removed. A runner that only claims success no longer
-passes, and runner errors return non-zero instead of `0/0 [pass]`.
+passes, and runner errors return non-zero instead of `0/0 [pass]`. The
+design-scan input was tightened to «ровно с этим текстом, без изменений» so
+its wording licenses the byte-equality check. Re-measured under these file
+expectations, same runner, three runs each, 2026-08-21: all five scenarios
+`3/3 [pass]` — the earlier rates above predate the file checks and are kept
+only as history.
 
 Scenario design lessons recorded in each scenario's notes: an agent host's
 stdout is a summary, so content invariants need the input to ask for the full
