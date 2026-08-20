@@ -83,6 +83,18 @@ class AtomicSkillContractTests(unittest.TestCase):
         ):
             self.assertIn(fragment, run)
 
+    def test_nested_child_does_not_own_durable_state(self):
+        """Deliberate phrase assertion: the harness cannot observe state calls."""
+
+        run = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "Nested child не владеет durable state и не вызывает Begin, Outcome, Save или Finish.",
+            " ".join(run.split()),
+        )
+
     def test_create_flow_keeps_rejected_blocks_out(self):
         """Deliberate phrase assertion: semantic absence has no honest marker."""
 
