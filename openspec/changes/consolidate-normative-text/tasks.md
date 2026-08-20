@@ -2,7 +2,7 @@
 
 - [x] 1.1 Record the baseline: run every behavior scenario on one runner and write down the observed rates, so a later drop is attributable rather than arguable.
 - [x] 1.2 Inventory every phrase-level assertion over instruction text, naming for each the invariant it stands for and whether a behavior scenario can express it. Recorded in the Inventory section below.
-- [ ] 1.3 For each invariant that a scenario can express, add the scenario and observe it passing. Remaining assertions stay untouched in this task (the create-flow assertions were already removed in 3.5; this task covers the other skills). Blocks 3.1, 3.2 and 3.4: no skill is restructured before its invariants have scenario coverage.
+- [x] 1.3 For each invariant that a scenario can express, add the scenario and observe it passing. Remaining assertions stay untouched in this task (the create-flow assertions were already removed in 3.5; this task covers the other skills). Blocks 3.1, 3.2 and 3.4: no skill is restructured before its invariants have scenario coverage. Done 2026-08-21: `find-does-not-execute` observes that discovery returns an explicit-origin run command without creating the fixture flow's sentinel; `assess-does-not-read-siblings` treats a named package resource as `unverified` without echoing its sibling-only canary. Same isolated `{workdir}` Codex runner, three runs each: both scenarios `3/3 [pass]`. The assessor canary is behavioral evidence rather than syscall proof; that limit is stated in the scenario notes.
 - [ ] 1.4 Record the invariants that no honest scenario can cover — durable-state discipline is the known case — and keep their phrase assertions, marked as deliberate.
 
 ## 2. Reconcile the normative source

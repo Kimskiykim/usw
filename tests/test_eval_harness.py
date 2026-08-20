@@ -247,6 +247,12 @@ class ScenarioLoadingTests(unittest.TestCase):
             with self.subTest(scenario=directory.name):
                 HARNESS.load_scenario(directory)
 
+    def test_inventory_behavior_scenarios_are_checked_in(self):
+        names = {path.name for path in HARNESS.discover_scenarios()}
+
+        self.assertIn("find-does-not-execute", names)
+        self.assertIn("assess-does-not-read-siblings", names)
+
 
 class ExpectationTests(unittest.TestCase):
     def scenario(self, **overrides) -> "HARNESS.Scenario":
