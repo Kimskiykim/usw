@@ -24,7 +24,7 @@
   - an overloaded draft triggers a complexity warning that suggests `$usw-assess-flow` but does not block the write;
   - `изменить` previews without writing; only a later explicit `применить` writes;
   - editing an existing flat ordinary flow neither migrates it to `version-2` nor moves it between layouts.
-- [ ] 3.7 The `guided-flow-authoring` delta spec already exists and is synced to `openspec/specs/guided-flow-authoring/spec.md`; verify it fully captures the shipped authoring behavior (recipe catalog with two-level reading, eight added recipes, design-from-goal, complexity signals, adaptive intensity with its safety floor), fill any gaps, and close.
+- [x] 3.7 The `guided-flow-authoring` delta spec already exists and is synced to `openspec/specs/guided-flow-authoring/spec.md`; verify it fully captures the shipped authoring behavior (recipe catalog with two-level reading, eight added recipes, design-from-goal, complexity signals, adaptive intensity with its safety floor), fill any gaps, and close. Verified 2026-08-21 with no gaps: delta and main both require catalog-first/two-level reads, enumerate the full fifteen-recipe library including the eight additions (subagent review/orchestration, escalation, variant selection, input preflight, external-event wait, adaptive intensity and list processing), agree goal-derived structure before writing, preserve every declared complexity signal with warn-without-blocking semantics, and require adaptive intensity to use observable signals, keep irreversible-action confirmation at every level and choose the higher level under uncertainty. The only main-vs-delta content difference is the pre-existing capability-reuse requirement, correctly absent from this change's delta.
 
 ## 4. Language consistency
 
