@@ -321,9 +321,14 @@ class PackageLayoutTests(unittest.TestCase):
             "`unverified`",
             "`LOOP`",
             "`decision_required`",
+            "references/assessment-model.md",
         ):
             self.assertIn(fragment, skill)
 
+        self.assertEqual(
+            {"assessment-model.md"},
+            {path.name for path in (skill_dir / "references").glob("*.md")},
+        )
         self.assertIn("allow_implicit_invocation: false", metadata)
         self.assertIn("usw-assess-flow", command)
         self.assertFalse((skill_dir / "scripts").exists())

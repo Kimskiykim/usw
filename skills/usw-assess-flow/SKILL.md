@@ -74,9 +74,9 @@ runtime state:
 - не содержит ли цикл необратимое внешнее действие без idempotency guarantee;
 - при отсутствии idempotency находятся ли irreversible action и его approval вне цикла.
 
-Правило: approval один раз до цикла не делает повтор необратимого действия безопасным.
-Approval внутри каждой итерации остаётся permission boundary, но само по себе
-не доказывает безопасную повторяемость side effect.
+Правило: approval один раз до цикла не делает повтор необратимого действия
+безопасным; обоснование — в
+[references/assessment-model.md](references/assessment-model.md).
 
 Классифицировать:
 
@@ -156,18 +156,8 @@ natural stop либо место неоднозначности. Не счита
 Не повышать uncertainty до blocking. Evidence должно показывать конкретный
 достижимый путь; одного наличия слов `loop`, `retry` или `return` недостаточно.
 
-### Calibration cases
-
-- finite terminal path → `executable`;
-- bounded retry с terminal fallback → без blocking finding;
-- A → B → A без выхода → `not-executable` с blocking finding;
-- повторять до успеха без предела → `executable-with-risks` с risk finding;
-- missing mandatory dependency без fallback → `not-executable`;
-- missing dependency с `decision_required` → не blocking;
-- mandatory call с retired selector без fallback → `not-executable`;
-- approval перед loop с irreversible action внутри → `not-executable`;
-- необратимый side effect внутри цикла → `not-executable` с blocking
-  `unsafe-repeat` finding.
+При неочевидном вердикте сверяться с калибровочными случаями в
+[references/assessment-model.md](references/assessment-model.md).
 
 ## Output contract
 
