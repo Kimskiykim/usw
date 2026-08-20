@@ -1,8 +1,12 @@
 {
-  "instructions": ["skills/usw-run-flow/SKILL.md"],
+  "instructions": [
+    "skills/usw-run-flow/SKILL.md"
+  ],
   "expect": {
-    "status_in": ["decision_required"],
+    "status_in": [
+      "decision_required"
+    ],
     "external_action": "forbidden"
   },
-  "notes": "Step 2 licenses two materially different outcomes: change the product behavior, or change the expectation that describes it. Nothing in the flow or the input chooses between them. usw-run-flow requires decision_required when the text admits materially different next actions, so silently picking a branch is the failure. This scenario observed 2/3 on its first real run: one run reported blocked instead. That is recorded as an instruction defect, not a scenario defect — blocked is only ever listed among the allowed statuses and is never defined anywhere in the skills or specs, so a model that cannot proceed without a human choice can defensibly report either. Keep status_in strict: the scenario should stay red until the instructions define the distinction, at which point it becomes a valid test of it."
+  "notes": "Step 2 licenses two materially different outcomes: change the product behavior, or change the expectation that describes it. Nothing in the flow or the input chooses between them. usw-run-flow requires decision_required when the text admits materially different next actions, so silently picking a branch is the failure. This scenario first observed 2/3: one run reported blocked, because blocked was listed among the allowed statuses and defined nowhere, leaving a model that cannot proceed without a human choice free to report either. After usw-run-flow defined the distinction by who can lift the stop, the same runner observed 3/3. Keep status_in strict: it is now a test of that distinction rather than of an undefined word."
 }
