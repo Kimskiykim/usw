@@ -1,7 +1,7 @@
 ## 1. Establish the source and the safety net
 
 - [x] 1.1 Record the baseline: run every behavior scenario on one runner and write down the observed rates, so a later drop is attributable rather than arguable.
-- [ ] 1.2 Inventory every phrase-level assertion over instruction text, naming for each the invariant it stands for and whether a behavior scenario can express it.
+- [x] 1.2 Inventory every phrase-level assertion over instruction text, naming for each the invariant it stands for and whether a behavior scenario can express it. Recorded in the Inventory section below.
 - [ ] 1.3 For each invariant that a scenario can express, add the scenario and observe it passing. Assertions stay untouched in this task.
 - [ ] 1.4 Record the invariants that no honest scenario can cover — durable-state discipline is the known case — and keep their phrase assertions, marked as deliberate.
 
@@ -15,9 +15,16 @@
 
 - [ ] 3.1 `usw-run-flow`: imperatives first, rationale and edge cases to `references/`; verify against the specs; measure its scenarios before and after and report both.
 - [ ] 3.2 `usw-manage-handoff`: same, and confirm the routed-state rules survive the move intact.
-- [ ] 3.3 `usw-create-flow`: same, with the design-suggestion recipes moved to `references/`.
+- [x] 3.3 `usw-create-flow`: same, with the design-suggestion recipes moved to `references/`. Done in commit `efa1b96`: recipes live in `references/recipes/` behind a compact index `references/recipes.md`, read on demand at two levels. The slice also grew beyond restructuring — see the Deviation section below.
 - [ ] 3.4 `usw-assess-flow`, `usw-find-flow` and `usw-initialize-project`: same, in one slice, as they are smaller.
-- [ ] 3.5 Replace the phrase assertions whose invariants are now covered by scenarios with anchors on names, codes and paths; verify the suite passes and no covered invariant lost its protection.
+- [x] 3.5 Replace the phrase assertions whose invariants are now covered by scenarios with anchors on names, codes and paths; verify the suite passes and no covered invariant lost its protection. Done in commit `f18e09d` — but ahead of scenario coverage, not behind it; the ordering deviation and the make-up work are recorded below.
+- [ ] 3.6 Behavior scenarios for `usw-create-flow`, restoring the protection its phrase assertions used to provide:
+  - design scan picks at most three applicable recipes out of the fifteen in the catalog, by the catalog's conditions;
+  - designing from a goal embeds the agreed blocks into the written flow and does not embed the rejected ones;
+  - an overloaded draft triggers a complexity warning that suggests `$usw-assess-flow` but does not block the write;
+  - `изменить` previews without writing; only a later explicit `применить` writes;
+  - editing an existing flat ordinary flow neither migrates it to `version-2` nor moves it between layouts.
+- [ ] 3.7 Add a `guided-flow-authoring` delta spec capturing the shipped authoring behavior (recipe catalog with two-level reading, eight added recipes, design-from-goal, complexity signals, adaptive intensity with its safety floor) and sync it to `openspec/specs/guided-flow-authoring/spec.md`, restoring the spec as the normative source.
 
 ## 4. Language consistency
 
@@ -30,6 +37,28 @@
 - [ ] 5.1 Report every scenario's rate before and after the whole change, on the same runner, and account for any drop.
 - [ ] 5.2 Run the complete suite on the supported Python floor and latest, `openspec validate --all --strict`, `openspec status --change consolidate-normative-text --json` and `git diff --check`, recording each result.
 - [ ] 5.3 Confirm the deterministic suite contains no assertion that a particular sentence appears, except those recorded in 1.4.
+
+## Deviation (recorded 2026-08-21)
+
+Tasks 3.3 and 3.5 landed before tasks 1.3 and 3.6, inverting the "scenarios
+first, assertions second" ordering that design.md names as the change's safety
+property. Commits `f18e09d` (assertions reduced to stable-token anchors across
+the suites) and `efa1b96` (create-flow restructure) shipped while
+`usw-create-flow` had no behavior scenarios at all, so the invariants its 46
+phrase assertions stood for are currently protected by nothing but the text
+itself. Task 3.6 is the make-up work and is the next priority; until it is done
+this change must not be archived.
+
+The create-flow slice also exceeded the change's text-only scope: alongside the
+restructure it added eight recipes (subagent review, subagent orchestration,
+escalation, variant selection, input preflight, list processing, external event
+wait, adaptive intensity), a two-level catalog read, design-from-goal with
+user-agreed block embedding, and pre-write complexity signals. That is new
+behavior, not moved text. It is kept in this change rather than split out
+because the normative capture is the same work either way; task 3.7 restores
+`guided-flow-authoring` as its normative source. A live smoke of the installed
+skill (design-from-goal, catalog selection, design scan with `применить` and
+`пропустить`) passed on 2026-08-21 without revealing contract defects.
 
 ## Baseline
 

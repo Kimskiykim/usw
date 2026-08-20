@@ -49,6 +49,10 @@ measurement instead of by asserting that a sentence is present.
 
 - `flow-behavior-evaluation`: Scenarios become the mechanism that protects
   meaning-level invariants when phrase-level assertions are withdrawn.
+- `guided-flow-authoring`: The design-guidance contract catches up with the
+  shipped skill — a fifteen-recipe catalog read at two levels, design-from-goal
+  with user-agreed block embedding, and pre-write complexity signals that warn
+  without blocking.
 
 ## Impact
 
@@ -57,12 +61,19 @@ measurement instead of by asserting that a sentence is present.
   `tests/test_platform_support.py` and `tests/test_package_layout.py`.
 - `README.md` and `openspec/specs/*`.
 - `evals/scenarios/`, which gains scenarios before assertions are removed.
-- No change to any runtime behavior, permission boundary, or file format.
+- `openspec/specs/guided-flow-authoring/spec.md`, which must be brought back in
+  front of the shipped create-flow behavior (recipe catalog, design-from-goal,
+  complexity signals) via a delta in this change.
+- No change to any runtime behavior, permission boundary, or file format —
+  except the create-flow slice, which deliberately shipped new authoring
+  behavior; see the Deviation note in tasks.md.
 
 ## Non-Goals
 
 - Changing what any skill does. This change moves and rewrites text; a behavior
-  difference found during it is a defect, not an improvement.
+  difference found during it is a defect, not an improvement. The create-flow
+  slice breached this once, deliberately — the breach and its normative
+  follow-up are recorded in tasks.md and design.md rather than hidden here.
 - Changing the project's language. Russian is the author's decision; this change
   only makes it consistent.
 - Touching frontmatter `description` fields, which drive skill selection.

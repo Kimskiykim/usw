@@ -1,10 +1,4 @@
-# guided-flow-authoring Specification
-
-## Purpose
-Define bounded, human-controlled design guidance applied after a Markdown flow
-is created, without silently changing the saved flow or inventing capabilities.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Successful creation includes a bounded design scan
 After the initial save and report of the requested flow, `usw-create-flow` SHALL
@@ -70,47 +64,7 @@ completeness.
   irreversible external action is not disabled at any level, and uncertain
   signals select the higher level
 
-### Requirement: Every suggestion is actionable
-Each suggestion MUST identify what to add, explain why it matters to the saved
-flow and provide ready Markdown with `применить`, `изменить` and `пропустить`
-choices.
-
-#### Scenario: Ordinary flow receives guidance
-- **WHEN** the saved flow uses ordinary Markdown
-- **THEN** the proposed fragment uses ordinary prose without structured markers
-
-#### Scenario: Structured flow receives guidance
-- **WHEN** the saved flow uses structured authoring
-- **THEN** the proposed fragment MAY use only applicable `CALL`, `GATE`, `LOOP`
-  and `PARALLEL` markers
-
-### Requirement: Capability reuse requires an explicitly available skill
-The skill MUST suggest `CALL SKILL` only when the user or current flow explicitly
-names a skill present in the current available-skills list. It MUST NOT discover
-contracts or suggest `CALL FLOW` in this version.
-
-#### Scenario: No capability is named
-- **WHEN** a flow contains a generic step without an explicitly named skill from
-  the current available-skills list
-- **THEN** the skill does not discover, invent or recommend a skill target
-
-### Requirement: Revision remains human-controlled
-`usw-create-flow` MUST change the saved flow only after the user explicitly
-selects a suggestion and MUST preserve the selected origin and authoring style.
-
-#### Scenario: User selects one suggestion
-- **WHEN** three suggestions are shown and the user applies only one
-- **THEN** only that revision is written and the other suggestions have no
-  effect
-
-#### Scenario: User asks to change a suggestion
-- **WHEN** the user chooses `изменить`
-- **THEN** the skill previews a revised fragment and does not write until a
-  later explicit `применить`
-
-#### Scenario: User skips all suggestions
-- **WHEN** the user selects no proposed revision
-- **THEN** the saved flow remains byte-for-byte unchanged
+## ADDED Requirements
 
 ### Requirement: Designing from a goal is agreed before writing
 When the user describes a goal rather than ready steps, `usw-create-flow` SHALL

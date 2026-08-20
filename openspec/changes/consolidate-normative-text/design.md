@@ -34,7 +34,10 @@ of by asserting that a sentence describing it is present.
 
 **Non-Goals:**
 
-- Changing what any skill does.
+- Changing what any skill does. *(Breached once, deliberately: the create-flow
+  slice shipped new authoring behavior alongside the restructure — see the
+  Deviation notes here and in tasks.md; task 3.7 gives that behavior a
+  normative home in `guided-flow-authoring`.)*
 - Choosing the project's language. Russian is decided; this change only makes it
   consistent.
 - Removing every substring assertion.
@@ -48,6 +51,12 @@ stood for. This ordering is the safety property of the whole change: it is the
 difference between replacing a weak check with a real one and simply deleting a
 check. It also front-loads the work that can fail — writing a scenario may reveal
 that an invariant was never actually testable.
+
+*Deviation, recorded 2026-08-21:* the create-flow slice inverted this ordering —
+its phrase assertions were reduced to stable-token anchors together with the
+restructure, before any create-flow scenario existed. The debt is explicit:
+tasks.md 3.6 lists the scenarios that restore coverage, and the change is not
+archivable until they exist. The ordering rule stands for every remaining slice.
 
 ### Specs are the source, skills are derived
 
