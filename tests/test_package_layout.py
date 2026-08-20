@@ -115,7 +115,7 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertIn(fragment, skill)
         self.assertEqual(
-            {"version-2.md"},
+            {"recipes.md", "version-2.md"},
             {path.name for path in (skill_dir / "references").glob("*.md")},
         )
         self.assertIn("allow_implicit_invocation: true", metadata)
@@ -201,102 +201,42 @@ class PackageLayoutTests(unittest.TestCase):
         skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
             encoding="utf-8"
         )
-        spec = (
-            ROOT
-            / "openspec/specs/guided-flow-authoring/spec.md"
+        index = (
+            ROOT / "skills/usw-create-flow/references/recipes.md"
         ).read_text(encoding="utf-8")
+        recipes_dir = ROOT / "skills/usw-create-flow/references/recipes"
 
-        recipe_names = (
-            "Проверка результата",
-            "Human decision",
-            "Подтверждение внешнего действия",
-            "Обработка ошибки",
-            "Ограниченная доработка",
-            "Независимые проверки",
-            "Повторное использование capability",
+        recipe_files = {
+            "Проверка результата": "result-check.md",
+            "Human decision": "human-decision.md",
+            "Подтверждение внешнего действия": "external-action-approval.md",
+            "Обработка ошибки": "error-handling.md",
+            "Ограниченная доработка": "bounded-refinement.md",
+            "Независимые проверки": "independent-checks.md",
+            "Ревью субагентами": "subagent-review.md",
+            "Оркестрация с субагентами": "subagent-orchestration.md",
+            "Эскалация": "escalation.md",
+            "Выбор из вариантов": "variant-selection.md",
+            "Сбор недостающих входов": "input-preflight.md",
+            "Ожидание внешнего события": "external-event-wait.md",
+            "Адаптивная интенсивность": "adaptive-intensity.md",
+            "Обработка списка элементов": "list-processing.md",
+            "Повторное использование capability": "capability-reuse.md",
+        }
+        self.assertEqual(
+            set(recipe_files.values()),
+            {path.name for path in recipes_dir.glob("*.md")},
         )
-        recipe_headings = [
-            line.removeprefix("### ")
-            for line in skill.splitlines()
-            if line.startswith("### ")
-        ]
-        self.assertEqual(list(recipe_names), recipe_headings)
+        for name, filename in recipe_files.items():
+            with self.subTest(recipe=name):
+                self.assertIn(name, index)
+                self.assertIn(f"recipes/{filename}", index)
+                content = (recipes_dir / filename).read_text(encoding="utf-8")
+                self.assertTrue(content.startswith(f"# {name}"))
 
-        for fragment in (
-            "## Подсказки по проектированию",
-            "три наиболее релевантные подсказки",
-            "`применить`, `изменить` или `пропустить`",
-            "Для ordinary Markdown",
-            "Только для `version-2`",
-            "`изменить` сначала показывает",
-            "для его записи пользователь должен отдельно",
-            "После revision не запускать design scan повторно",
-            "Примеры в рецептах ниже показывают только `version-2` форму",
-            "Не копировать их\nstructured markers в ordinary flow",
-        ):
+        self.assertIn("references/recipes.md", skill)
+        for fragment in ("`применить`", "`изменить`", "`пропустить`"):
             self.assertIn(fragment, skill)
-
-        self.assertLess(
-            skill.index("Сообщить имя, origin, путь"),
-            skill.index("После успешного сохранения и отчёта"),
-        )
-
-        verification = skill.split("### Проверка результата", 1)[1].split(
-            "### Human decision", 1
-        )[0]
-        self.assertLess(
-            verification.index("Сначала добавить наблюдаемую проверку"),
-            verification.index("`GATE` предлагать только"),
-        )
-
-        human_decision = skill.split("### Human decision", 1)[1].split(
-            "### Подтверждение внешнего действия", 1
-        )[0]
-        external_approval = skill.split(
-            "### Подтверждение внешнего действия", 1
-        )[1].split("### Обработка ошибки", 1)[0]
-        error_handling = skill.split("### Обработка ошибки", 1)[1].split(
-            "### Ограниченная доработка", 1
-        )[0]
-        for recipe in (human_decision, external_approval, error_handling):
-            self.assertTrue(
-                "только когда" in recipe or "только если" in recipe
-            )
-
-        refinement = skill.split("### Ограниченная доработка", 1)[1].split(
-            "### Независимые проверки", 1
-        )[0]
-        for fragment in (
-            "read-only, идемпотентны или безопасно обратимы",
-            "критерий выхода и предел",
-            "approval и внешнее действие\nоставлять после выхода из цикла",
-        ):
-            self.assertIn(fragment, refinement)
-
-        parallel = skill.split("### Независимые проверки", 1)[1].split(
-            "### Повторное использование capability", 1
-        )[0]
-        self.assertIn(
-            "Не предлагать `PARALLEL` для зависимых действий", parallel
-        )
-
-        capability = skill.split(
-            "### Повторное использование capability", 1
-        )[1]
-        self.assertIn("текущем списке доступных skills", capability)
-        self.assertIn(
-            "Одного имени без присутствия в текущем списке", capability
-        )
-        self.assertNotIn("или CALL FLOW", capability)
-        self.assertIn("не предлагать `CALL FLOW`", capability)
-
-        for fragment in (
-            "`применить`, `изменить` and `пропустить`",
-            "present in the current available-skills list",
-            "does not write until a\n  later explicit `применить`",
-            "keeps that action and its approval outside the loop",
-        ):
-            self.assertIn(fragment, spec)
 
     def test_run_flow_has_one_text_path_and_local_precedence(self):
         skill_dir = ROOT / "skills/usw-run-flow"

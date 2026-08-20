@@ -97,7 +97,7 @@ class TextFlowContractTests(unittest.TestCase):
     def test_create_flow_has_one_structured_authoring_reference(self):
         reference_root = ROOT / "skills/usw-create-flow/references"
         self.assertEqual(
-            {"version-2.md"},
+            {"recipes.md", "version-2.md"},
             {path.name for path in reference_root.glob("*.md")},
         )
         content = (reference_root / "version-2.md").read_text(encoding="utf-8")
