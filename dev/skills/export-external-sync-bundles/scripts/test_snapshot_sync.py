@@ -106,6 +106,54 @@ def export_snapshot(
 
 
 class SnapshotSyncTest(unittest.TestCase):
+    def test_export_batch_reads_unique_blob_oids_with_one_process(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            repo = Path(temp) / "canonical"
+            repo.mkdir()
+            run("git", "init", "-q", str(repo))
+            run("git", "config", "user.email", "test@example.invalid", cwd=repo)
+            run("git", "config", "user.name", "Snapshot Test", cwd=repo)
+            for index in range(75):
+                (repo / f"file-{index:03}.txt").write_bytes(b"shared blob bytes\n")
+            run("git", "add", ".", cwd=repo)
+            run("git", "commit", "-qm", "many files", cwd=repo)
+
+            real_popen = subprocess.Popen
+            commands: list[list[str]] = []
+            batch_inputs: list[bytes] = []
+
+            class RecordingProcess:
+                def __init__(self, *args, **kwargs):
+                    self.command = args[0]
+                    commands.append(self.command)
+                    self.process = real_popen(*args, **kwargs)
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    return self.process.__exit__(*args)
+
+                def __getattr__(self, name):
+                    return getattr(self.process, name)
+
+                def communicate(self, input=None, timeout=None):
+                    if "--batch" in self.command:
+                        batch_inputs.append(input)
+                    return self.process.communicate(input=input, timeout=timeout)
+
+            with mock.patch.object(snapshot_sync.subprocess, "Popen", RecordingProcess):
+                files, blobs, excluded = snapshot_sync.canonical_files(repo, "HEAD", [], [])
+
+            cat_file_commands = [command for command in commands if "cat-file" in command]
+            self.assertEqual(len(files), 75)
+            self.assertEqual(len(blobs), 1)
+            self.assertEqual(excluded, [])
+            self.assertEqual(len(cat_file_commands), 1)
+            self.assertIn("--batch", cat_file_commands[0])
+            self.assertNotIn("blob", cat_file_commands[0])
+            self.assertEqual(batch_inputs[0].count(b"\n"), 1)
+
     def test_export_is_self_contained_and_contains_exact_tracked_scope(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

@@ -130,6 +130,40 @@ def cat_blob(repo: Path, oid: str) -> bytes:
     return result.stdout
 
 
+def cat_blobs(repo: Path, oids: list[str]) -> dict[str, bytes]:
+    unique_oids = list(dict.fromkeys(oids))
+    if not unique_oids:
+        return {}
+    process = subprocess.Popen(
+        ["git", "-C", str(repo), "cat-file", "--batch"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    output, error = process.communicate(
+        b"".join(oid.encode("ascii") + b"\n" for oid in unique_oids)
+    )
+    if process.returncode:
+        raise SnapshotError(error.decode("utf-8", "replace").strip() or "git cat-file --batch failed")
+    stream = io.BytesIO(output)
+    blobs: dict[str, bytes] = {}
+    for expected_oid in unique_oids:
+        try:
+            actual_oid, object_type, raw_size = stream.readline().rstrip(b"\n").split()
+            size = int(raw_size)
+        except (ValueError, TypeError) as exc:
+            raise SnapshotError(f"Invalid git cat-file --batch response for {expected_oid}") from exc
+        if actual_oid.decode("ascii") != expected_oid or object_type != b"blob":
+            raise SnapshotError(f"Unexpected git object for {expected_oid}")
+        content = stream.read(size)
+        if len(content) != size or stream.read(1) != b"\n":
+            raise SnapshotError(f"Truncated git blob response for {expected_oid}")
+        blobs[expected_oid] = content
+    if stream.read():
+        raise SnapshotError("Unexpected trailing data from git cat-file --batch")
+    return blobs
+
+
 def descriptor(path: str, mode: str, oid: str, content: bytes) -> dict[str, Any]:
     return {
         "path": safe_path(path),
@@ -161,6 +195,7 @@ def canonical_files(
     files: list[dict[str, Any]] = []
     blobs: dict[str, bytes] = {}
     excluded: list[str] = []
+    selected: list[tuple[str, str, str]] = []
     for record in result.stdout.rstrip(b"\0").split(b"\0") if result.stdout else []:
         header, separator, raw_path = record.partition(b"\t")
         if not separator:
@@ -179,7 +214,10 @@ def canonical_files(
             continue
         if object_type != "blob" or mode not in {"100644", "100755", "120000"}:
             raise SnapshotError(f"Unsupported tracked object {object_type}/{mode} at {path}; gitlinks are not snapshot files")
-        content = cat_blob(repo, oid)
+        selected.append((path, mode, oid))
+    contents = cat_blobs(repo, [oid for _, _, oid in selected])
+    for path, mode, oid in selected:
+        content = contents[oid]
         if mode == "120000":
             safe_symlink_target(path, content)
         item = descriptor(path, mode, oid, content)
