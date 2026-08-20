@@ -227,11 +227,30 @@ def build_prompt(scenario: Scenario) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
+def split_runner_command(command: str) -> list[str]:
+    """Split a runner command into argv the way this platform expects.
+
+    POSIX splitting treats a backslash as an escape, which silently mangles
+    every Windows path — `C:\\Python\\python.exe` arrives as `C:Pythonpython.exe`
+    and the runner fails to start. Windows quoting keeps the backslashes, so
+    surrounding quotes are stripped afterwards instead.
+    """
+
+    if os.name != "nt":
+        return shlex.split(command)
+    tokens = []
+    for token in shlex.split(command, posix=False):
+        if len(token) > 1 and token[0] == token[-1] and token[0] in "\"'":
+            token = token[1:-1]
+        tokens.append(token)
+    return tokens
+
+
 def run_once(command: str, prompt: str, timeout: float) -> RunOutcome:
     """Invoke the external runner. Runner trouble is never behavior data."""
 
     try:
-        argv = shlex.split(command)
+        argv = split_runner_command(command)
     except ValueError as error:
         return RunOutcome(text=None, runner_error=f"runner command is not parseable: {error}")
     if not argv:

@@ -31,10 +31,10 @@ class ReplanningTests(unittest.TestCase):
         self.git(project, "init", "--quiet")
         self.git(project, "config", "user.name", "USW Tests")
         self.git(project, "config", "user.email", "usw@example.invalid")
-        (project / ".gitignore").write_text("ignored.txt\n.usw/\n", encoding="utf-8")
-        (project / "product.txt").write_text("one\n", encoding="utf-8")
+        (project / ".gitignore").write_text("ignored.txt\n.usw/\n", encoding="utf-8", newline="\n")
+        (project / "product.txt").write_text("one\n", encoding="utf-8", newline="\n")
         (project / "usw/changes").mkdir(parents=True)
-        (project / "usw/changes/state.md").write_text("workflow\n", encoding="utf-8")
+        (project / "usw/changes/state.md").write_text("workflow\n", encoding="utf-8", newline="\n")
         self.git(project, "add", ".gitignore", "product.txt", "usw/changes/state.md")
         self.git(project, "commit", "--quiet", "-m", "initial")
         return project
@@ -84,7 +84,7 @@ class ReplanningTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project = self.project(directory)
             before = self.identity(project)
-            (project / "ignored.txt").write_text("ignored\n", encoding="utf-8")
+            (project / "ignored.txt").write_text("ignored\n", encoding="utf-8", newline="\n")
             self.assertEqual(before, self.identity(project))
 
     @unittest.skipIf(os.name == "nt", "POSIX mode and symlink semantics required")
@@ -92,7 +92,7 @@ class ReplanningTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project = self.project(directory)
             script = project / "tool.sh"
-            script.write_text("#!/bin/sh\n", encoding="utf-8")
+            script.write_text("#!/bin/sh\n", encoding="utf-8", newline="\n")
             link = project / "current-tool"
             os.symlink("tool.sh", link)
             self.git(project, "add", "tool.sh", "current-tool")
@@ -143,8 +143,8 @@ class ReplanningTests(unittest.TestCase):
             task = root / "task.md"
             original_index = "- [x] 7 [Fix](tasks/7-fix/task.md)\n"
             original_task = "## Milestone log\n"
-            tasks.write_text(original_index, encoding="utf-8")
-            task.write_text(original_task, encoding="utf-8")
+            tasks.write_text(original_index, encoding="utf-8", newline="\n")
+            task.write_text(original_task, encoding="utf-8", newline="\n")
 
             outcome = ARTIFACTS.reopen_task(
                 tasks,

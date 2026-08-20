@@ -103,7 +103,7 @@ class TextFlowRunnerTests(unittest.TestCase):
                 package = shared / "review"
                 script = package / "scripts/check.py"
                 script.parent.mkdir(parents=True)
-                (package / "FLOW.md").write_text(markdown, encoding="utf-8")
+                (package / "FLOW.md").write_text(markdown, encoding="utf-8", newline="\n")
                 script.write_text("print('ok')\n", encoding="utf-8")
                 flow = RUNNER.resolve_markdown_flow(project, shared, "review")
 
@@ -254,7 +254,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             project, shared = self.project(directory)
             package = shared / "review"
             package.mkdir()
-            (package / "FLOW.md").write_text("Review the input.\n", encoding="utf-8")
+            (package / "FLOW.md").write_text("Review the input.\n", encoding="utf-8", newline="\n")
             (package / "scripts").mkdir()
             (package / "scripts/check.py").write_text(
                 "print('not declared')\n", encoding="utf-8"
@@ -291,7 +291,7 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_root_execution_uses_begin_or_ephemeral_identity(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
-            (shared / "review.md").write_text("review\n", encoding="utf-8")
+            (shared / "review.md").write_text("review\n", encoding="utf-8", newline="\n")
             invocation = RUNNER.prepare_markdown_run(
                 project, shared, "review", "input"
             )
@@ -334,7 +334,7 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_nested_run_resolves_safely_and_borrows_verified_parent(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
-            (shared / "root.md").write_text("root\n", encoding="utf-8")
+            (shared / "root.md").write_text("root\n", encoding="utf-8", newline="\n")
             child_bytes = b"child\r\n"
             (shared / "child.md").write_bytes(child_bytes)
             operation = "usw-operation:" + "1" * 64
@@ -387,10 +387,10 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_nested_run_receives_packaged_flow_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
-            (shared / "root.md").write_text("root\n", encoding="utf-8")
+            (shared / "root.md").write_text("root\n", encoding="utf-8", newline="\n")
             package = shared / "child"
             package.mkdir()
-            (package / "FLOW.md").write_text("child\n", encoding="utf-8")
+            (package / "FLOW.md").write_text("child\n", encoding="utf-8", newline="\n")
             root = RUNNER.bind_root_execution(
                 RUNNER.prepare_markdown_run(project, shared, "root", "input"),
                 handoff_enabled=False,
@@ -417,7 +417,7 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_nested_run_stops_on_stale_parent_and_skips_disabled_check(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
-            (shared / "flow.md").write_text("flow\n", encoding="utf-8")
+            (shared / "flow.md").write_text("flow\n", encoding="utf-8", newline="\n")
             invocation = RUNNER.prepare_markdown_run(
                 project, shared, "flow", "input"
             )
@@ -473,8 +473,8 @@ class TextFlowRunnerTests(unittest.TestCase):
             project, shared = self.project(directory)
             local = project / ".usw/flows"
             local.mkdir(parents=True)
-            (local / "review.md").write_text("local\n", encoding="utf-8")
-            (shared / "review.md").write_text("shared\n", encoding="utf-8")
+            (local / "review.md").write_text("local\n", encoding="utf-8", newline="\n")
+            (shared / "review.md").write_text("shared\n", encoding="utf-8", newline="\n")
 
             default = RUNNER.resolve_markdown_flow(project, shared, "review")
             selected = RUNNER.resolve_markdown_flow(
@@ -491,9 +491,9 @@ class TextFlowRunnerTests(unittest.TestCase):
             local = project / ".usw/flows"
             package = local / "review"
             package.mkdir(parents=True)
-            (local / "review.md").write_text("flat\n", encoding="utf-8")
-            (package / "FLOW.md").write_text("package\n", encoding="utf-8")
-            (shared / "review.md").write_text("shared\n", encoding="utf-8")
+            (local / "review.md").write_text("flat\n", encoding="utf-8", newline="\n")
+            (package / "FLOW.md").write_text("package\n", encoding="utf-8", newline="\n")
+            (shared / "review.md").write_text("shared\n", encoding="utf-8", newline="\n")
 
             with self.assertRaisesRegex(
                 RUNNER.FlowError, "ambiguous_flow_layout"
@@ -505,8 +505,8 @@ class TextFlowRunnerTests(unittest.TestCase):
             project, shared = self.project(directory)
             local_package = project / ".usw/flows/review"
             local_package.mkdir(parents=True)
-            (local_package / "FLOW.md").write_text("local\n", encoding="utf-8")
-            (shared / "review.md").write_text("shared\n", encoding="utf-8")
+            (local_package / "FLOW.md").write_text("local\n", encoding="utf-8", newline="\n")
+            (shared / "review.md").write_text("shared\n", encoding="utf-8", newline="\n")
 
             flow = RUNNER.resolve_markdown_flow(project, shared, "review")
 
@@ -517,7 +517,7 @@ class TextFlowRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
             (project / ".usw/flows/review").mkdir(parents=True)
-            (shared / "review.md").write_text("shared\n", encoding="utf-8")
+            (shared / "review.md").write_text("shared\n", encoding="utf-8", newline="\n")
 
             flow = RUNNER.resolve_markdown_flow(project, shared, "review")
 
@@ -528,7 +528,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             project, shared = self.project(directory)
             actual = project / "actual-package"
             actual.mkdir()
-            (actual / "FLOW.md").write_text("linked package\n", encoding="utf-8")
+            (actual / "FLOW.md").write_text("linked package\n", encoding="utf-8", newline="\n")
             os.symlink(actual, shared / "review", target_is_directory=True)
 
             with self.assertRaisesRegex(RUNNER.FlowError, "unsafe_flow_root"):
@@ -541,7 +541,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             package = shared / "review"
             package.mkdir()
             target = project / "target.md"
-            target.write_text("linked entrypoint\n", encoding="utf-8")
+            target.write_text("linked entrypoint\n", encoding="utf-8", newline="\n")
             os.symlink(target, package / "FLOW.md")
 
             with self.assertRaisesRegex(RUNNER.FlowError, "unsafe_flow_file"):
@@ -552,7 +552,7 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_missing_local_falls_back_but_explicit_local_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
-            (shared / "review.md").write_text("shared\n", encoding="utf-8")
+            (shared / "review.md").write_text("shared\n", encoding="utf-8", newline="\n")
 
             self.assertEqual(
                 "shared",
@@ -566,7 +566,7 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_rejects_unsafe_names_root_escape_and_intermediate_symlink(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
-            (shared / "review.md").write_text("safe\n", encoding="utf-8")
+            (shared / "review.md").write_text("safe\n", encoding="utf-8", newline="\n")
             outside = project.parent / f"{project.name}-outside"
             outside.mkdir()
             self.addCleanup(outside.rmdir)
@@ -585,7 +585,7 @@ class TextFlowRunnerTests(unittest.TestCase):
 
             actual = project / "actual"
             actual.mkdir()
-            (actual / "review.md").write_text("outside\n", encoding="utf-8")
+            (actual / "review.md").write_text("outside\n", encoding="utf-8", newline="\n")
             linked = project / "linked"
             os.symlink(actual, linked)
             with self.assertRaisesRegex(RUNNER.FlowError, "unsafe_flow_root"):
@@ -597,11 +597,11 @@ class TextFlowRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
             target = project / "target.md"
-            target.write_text("target\n", encoding="utf-8")
+            target.write_text("target\n", encoding="utf-8", newline="\n")
             os.symlink(target, shared / "linked.md")
             (shared / "directory.md").mkdir()
             (shared / "binary.md").write_bytes(b"\xff")
-            (shared / "valid.md").write_text("valid\n", encoding="utf-8")
+            (shared / "valid.md").write_text("valid\n", encoding="utf-8", newline="\n")
 
             for name in ("linked", "directory"):
                 with self.subTest(name=name), self.assertRaisesRegex(
@@ -629,7 +629,7 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_pathname_backend_resolves_a_flat_flow(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(os.path.realpath(directory))
-            (shared / "review.md").write_text("flat\n", encoding="utf-8")
+            (shared / "review.md").write_text("flat\n", encoding="utf-8", newline="\n")
 
             expected = RUNNER.prepare_markdown_run(project, shared, "review", "input")
             with self.as_pathname_platform():
@@ -647,7 +647,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             project, shared = self.project(os.path.realpath(directory))
             package = shared / "review"
             package.mkdir()
-            (package / "FLOW.md").write_text("packaged\n", encoding="utf-8")
+            (package / "FLOW.md").write_text("packaged\n", encoding="utf-8", newline="\n")
 
             expected = RUNNER.prepare_markdown_run(project, shared, "review", "input")
             with self.as_pathname_platform():
@@ -668,7 +668,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             package = shared / "review"
             script = package / "scripts/check.py"
             script.parent.mkdir(parents=True)
-            (package / "FLOW.md").write_text("Use scripts/check.py.\n", encoding="utf-8")
+            (package / "FLOW.md").write_text("Use scripts/check.py.\n", encoding="utf-8", newline="\n")
             script.write_text("print('ok')\n", encoding="utf-8")
 
             invocation = RUNNER.prepare_markdown_run(project, shared, "review", "input")
@@ -686,7 +686,7 @@ class TextFlowRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(os.path.realpath(directory))
             outside = project / "outside.md"
-            outside.write_text("outside\n", encoding="utf-8")
+            outside.write_text("outside\n", encoding="utf-8", newline="\n")
             os.symlink(outside, shared / "review.md")
 
             with self.as_pathname_platform():
@@ -696,10 +696,10 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_pathname_backend_still_rejects_ambiguous_layout(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(os.path.realpath(directory))
-            (shared / "review.md").write_text("flat\n", encoding="utf-8")
+            (shared / "review.md").write_text("flat\n", encoding="utf-8", newline="\n")
             package = shared / "review"
             package.mkdir()
-            (package / "FLOW.md").write_text("packaged\n", encoding="utf-8")
+            (package / "FLOW.md").write_text("packaged\n", encoding="utf-8", newline="\n")
 
             with self.as_pathname_platform():
                 with self.assertRaisesRegex(RUNNER.FlowError, "ambiguous_flow_layout"):
@@ -709,7 +709,7 @@ class TextFlowRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
             path = shared / "review.md"
-            path.write_text("safe\n", encoding="utf-8")
+            path.write_text("safe\n", encoding="utf-8", newline="\n")
             original_open = os.open
 
             def require_nonblocking(name, flags, *, dir_fd=None):
@@ -732,7 +732,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             legacy = local / "FLOW.json"
             legacy.write_bytes(b"\xff legacy bytes")
             before = legacy.read_bytes()
-            (shared / "review.md").write_text("review\n", encoding="utf-8")
+            (shared / "review.md").write_text("review\n", encoding="utf-8", newline="\n")
 
             invocation = RUNNER.prepare_markdown_run(
                 project, shared, "review", "input"
@@ -745,10 +745,10 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_final_read_uses_held_directory_descriptor(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
-            (shared / "review.md").write_text("trusted\n", encoding="utf-8")
+            (shared / "review.md").write_text("trusted\n", encoding="utf-8", newline="\n")
             outside = project / "outside"
             outside.mkdir()
-            (outside / "review.md").write_text("replaced\n", encoding="utf-8")
+            (outside / "review.md").write_text("replaced\n", encoding="utf-8", newline="\n")
             held = shared.with_name("flows-held")
             original_read = RUNNER._read_regular_file
 
@@ -773,10 +773,10 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_legacy_warning_does_not_follow_symlinked_local_root(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
-            (shared / "review.md").write_text("review\n", encoding="utf-8")
+            (shared / "review.md").write_text("review\n", encoding="utf-8", newline="\n")
             outside = project / "outside"
             outside.mkdir()
-            (outside / "FLOW.json").write_text("legacy\n", encoding="utf-8")
+            (outside / "FLOW.json").write_text("legacy\n", encoding="utf-8", newline="\n")
             os.symlink(outside, project / ".usw", target_is_directory=True)
 
             invocation = RUNNER.prepare_markdown_run(
@@ -788,7 +788,7 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_cli_returns_markdown_and_migration_guidance(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
-            (shared / "review.md").write_text("review body\n", encoding="utf-8")
+            (shared / "review.md").write_text("review body\n", encoding="utf-8", newline="\n")
             completed = subprocess.run(
                 [
                     sys.executable,
@@ -832,7 +832,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             local.mkdir(parents=True)
             content = b"# Local flow\r\n\r\nFinish.\r\n"
             (local / "review.md").write_bytes(content)
-            (shared / "review.md").write_text("shared\n", encoding="utf-8")
+            (shared / "review.md").write_text("shared\n", encoding="utf-8", newline="\n")
             (project / ".usw/FLOW.json").write_text(
                 "legacy\n", encoding="utf-8"
             )
@@ -903,8 +903,8 @@ class TextFlowRunnerTests(unittest.TestCase):
             project, shared = self.project(directory)
             local = project / ".usw/flows"
             local.mkdir(parents=True)
-            (local / "review.md").write_text("local\n", encoding="utf-8")
-            (shared / "review.md").write_text("shared\n", encoding="utf-8")
+            (local / "review.md").write_text("local\n", encoding="utf-8", newline="\n")
+            (shared / "review.md").write_text("shared\n", encoding="utf-8", newline="\n")
 
             completed = subprocess.run(
                 [
@@ -932,8 +932,8 @@ class TextFlowRunnerTests(unittest.TestCase):
             project, shared = self.project(directory)
             local = project / ".usw/flows"
             local.mkdir(parents=True)
-            (local / "review.md").write_text("local\n", encoding="utf-8")
-            (shared / "review.md").write_text("shared\n", encoding="utf-8")
+            (local / "review.md").write_text("local\n", encoding="utf-8", newline="\n")
+            (shared / "review.md").write_text("shared\n", encoding="utf-8", newline="\n")
 
             completed = subprocess.run(
                 [
@@ -1087,7 +1087,7 @@ class TextFlowRunnerTests(unittest.TestCase):
     def test_cli_rejects_repeated_or_conflicting_origins(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
-            (shared / "review.md").write_text("review\n", encoding="utf-8")
+            (shared / "review.md").write_text("review\n", encoding="utf-8", newline="\n")
 
             for selectors in (
                 ("--origin", "shared", "--origin", "shared"),

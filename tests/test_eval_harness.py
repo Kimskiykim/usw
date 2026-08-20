@@ -35,8 +35,8 @@ class ScenarioBuilder:
         scenario = self.root / name
         scenario.mkdir(parents=True)
         (scenario / "expect.json").write_text(json.dumps(document), encoding="utf-8")
-        (scenario / "flow.md").write_text(flow, encoding="utf-8")
-        (scenario / "input.txt").write_text(user_input, encoding="utf-8")
+        (scenario / "flow.md").write_text(flow, encoding="utf-8", newline="\n")
+        (scenario / "input.txt").write_text(user_input, encoding="utf-8", newline="\n")
         return scenario
 
     @staticmethod

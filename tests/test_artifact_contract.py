@@ -31,9 +31,9 @@ class ArtifactContractTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             task = Path(directory) / "task.md"
-            task.write_text(template, encoding="utf-8")
+            task.write_text(template, encoding="utf-8", newline="\n")
             first = ARTIFACTS.task_contract_identity(task)
-            task.write_text(template + "| 2 | repair | c | s | done | r |\n", encoding="utf-8")
+            task.write_text(template + "| 2 | repair | c | s | done | r |\n", encoding="utf-8", newline="\n")
             self.assertEqual(first, ARTIFACTS.task_contract_identity(task))
 
     def test_checkbox_outside_tasks_index_is_rejected(self):
@@ -70,7 +70,7 @@ class ArtifactContractTests(unittest.TestCase):
     def test_unlinked_checkbox_in_tasks_index_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             change = Path(directory)
-            (change / "tasks.md").write_text("- [x] undocumented work\n", encoding="utf-8")
+            (change / "tasks.md").write_text("- [x] undocumented work\n", encoding="utf-8", newline="\n")
             with self.assertRaisesRegex(ARTIFACTS.ContractError, "linked task"):
                 ARTIFACTS.validate_change_tasks(change, set())
 
@@ -96,7 +96,7 @@ class ArtifactContractTests(unittest.TestCase):
                 + "| Attempt | Trigger | Contract | Source | Outcome | References |\n"
                 + "|---|---|---|---|---|---|\n"
             )
-            (task_dir / "task.md").write_text(task_content, encoding="utf-8")
+            (task_dir / "task.md").write_text(task_content, encoding="utf-8", newline="\n")
 
             with self.assertRaisesRegex(ARTIFACTS.ContractError, "Development evidence"):
                 ARTIFACTS.validate_change_tasks(
@@ -126,7 +126,7 @@ class ArtifactContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             artifact = project / "proposal.md"
-            artifact.write_text("v1\n", encoding="utf-8")
+            artifact.write_text("v1\n", encoding="utf-8", newline="\n")
             receipt = ARTIFACTS.write_receipt(
                 project,
                 project / "usw/reviews",
@@ -145,7 +145,7 @@ class ArtifactContractTests(unittest.TestCase):
             self.assertIn("- Gate: `internal`", content)
             self.assertNotIn("- Sender:", content)
             self.assertTrue(ARTIFACTS.receipt_is_current(project, receipt))
-            artifact.write_text("v2\n", encoding="utf-8")
+            artifact.write_text("v2\n", encoding="utf-8", newline="\n")
             self.assertFalse(ARTIFACTS.receipt_is_current(project, receipt))
             with self.assertRaisesRegex(ARTIFACTS.ContractError, "already exists"):
                 ARTIFACTS.write_receipt(
@@ -165,7 +165,7 @@ class ArtifactContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             task = project / "task.md"
-            task.write_text("legacy task\n", encoding="utf-8")
+            task.write_text("legacy task\n", encoding="utf-8", newline="\n")
             contract_identity = "sha256:" + hashlib.sha256(task.read_bytes()).hexdigest()
             receipt = ARTIFACTS.write_receipt(
                 project,
@@ -220,7 +220,7 @@ class ArtifactContractTests(unittest.TestCase):
                 )
 
             proposal = project / "proposal.md"
-            proposal.write_text("proposal\n", encoding="utf-8")
+            proposal.write_text("proposal\n", encoding="utf-8", newline="\n")
             with self.assertRaisesRegex(ARTIFACTS.ContractError, "non-task"):
                 ARTIFACTS.write_receipt(
                     project,

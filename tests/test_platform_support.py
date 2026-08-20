@@ -80,6 +80,11 @@ class ImportsWithoutPosixModulesTests(unittest.TestCase):
                     f"import failed without fcntl:\n{completed.stderr}",
                 )
 
+    @unittest.skipIf(
+        os.name == "nt",
+        "on Windows the stdlib itself imports msvcrt, so blocking it breaks "
+        "subprocess rather than testing the module under probe",
+    )
     def test_every_skill_script_imports_without_msvcrt(self):
         """The Windows-only module must be equally optional on POSIX."""
 
@@ -214,7 +219,7 @@ class PathnameBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             outside = root / "outside.md"
-            outside.write_text("secret\n", encoding="utf-8")
+            outside.write_text("secret\n", encoding="utf-8", newline="\n")
             (root / "workspace").mkdir()
             os.symlink(outside, root / "workspace" / "link.md")
 

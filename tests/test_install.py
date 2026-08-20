@@ -9,6 +9,11 @@ ROOT = Path(__file__).parents[1]
 INSTALL = ROOT / "install.sh"
 
 
+@unittest.skipIf(
+    os.name == "nt",
+    "install.sh is a POSIX shell script; Windows installs through the agent's "
+    "own extension or plugin manager instead",
+)
 class InstallTests(unittest.TestCase):
     SKILL_NAMES = (
         "usw-initialize-project",
@@ -92,7 +97,7 @@ class InstallTests(unittest.TestCase):
             home = Path(directory)
             self.assertEqual(0, self.run_install(home).returncode)
             installed_skill = home / ".qwen/skills/usw-initialize-project/SKILL.md"
-            installed_skill.write_text("local change\n", encoding="utf-8")
+            installed_skill.write_text("local change\n", encoding="utf-8", newline="\n")
 
             result = self.run_install(home)
 
@@ -107,13 +112,13 @@ class InstallTests(unittest.TestCase):
             for skills_dir in (home / ".qwen/skills", home / ".agents/skills"):
                 for skill_name in self.SKILL_NAMES:
                     path = skills_dir / skill_name / "SKILL.md"
-                    path.write_text("stale\n", encoding="utf-8")
+                    path.write_text("stale\n", encoding="utf-8", newline="\n")
                     installed_skills.append((skill_name, path))
             installed_commands = []
             for commands_dir in (home / ".qwen/commands", home / ".codex/prompts"):
                 for command_name in self.COMMAND_NAMES:
                     path = commands_dir / command_name
-                    path.write_text("stale\n", encoding="utf-8")
+                    path.write_text("stale\n", encoding="utf-8", newline="\n")
                     installed_commands.append((command_name, path))
 
             result = self.run_install(home, "--force")
@@ -150,7 +155,7 @@ class InstallTests(unittest.TestCase):
             ]
             for path in legacy_skills:
                 path.mkdir(parents=True)
-                (path / "SKILL.md").write_text("legacy\n", encoding="utf-8")
+                (path / "SKILL.md").write_text("legacy\n", encoding="utf-8", newline="\n")
             legacy_commands = [
                 base / name
                 for base in (home / ".qwen/commands", home / ".codex/prompts")
@@ -163,7 +168,7 @@ class InstallTests(unittest.TestCase):
             ]
             for path in legacy_commands:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("legacy\n", encoding="utf-8")
+                path.write_text("legacy\n", encoding="utf-8", newline="\n")
 
             result = self.run_install(home, "--force")
 
