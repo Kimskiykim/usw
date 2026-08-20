@@ -277,7 +277,7 @@ class HandoffThroughPathnameBackendTests(unittest.TestCase):
         )
         local = project / ".usw"
         local.mkdir()
-        (local / "HANDOFF.md").write_text(HANDOFF.render_idle(), encoding="utf-8")
+        (local / "HANDOFF.md").write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
         return project
 
     def test_begin_outcome_and_finish_complete_without_descriptors(self):

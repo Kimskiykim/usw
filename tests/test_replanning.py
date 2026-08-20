@@ -111,7 +111,7 @@ class ReplanningTests(unittest.TestCase):
             root = Path(directory)
             tasks = root / "tasks.md"
             task = root / "task.md"
-            tasks.write_text("- [x] 7 [Fix](tasks/7-fix/task.md)\n", encoding="utf-8")
+            tasks.write_text("- [x] 7 [Fix](tasks/7-fix/task.md)\n", encoding="utf-8", newline="\n")
             task.write_text(
                 "# Task 7\n\n## Artifact model\n\n- `v1`\n\n"
                 "## Milestone log\n\n"

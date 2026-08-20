@@ -41,7 +41,7 @@ class HandoffStateTests(unittest.TestCase):
         local = project / ".usw"
         local.mkdir()
         handoff = local / "HANDOFF.md"
-        handoff.write_text(HANDOFF.render_idle(), encoding="utf-8")
+        handoff.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
         return project, handoff
 
     def test_idle_format_is_small_and_valid(self):
@@ -1407,7 +1407,7 @@ class HandoffStateTests(unittest.TestCase):
             local = project / ".usw"
             local.mkdir()
             victim = project / "victim"
-            victim.write_text(HANDOFF.render_idle(), encoding="utf-8")
+            victim.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
             os.symlink(victim, local / "HANDOFF.md")
             with self.assertRaisesRegex(HANDOFF.HandoffError, "unsafe"):
                 HANDOFF.read_handoff(project)
@@ -1444,7 +1444,7 @@ class HandoffStateTests(unittest.TestCase):
             )
 
             wrong = project / "wrong.md"
-            wrong.write_text(HANDOFF.render_idle(), encoding="utf-8")
+            wrong.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
             with self.assertRaisesRegex(HANDOFF.HandoffError, "candidate must"):
                 HANDOFF.save_handoff(project, operation, wrong)
 
@@ -1609,7 +1609,7 @@ class HandoffStateTests(unittest.TestCase):
             )
             current = path.read_bytes()
 
-            candidate.write_text(HANDOFF.render_idle(), encoding="utf-8")
+            candidate.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
             with self.assertRaisesRegex(HANDOFF.HandoffError, "finish"):
                 HANDOFF.save_handoff(project, operation, candidate)
             self.assertEqual(current, path.read_bytes())

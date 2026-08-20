@@ -262,6 +262,12 @@ def run_once(command: str, prompt: str, timeout: float) -> RunOutcome:
             input=prompt,
             capture_output=True,
             text=True,
+            # USW ships its instructions in Russian, and text mode would
+            # otherwise use the platform default — cp1252 on Windows, which
+            # cannot encode them at all. Both directions are pinned to UTF-8;
+            # a runner emitting other bytes must not crash the evaluation.
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             check=False,
         )

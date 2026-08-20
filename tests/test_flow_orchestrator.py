@@ -77,7 +77,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             (package / "FLOW.md").write_text(
                 "Use scripts/check.py.\n", encoding="utf-8"
             )
-            script.write_text("print('ok')\n", encoding="utf-8")
+            script.write_text("print('ok')\n", encoding="utf-8", newline="\n")
             flow = RUNNER.resolve_markdown_flow(project, shared, "review")
 
             self.assertTrue(
@@ -104,7 +104,7 @@ class TextFlowRunnerTests(unittest.TestCase):
                 script = package / "scripts/check.py"
                 script.parent.mkdir(parents=True)
                 (package / "FLOW.md").write_text(markdown, encoding="utf-8", newline="\n")
-                script.write_text("print('ok')\n", encoding="utf-8")
+                script.write_text("print('ok')\n", encoding="utf-8", newline="\n")
                 flow = RUNNER.resolve_markdown_flow(project, shared, "review")
 
                 resource = RUNNER.resolve_flow_resource(flow, "scripts/check.py")
@@ -120,9 +120,9 @@ class TextFlowRunnerTests(unittest.TestCase):
             (package / "FLOW.md").write_text(
                 "Use scripts/check.py.\n", encoding="utf-8"
             )
-            script.write_text("print('trusted')\n", encoding="utf-8")
+            script.write_text("print('trusted')\n", encoding="utf-8", newline="\n")
             outside = project / "outside.py"
-            outside.write_text("print('outside')\n", encoding="utf-8")
+            outside.write_text("print('outside')\n", encoding="utf-8", newline="\n")
             flow = RUNNER.resolve_markdown_flow(project, shared, "review")
             expected_path = Path(os.path.realpath(script))
 
@@ -142,7 +142,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             (package / "FLOW.md").write_text(
                 "Use archive/scripts/check.py.bak.\n", encoding="utf-8"
             )
-            script.write_text("print('not declared')\n", encoding="utf-8")
+            script.write_text("print('not declared')\n", encoding="utf-8", newline="\n")
             flow = RUNNER.resolve_markdown_flow(project, shared, "review")
 
             with self.assertRaisesRegex(
@@ -177,7 +177,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             )
             actual = project / "actual-scripts"
             actual.mkdir()
-            (actual / "check.py").write_text("print('unsafe')\n", encoding="utf-8")
+            (actual / "check.py").write_text("print('unsafe')\n", encoding="utf-8", newline="\n")
             os.symlink(actual, package / "scripts", target_is_directory=True)
             flow = RUNNER.resolve_markdown_flow(project, shared, "review")
 
@@ -195,7 +195,7 @@ class TextFlowRunnerTests(unittest.TestCase):
                 "Use scripts/check.py.\n", encoding="utf-8"
             )
             target = package / "actual.py"
-            target.write_text("print('unsafe')\n", encoding="utf-8")
+            target.write_text("print('unsafe')\n", encoding="utf-8", newline="\n")
             os.symlink(target, scripts / "check.py")
             flow = RUNNER.resolve_markdown_flow(project, shared, "review")
 
@@ -211,13 +211,13 @@ class TextFlowRunnerTests(unittest.TestCase):
             (package / "FLOW.md").write_text(
                 "Use scripts/check.py.\n", encoding="utf-8"
             )
-            script.write_text("print('trusted')\n", encoding="utf-8")
+            script.write_text("print('trusted')\n", encoding="utf-8", newline="\n")
             flow = RUNNER.resolve_markdown_flow(project, shared, "review")
 
             outside = project / "outside-flows"
             outside_script = outside / "review/scripts/check.py"
             outside_script.parent.mkdir(parents=True)
-            outside_script.write_text("print('outside')\n", encoding="utf-8")
+            outside_script.write_text("print('outside')\n", encoding="utf-8", newline="\n")
             held = shared.with_name("flows-held")
             shared.rename(held)
             os.symlink(outside, shared, target_is_directory=True)
@@ -669,7 +669,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             script = package / "scripts/check.py"
             script.parent.mkdir(parents=True)
             (package / "FLOW.md").write_text("Use scripts/check.py.\n", encoding="utf-8", newline="\n")
-            script.write_text("print('ok')\n", encoding="utf-8")
+            script.write_text("print('ok')\n", encoding="utf-8", newline="\n")
 
             invocation = RUNNER.prepare_markdown_run(project, shared, "review", "input")
             expected = RUNNER.resolve_flow_resource(invocation.flow, "scripts/check.py")
@@ -966,7 +966,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             (package / "FLOW.md").write_text(
                 "Use scripts/check.py.\n", encoding="utf-8"
             )
-            script.write_text("print('ok')\n", encoding="utf-8")
+            script.write_text("print('ok')\n", encoding="utf-8", newline="\n")
             flow = RUNNER.resolve_markdown_flow(project, shared, "review")
 
             completed = subprocess.run(
@@ -1057,7 +1057,7 @@ class TextFlowRunnerTests(unittest.TestCase):
             (package / "FLOW.md").write_text(
                 "Use scripts/check.py.\n", encoding="utf-8"
             )
-            script.write_text("print('ok')\n", encoding="utf-8")
+            script.write_text("print('ok')\n", encoding="utf-8", newline="\n")
             flow = RUNNER.resolve_markdown_flow(
                 project, shared, "review", origin="shared"
             )

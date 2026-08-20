@@ -34,7 +34,7 @@ class ScenarioBuilder:
     def write(self, name: str, document: dict, *, flow: str = "# Flow\n", user_input: str = "go\n") -> Path:
         scenario = self.root / name
         scenario.mkdir(parents=True)
-        (scenario / "expect.json").write_text(json.dumps(document), encoding="utf-8")
+        (scenario / "expect.json").write_text(json.dumps(document), encoding="utf-8", newline="\n")
         (scenario / "flow.md").write_text(flow, encoding="utf-8", newline="\n")
         (scenario / "input.txt").write_text(user_input, encoding="utf-8", newline="\n")
         return scenario
@@ -51,7 +51,7 @@ class ScenarioBuilder:
 
 def stub_runner(directory: Path, payload: str) -> str:
     script = directory / "stub_runner.py"
-    script.write_text(STUB_RUNNER.format(payload=payload), encoding="utf-8")
+    script.write_text(STUB_RUNNER.format(payload=payload), encoding="utf-8", newline="\n")
     return f"{sys.executable} {script}"
 
 
@@ -86,7 +86,7 @@ class ScenarioLoadingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sample"
             path.mkdir()
-            (path / "expect.json").write_text(json.dumps(ScenarioBuilder.document()), encoding="utf-8")
+            (path / "expect.json").write_text(json.dumps(ScenarioBuilder.document()), encoding="utf-8", newline="\n")
             with self.assertRaises(HARNESS.ScenarioError):
                 HARNESS.load_scenario(path)
 
