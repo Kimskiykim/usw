@@ -7,9 +7,9 @@
 
 ## 2. Reconcile the normative source
 
-- [ ] 2.1 Diff the rules stated in `README.md`, `openspec/specs/` and each skill against one another; list every place they already disagree, since drift is likelier than not after triplication.
-- [ ] 2.2 Resolve each disagreement in `openspec/specs/`, treating a resolution that changes behavior as a defect to be raised separately rather than settled silently.
-- [ ] 2.3 Reduce README to an overview linking to the specs, keeping only what a reader needs before deciding to install.
+- [x] 2.1 Diff the rules stated in `README.md`, `openspec/specs/` and each skill against one another; list every place they already disagree, since drift is likelier than not after triplication. Done 2026-08-21, after the section-3 slices already reconciled skills with specs. Two disagreements found, both README lagging: the header still named only Qwen Code and Codex while README itself documents the Claude Code install, and the design-suggestion paragraph still described the old seven-recipe library where the spec and skill carry the fifteen-recipe catalog, design-from-goal and complexity signals.
+- [x] 2.2 Resolve each disagreement in `openspec/specs/`, treating a resolution that changes behavior as a defect to be raised separately rather than settled silently. Nothing to resolve on the spec side: in both drift cases the specs were already correct and README was behind, so the fix belongs to 2.3. No behavior-changing resolution arose.
+- [x] 2.3 Reduce README to an overview linking to the specs, keeping only what a reader needs before deciding to install. Done: 418 → 274 lines. Every normative section now states the capability in a short paragraph and links its `openspec/specs/<capability>/spec.md`; install instructions, quick start, platform disclosure and the stable command anchors the deterministic suite pins are kept. The two drifts from 2.1 are fixed by the same rewrite.
 
 ## 3. Restructure the skills, one slice each
 
