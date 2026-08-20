@@ -96,9 +96,15 @@ read-only runner every authoring scenario honestly reports `blocked` (observed
 - `create-goal-blocks: 2/3 [unstable]` — one embedding translated the recipe's
   `approve`/`change`/`cancel` tokens into Russian words, so the token markers
   missed it. The flow itself was correct in the transcripts each time this was
-  diagnosed. Candidate skill improvement, deliberately not made now to avoid
-  re-measuring mid-change: the recipe catalog could state that backticked
-  contract tokens survive conversion to plain prose verbatim.
+  diagnosed.
+
+Both instabilities were then fixed in the skill text rather than the markers:
+the catalog now states that backticked contract tokens survive prose
+conversion verbatim, and the design scan's `изменить` explicitly re-offers
+`применить`, `изменить` and `пропустить` for the previewed fragment. Both
+rules were added to `guided-flow-authoring` (delta and main spec) first. After
+those edits, same runner, three runs each, 2026-08-21: all five scenarios
+`3/3 [pass]`.
 
 Scenario design lessons recorded in each scenario's notes: an agent host's
 stdout is a summary, so content invariants need the input to ask for the full

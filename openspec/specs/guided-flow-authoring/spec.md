@@ -73,7 +73,9 @@ completeness.
 ### Requirement: Every suggestion is actionable
 Each suggestion MUST identify what to add, explain why it matters to the saved
 flow and provide ready Markdown with `применить`, `изменить` and `пропустить`
-choices.
+choices. When a fragment is rendered in ordinary prose from a recipe whose
+example carries backticked contract tokens — statuses and decision options the
+human types back — those tokens SHALL be kept verbatim rather than translated.
 
 #### Scenario: Ordinary flow receives guidance
 - **WHEN** the saved flow uses ordinary Markdown
@@ -83,6 +85,12 @@ choices.
 - **WHEN** the saved flow uses structured authoring
 - **THEN** the proposed fragment MAY use only applicable `CALL`, `GATE`, `LOOP`
   and `PARALLEL` markers
+
+#### Scenario: A recipe's contract tokens survive prose conversion
+- **WHEN** a recipe example's backticked tokens such as `approve`, `change` and
+  `cancel` are embedded into an ordinary flow
+- **THEN** the tokens stay verbatim while the surrounding markers become plain
+  prose
 
 ### Requirement: Capability reuse requires an explicitly available skill
 The skill MUST suggest `CALL SKILL` only when the user or current flow explicitly
@@ -105,7 +113,8 @@ selects a suggestion and MUST preserve the selected origin and authoring style.
 
 #### Scenario: User asks to change a suggestion
 - **WHEN** the user chooses `изменить`
-- **THEN** the skill previews a revised fragment and does not write until a
+- **THEN** the skill previews a revised fragment, explicitly re-offers
+  `применить`, `изменить` and `пропустить` for it, and does not write until a
   later explicit `применить`
 
 #### Scenario: User skips all suggestions
