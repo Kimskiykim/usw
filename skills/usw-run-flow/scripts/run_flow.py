@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -44,6 +46,8 @@ class MarkdownFlow(NamedTuple):
     name: str
     markdown: str
     path: Path
+    flow_directory: Path
+    project_root: Path
     origin: str
     identity: str
 
@@ -52,6 +56,12 @@ class MarkdownInvocation(NamedTuple):
     flow: MarkdownFlow
     user_input: str
     warnings: tuple[str, ...] = ()
+
+
+class FlowResource(NamedTuple):
+    path: Path
+    identity: str
+    content: bytes
 
 
 class ExecutionContext(NamedTuple):
@@ -93,12 +103,28 @@ def _absolute(path: Path, *, relative_to: Path | None = None) -> Path:
     return Path(os.path.abspath(path))
 
 
-def _uses_windows_path_fallback() -> bool:
-    return os.name == "nt"
+SKILLS_ROOT = Path(__file__).parents[2]
+
+
+def _load_safe_access(skills_root: Path):
+    """Load the one shared safe-access module, shared across skills."""
+
+    name = "usw_safe_access"
+    cached = sys.modules.get(name)
+    if cached is not None:
+        return cached
+    path = skills_root / "usw-initialize-project" / "scripts" / "safe_access.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+SAFE_ACCESS = _load_safe_access(SKILLS_ROOT)
 
 
 def _symlink_component(path: Path) -> Path | None:
-    """Return the first symlink component, if any."""
     for component in (path, *path.parents):
         if component == Path(component.anchor):
             break
@@ -123,46 +149,22 @@ def _open_directory(
             "unsafe_flow_root", f"{label} escapes project root: {candidate}"
         ) from error
 
-    if _uses_windows_path_fallback():
-        if _symlink_component(original_root) is not None:
-            raise FlowError(
-                "unsafe_project_root", f"project root contains a symlink: {original_root}"
-            )
-        if not original_root.is_dir():
-            raise FlowError(
-                "unsafe_project_root", f"project root is not a real directory: {original_root}"
-            )
-        current = original_root
-        for part in relative.parts:
-            current /= part
-            if _symlink_component(current) is not None:
-                raise FlowError(
-                    "unsafe_flow_root",
-                    f"{label} traverses a symlink: {current}",
-                )
-            if not current.is_dir():
-                raise FlowError("missing_flow_root", f"{label} is missing: {current}")
-        # Windows has no dir_fd/openat equivalent; retain the same checks by
-        # validating every path component before the final file read.
-        yield current, current
-        return
-
     project_root = Path(os.path.realpath(original_root))
-    current = project_root
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
-        os, "O_NOFOLLOW", 0
-    )
     try:
-        descriptor = os.open(project_root, flags)
+        root = SAFE_ACCESS.open_safe_directory(project_root)
     except OSError as error:
         raise FlowError(
-            "unsafe_project_root", f"project root is not a real directory: {current}"
+            "unsafe_project_root",
+            f"project root is not a real directory: {project_root}",
         ) from error
+
+    current = project_root
+    directory = root
     try:
         for part in relative.parts:
             current /= part
             try:
-                next_descriptor = os.open(part, flags, dir_fd=descriptor)
+                child = directory.child_directory(part)
             except FileNotFoundError as error:
                 raise FlowError(
                     "missing_flow_root", f"{label} is missing: {current}"
@@ -172,51 +174,55 @@ def _open_directory(
                     "unsafe_flow_root",
                     f"{label} traverses a non-directory or symlink: {current}",
                 ) from error
-            os.close(descriptor)
-            descriptor = next_descriptor
-        yield project_root / relative, descriptor
+            if directory is not root:
+                directory.close()
+            directory = child
+        yield project_root / relative, directory
     finally:
-        os.close(descriptor)
+        if directory is not root:
+            directory.close()
+        root.close()
 
 
-def _read_regular_file(directory_descriptor: int | Path, name: str, path: Path) -> bytes:
-    if isinstance(directory_descriptor, Path):
-        if path.is_symlink():
-            raise FlowError("unsafe_flow_file", f"cannot open Markdown flow: {path}")
-        if not path.exists():
-            raise FlowError("missing_flow", f"Markdown flow is missing: {path}")
-        try:
-            mode = path.stat().st_mode
-        except OSError as error:
-            raise FlowError("unsafe_flow_file", f"cannot open Markdown flow: {path}") from error
-        if not stat.S_ISREG(mode):
-            raise FlowError(
-                "unsafe_flow_file", f"Markdown flow is not a regular file: {path}"
-            )
-        try:
-            return path.read_bytes()
-        except FileNotFoundError as error:
-            raise FlowError("missing_flow", f"Markdown flow is missing: {path}") from error
-        except OSError as error:
-            raise FlowError("unsafe_flow_file", f"cannot open Markdown flow: {path}") from error
-
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+def _read_regular_file(directory, name: str, path: Path) -> bytes:
     try:
-        descriptor = os.open(name, flags, dir_fd=directory_descriptor)
+        return directory.read_bytes(name)
     except FileNotFoundError as error:
         raise FlowError("missing_flow", f"Markdown flow is missing: {path}") from error
     except OSError as error:
-        raise FlowError("unsafe_flow_file", f"cannot open Markdown flow: {path}") from error
+        raise FlowError(
+            "unsafe_flow_file", f"cannot open Markdown flow: {path}"
+        ) from error
+
+
+def _entry_mode(
+    directory,
+    name: str,
+    path: Path,
+    *,
+    error_code: str,
+) -> int | None:
     try:
-        mode = os.fstat(descriptor).st_mode
-        if not stat.S_ISREG(mode):
-            raise FlowError(
-                "unsafe_flow_file", f"Markdown flow is not a regular file: {path}"
-            )
-        with os.fdopen(descriptor, "rb", closefd=False) as source:
-            return source.read()
+        return directory.entry_mode(name)
+    except OSError as error:
+        raise FlowError(error_code, f"cannot inspect flow path: {path}") from error
+
+
+@contextmanager
+def _open_child_directory(
+    directory,
+    name: str,
+    path: Path,
+    label: str,
+):
+    try:
+        child = directory.child_directory(name)
+    except OSError as error:
+        raise FlowError("unsafe_flow_root", f"{label} is unsafe: {path}") from error
+    try:
+        yield path, child
     finally:
-        os.close(descriptor)
+        child.close()
 
 
 def load_markdown_flow(
@@ -231,12 +237,77 @@ def load_markdown_flow(
         raise FlowError("invalid_flow_name", f"unsafe flow name: {name!r}")
     if origin not in ORIGINS:
         raise FlowError("invalid_flow_origin", f"unsupported flow origin: {origin!r}")
-
     with _open_directory(
         project_root, flow_root, f"{origin} flow root"
-    ) as (root, descriptor):
-        path = root / f"{name}.md"
-        content = _read_regular_file(descriptor, path.name, path)
+    ) as (root, directory):
+        flat_path = root / f"{name}.md"
+        flat_mode = _entry_mode(
+            directory,
+            flat_path.name,
+            flat_path,
+            error_code="unsafe_flow_file",
+        )
+        if flat_mode is not None and not stat.S_ISREG(flat_mode):
+            raise FlowError(
+                "unsafe_flow_file",
+                f"Markdown flow is not a regular file: {flat_path}",
+            )
+
+        package_path = root / name
+        package_mode = _entry_mode(
+            directory,
+            name,
+            package_path,
+            error_code="unsafe_flow_root",
+        )
+        if package_mode is not None and not stat.S_ISDIR(package_mode):
+            raise FlowError(
+                "unsafe_flow_root",
+                f"flow package is not a real directory: {package_path}",
+            )
+
+        packaged = False
+        if package_mode is not None:
+            with _open_child_directory(
+                directory,
+                name,
+                package_path,
+                f"{origin} flow package",
+            ) as (package_root, package_directory):
+                packaged_path = package_root / "FLOW.md"
+                packaged_mode = _entry_mode(
+                    package_directory,
+                    packaged_path.name,
+                    packaged_path,
+                    error_code="unsafe_flow_file",
+                )
+                if packaged_mode is not None and not stat.S_ISREG(packaged_mode):
+                    raise FlowError(
+                        "unsafe_flow_file",
+                        f"Markdown flow is not a regular file: {packaged_path}",
+                    )
+                packaged = packaged_mode is not None
+                if flat_mode is not None and packaged:
+                    raise FlowError(
+                        "ambiguous_flow_layout",
+                        f"both flow layouts exist: {flat_path}, {packaged_path}",
+                    )
+                if packaged:
+                    path = packaged_path
+                    flow_directory = package_root
+                    content = _read_regular_file(
+                        package_directory, path.name, path
+                    )
+
+        if not packaged:
+            if flat_mode is None:
+                raise FlowError(
+                    "missing_flow",
+                    f"Markdown flow is missing: {flat_path}",
+                )
+            path = flat_path
+            flow_directory = root
+            content = _read_regular_file(directory, path.name, path)
     try:
         markdown = content.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -246,9 +317,90 @@ def load_markdown_flow(
         name=name,
         markdown=markdown,
         path=path,
+        flow_directory=flow_directory,
+        project_root=Path(os.path.realpath(_absolute(project_root))),
         origin=origin,
         identity=f"usw-markdown:{origin}:{digest}",
     )
+
+
+def resolve_flow_resource(flow: MarkdownFlow, relative_path: str) -> FlowResource:
+    """Read one explicitly named packaged resource through the safe boundary."""
+    if flow.path.name != "FLOW.md" or flow.path.parent != flow.flow_directory:
+        raise FlowError(
+            "flat_flow_resource",
+            "flat flow references keep project/workspace-relative semantics",
+        )
+    if not isinstance(relative_path, str) or not relative_path:
+        raise FlowError("invalid_flow_resource", "resource path must be relative")
+    normalized = relative_path.replace("\\", "/")
+    parts = normalized.split("/")
+    if (
+        normalized.startswith("/")
+        or re.match(r"^[A-Za-z]:", normalized)
+        or any(part in {"", ".", ".."} for part in parts)
+    ):
+        raise FlowError(
+            "invalid_flow_resource",
+            f"unsafe packaged resource path: {relative_path!r}",
+        )
+    resource_token = re.compile(
+        r"(?<![\w./\\-])"
+        + re.escape(normalized)
+        + r"(?![\w/\\-]|\.(?=\w))"
+    )
+    if resource_token.search(flow.markdown) is None:
+        raise FlowError(
+            "undeclared_flow_resource",
+            f"packaged flow Markdown does not name resource: {relative_path!r}",
+        )
+
+    with _open_directory(
+        flow.project_root,
+        flow.flow_directory,
+        "flow package resource base",
+    ) as (base, base_directory):
+        path = base.joinpath(*parts)
+        directory = base_directory
+        opened = None
+        try:
+            current = base
+            for part in parts[:-1]:
+                current /= part
+                try:
+                    child = directory.child_directory(part)
+                except FileNotFoundError as error:
+                    raise FlowError(
+                        "missing_flow_resource", f"resource is missing: {current}"
+                    ) from error
+                except OSError as error:
+                    raise FlowError(
+                        "unsafe_flow_resource",
+                        f"resource component is unsafe: {current}",
+                    ) from error
+                if opened is not None:
+                    opened.close()
+                opened = child
+                directory = child
+
+            try:
+                content = directory.read_bytes(parts[-1])
+            except FileNotFoundError as error:
+                raise FlowError(
+                    "missing_flow_resource", f"resource is missing: {path}"
+                ) from error
+            except OSError as error:
+                raise FlowError(
+                    "unsafe_flow_resource", f"resource is unsafe: {path}"
+                ) from error
+            return FlowResource(
+                path=path,
+                identity="usw-resource:" + hashlib.sha256(content).hexdigest(),
+                content=content,
+            )
+        finally:
+            if opened is not None:
+                opened.close()
 
 
 def resolve_markdown_flow(
@@ -285,45 +437,17 @@ def resolve_markdown_flow(
 
 
 def _legacy_flow_warning(project_root: Path) -> tuple[str, ...]:
-    if _uses_windows_path_fallback():
-        try:
-            with _open_directory(project_root, project_root, "project root") as (
-                project_path,
-                _,
-            ):
-                local_path = project_path / ".usw"
-                legacy_path = local_path / "FLOW.json"
-                if (
-                    local_path.is_symlink()
-                    or not local_path.is_dir()
-                    or legacy_path.is_symlink()
-                    or not legacy_path.exists()
-                ):
-                    return ()
-        except (FileNotFoundError, FlowError, OSError):
-            return ()
-        return (
-            "legacy .usw/FLOW.json belongs to the removed structured runtime "
-            "and was left untouched",
-        )
-
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
-        os, "O_NOFOLLOW", 0
-    )
     try:
         with _open_directory(project_root, project_root, "project root") as (
             _,
-            project_descriptor,
+            project_directory,
         ):
-            local_descriptor = os.open(".usw", flags, dir_fd=project_descriptor)
+            local = project_directory.child_directory(".usw")
             try:
-                os.stat(
-                    "FLOW.json",
-                    dir_fd=local_descriptor,
-                    follow_symlinks=False,
-                )
+                if local.entry_mode("FLOW.json") is None:
+                    return ()
             finally:
-                os.close(local_descriptor)
+                local.close()
     except (FileNotFoundError, FlowError, OSError):
         return ()
     return (
@@ -530,6 +654,18 @@ def main(argv: list[str] | None = None) -> int:
         or (arguments and arguments[0] in RETIRED_COMMANDS)
     ):
         return _migration_error()
+    if sum(
+        argument == "--origin" or argument.startswith("--origin=")
+        for argument in arguments
+    ) > 1:
+        _print_json(
+            {
+                "error": "invalid_flow_origin",
+                "detail": "origin selector must not be repeated or conflicting",
+            },
+            stream=sys.stderr,
+        )
+        return 2
 
     parser = argparse.ArgumentParser(description="Load a text-first USW flow")
     parser.add_argument("--origin", choices=sorted(ORIGINS))
@@ -551,16 +687,44 @@ def main(argv: list[str] | None = None) -> int:
     inspect.add_argument(
         "--origin", choices=sorted(ORIGINS), default=argparse.SUPPRESS
     )
+
+    resource = commands.add_parser("resource")
+    resource.add_argument("project_root", type=Path)
+    resource.add_argument("shared_root", type=Path)
+    resource.add_argument("name")
+    resource.add_argument("expected_identity")
+    resource.add_argument("expected_path", type=Path)
+    resource.add_argument("relative_path")
+    resource.add_argument(
+        "--origin", choices=sorted(ORIGINS), default=argparse.SUPPRESS
+    )
     args = parser.parse_args(arguments)
 
     try:
-        if args.command == "inspect":
+        if args.command == "resource" and args.origin is None:
+            raise FlowError(
+                "missing_flow_origin",
+                "resource lookup requires the exact resolved flow origin",
+            )
+        if args.command in {"inspect", "resource"}:
             flow = resolve_markdown_flow(
                 args.project_root,
                 args.shared_root,
                 args.name,
                 origin=args.origin,
             )
+            if args.command == "resource":
+                expected_path = args.expected_path
+                if (
+                    not expected_path.is_absolute()
+                    or flow.identity != args.expected_identity
+                    or flow.path != expected_path
+                ):
+                    raise FlowError(
+                        "stale_flow_resource",
+                        "resource lookup does not match the resolved flow identity and path",
+                    )
+                flow_resource = resolve_flow_resource(flow, args.relative_path)
         else:
             invocation = prepare_markdown_run(
                 args.project_root,
@@ -583,8 +747,24 @@ def main(argv: list[str] | None = None) -> int:
                 "origin": flow.origin,
                 "identity": flow.identity,
                 "path": str(flow.path),
+                "flow_directory": str(flow.flow_directory),
                 "markdown": flow.markdown,
                 "warnings": [],
+            }
+        )
+    elif args.command == "resource":
+        _print_json(
+            {
+                "name": flow.name,
+                "origin": flow.origin,
+                "identity": flow.identity,
+                "path": str(flow.path),
+                "flow_directory": str(flow.flow_directory),
+                "resource_path": str(flow_resource.path),
+                "resource_identity": flow_resource.identity,
+                "content_base64": base64.b64encode(flow_resource.content).decode(
+                    "ascii"
+                ),
             }
         )
     else:
@@ -594,6 +774,7 @@ def main(argv: list[str] | None = None) -> int:
                 "origin": invocation.flow.origin,
                 "identity": invocation.flow.identity,
                 "path": str(invocation.flow.path),
+                "flow_directory": str(invocation.flow.flow_directory),
                 "input": invocation.user_input,
                 "markdown": invocation.flow.markdown,
                 "warnings": list(invocation.warnings),

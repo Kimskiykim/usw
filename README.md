@@ -54,9 +54,10 @@ Python-скрипта fallback не включает и всегда сообщ�
 Инициализированные `chat-review`, `dev-test`, `plan-small-steps` и
 `refine-intent` — ненормативные примеры, а не автоматически активные flow.
 Runner не исполняет их на месте. Скопируйте нужный файл из
-`<flows.root>/examples/` в `<flows.root>/<name>.md`, адаптируйте под проект и
-только затем запускайте. Конкретные gates, writes и артефакты определяет
-скопированный project-owned flow.
+`<flows.root>/examples/` в предпочтительный `<flows.root>/<name>/FLOW.md` либо
+совместимый `<flows.root>/<name>.md`, адаптируйте под проект и только затем
+запускайте. Конкретные gates, writes и артефакты определяет скопированный
+project-owned flow.
 
 `tasks.md` — единственный completion source, `task.md` хранит task contract и
 milestones, `development-evidence.md` и `testing-evidence.md` имеют разных
@@ -148,11 +149,29 @@ automatic retry или conflict detection.
 
 ## Text-first execution
 
-`usw-run-flow` принимает input и имя flow, ищет `<name>.md` сначала в
-`.usw/flows`, затем в shared `flows.root`, читает документ ровно один раз и
-передаёт модели exact Markdown вместе с исходным input. Identity вычисляется из
-тех же bytes. Версия, DSL, action names, bindings и normalized plan не
-требуются. Metadata внутри файла никогда не переключает execution mode.
+`usw-run-flow` принимает input и kebab-case имя flow, ищет его сначала в
+`.usw/flows`, затем в shared `flows.root` и поддерживает две формы entrypoint:
+
+```text
+usw/flows/
+├── review/FLOW.md
+└── review/scripts/check.py
+```
+
+Новый canonical layout — `<name>/FLOW.md`; `<name>.md` остаётся совместимым и
+не мигрирует автоматически. Наличие обеих форм одного name в одном origin
+останавливает resolution с `ambiguous_flow_layout`. Local-first приоритет
+применяется между origins, а не между layout.
+
+Runner читает entrypoint ровно один раз и передаёт модели exact Markdown,
+исходный input и resolver-owned абсолютный `flow_directory`. Только ссылки из
+packaged `FLOW.md` разрешаются относительно package directory; обычные
+workspace-relative ссылки flat flow не ребейзятся. Package resources не
+сканируются автоматически. При явном использовании runner читает resource через
+held no-follow descriptor и возвращает immutable bytes с отдельным identity;
+report-only pathname повторно не открывается. Resources не входят в identity
+flow и не предоставляют новых полномочий. Версия, DSL, action names, bindings и normalized plan не требуются.
+Metadata внутри файла никогда не переключает execution mode.
 
 `$usw-create-flow` создаёт ordinary Markdown по умолчанию. Формат может быть
 любым понятным человеку:
@@ -252,7 +271,8 @@ scenario input добавляет трассу одного пути, но не 
 Это evidence-backed семантическая оценка модели: она не является machine guarantee,
 parser-backed proof или recursive validation вызываемых flow.
 Assessment не читает HANDOFF, не создаёт runtime state и не применяет
-предложенные исправления.
+предложенные исправления. Для packaged flow оно не открывает sibling resources,
+а отражает явно названные ресурсы как `unverified` dependencies.
 
 ## Поиск flow
 
@@ -268,10 +288,11 @@ Assessment не читает HANDOFF, не создаёт runtime state и не 
 равноценных вариантах он показывает `ambiguous`, а при отсутствии подходящего
 flow — `no-match`.
 
-Finder ничего не создаёт и не запускает, не читает HANDOFF и не ищет packaged
-examples, внешние каталоги или другие проекты. Для нового процесса отдельно
-используйте `$usw-create-flow`, для выбранного существующего —
-`$usw-run-flow`.
+Finder ничего не создаёт и не запускает, не читает HANDOFF, рассматривает только
+direct `<name>.md` и `<name>/FLOW.md` и не обходит package directories рекурсивно.
+Он не ищет packaged examples, внешние каталоги или другие проекты. Для нового
+процесса отдельно используйте `$usw-create-flow`, для выбранного существующего
+— `$usw-run-flow`.
 
 ## Готовые процессы
 
@@ -344,6 +365,26 @@ codex plugin add usw@usw
 
 Для Qwen используйте `./install.sh qwen --force`, а для обоих агентов —
 `./install.sh --force`.
+
+## Платформы
+
+USW поддерживает Linux, macOS и Windows. Все возможности, включая routed handoff
+и обе формы flow, доступны на каждой из них.
+
+Доступ к файлам идёт через один общий safe-access boundary, у которого две
+реализации, и защита у них не одинаковая. Там, где операционная система
+предоставляет descriptor-relative доступ — на Linux и macOS — проверенный
+компонент пути больше не адресуется по имени, поэтому подменить его после
+проверки нельзя. На Windows такого механизма нет: boundary отвергает symlink,
+junction и reparse point на каждом шаге и запрещает имена, выходящие за пределы
+каталога, но обращается к записям по пути. Это сужает окно между проверкой и
+использованием, но не закрывает его.
+
+Практически это означает следующее. Обычные ошибки — ссылка, ведущая за пределы
+проекта, неверный тип файла, выход за границы каталога — отвергаются одинаково
+на всех платформах. А от процесса, который **целенаправленно подменяет** путь
+ровно между проверкой и чтением, Windows не защищён. Такому процессу нужны права
+записи в ваш проект; получив их, он может просто отредактировать сам `FLOW.md`.
 
 ## Разработка
 

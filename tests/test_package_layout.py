@@ -164,6 +164,72 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertNotIn(removed, skill)
 
+    def test_create_flow_prompt_contract_describes_safe_packaged_layout(self):
+        skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "`<flow-root>/<name>/FLOW.md`",
+            "существующий flat или packaged entrypoint",
+            "safe pre-existing `<name>` directory",
+            "сохранить остальные resources без изменений",
+            "`ambiguous_flow_layout`",
+            "Непосредственно перед записью повторно проверить",
+            "symlink или неожиданный filesystem type",
+            "не перемещать flow между layout",
+            "`--shared` выбирает safe configured `flows.root`",
+            "не более одного origin selector",
+        ):
+            self.assertIn(fragment, skill)
+        self.assertRegex(skill, r"без origin selector\s+использовать shared")
+        self.assertNotIn("Разрешить ровно один origin selector", skill)
+
+    def test_find_flow_prompt_contract_describes_bounded_discovery(self):
+        skill = (ROOT / "skills/usw-find-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "direct regular `<name>.md`",
+            "direct `<name>/FLOW.md`",
+            "Не обходить package resource directories",
+            "exact entrypoint path",
+            "`ambiguous_flow_layout`",
+            "оба entrypoint paths",
+            "Для каждого dual-layout name вызвать safe `resolve`",
+            "paths только из resolver error",
+        ):
+            self.assertIn(fragment, skill)
+
+    def test_assess_flow_prompt_contract_forbids_resource_reads(self):
+        skill = (ROOT / "skills/usw-assess-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "`flow_directory`",
+            "не открывать sibling package resources",
+            "классифицировать как `unverified` dependency",
+            "не перечитывать `path`",
+            "Только для packaged `<name>/FLOW.md`",
+            "Flat flow сохраняет workspace-relative",
+        ):
+            self.assertIn(fragment, skill)
+
+    def test_readme_documents_packaged_flows_and_legacy_compatibility(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        for fragment in (
+            "review/FLOW.md",
+            "review/scripts/check.py",
+            "`<name>.md` остаётся совместимым",
+            "`ambiguous_flow_layout`",
+            "`flow_directory`",
+            "не обходит package directories рекурсивно",
+        ):
+            self.assertIn(fragment, readme)
+
     def test_create_flow_has_bounded_human_controlled_design_recipes(self):
         skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
             encoding="utf-8"

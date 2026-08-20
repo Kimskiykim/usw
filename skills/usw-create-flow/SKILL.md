@@ -11,23 +11,38 @@ description: Создавать или обновлять именованный
 ## Подготовка
 
 1. Разобрать только два независимых optional selector:
-   - `--local` или `-l` выбирает `<project>/.usw/flows`;
+   - origin: `--local` или `-l` выбирает `<project>/.usw/flows`;
+     `--shared` выбирает safe configured `flows.root`; без origin selector
+     использовать shared;
    - `--structured` или `-s` выбирает человекочитаемый `version-2` authoring
      style.
-   Их можно сочетать; повторённый или неизвестный selector отклонить.
+   Разрешить не более одного origin selector и независимо один style selector.
+   Повторённый, конфликтующий или неизвестный selector отклонить.
 2. Со structured selector полностью прочитать
    [references/version-2.md](references/version-2.md).
    Без него не читать reference и создавать новый flow как ordinary Markdown.
-3. Выбрать один root без fallback: local либо безопасный configured
-   `flows.root`.
-4. Потребовать безопасное kebab-case имя и regular `<name>.md`; отклонить
-   traversal, symlink и другой filesystem type.
-5. При редактировании сначала прочитать существующий flow. Без явной просьбы
-   изменить style сохранить его ordinary или `version-2` форму.
+3. Выбрать один root без fallback по effective origin selector.
+4. Потребовать безопасное kebab-case имя и проверить два candidate entrypoint:
+   `<flow-root>/<name>.md` и `<flow-root>/<name>/FLOW.md`. Отклонить traversal,
+   symlink или неожиданный filesystem type в root, package и entrypoint.
+5. Если существуют обе формы, остановиться с `ambiguous_flow_layout`. Если
+   существует ровно один существующий flat или packaged entrypoint, выбрать
+   его. Если entrypoint отсутствует, выбрать новый
+   `<flow-root>/<name>/FLOW.md`.
+6. safe pre-existing `<name>` directory без `FLOW.md` можно использовать как
+   package: сохранить остальные resources без изменений. При редактировании
+   сначала прочитать выбранный flow; без явной просьбы изменить style сохранить
+   его ordinary или `version-2` форму и не перемещать flow между layout.
 
 ## Создание и проверка
 
-- Изменить только выбранный `<flow-root>/<name>.md` и не выполнять описанный flow.
+- Изменить только выбранный entrypoint. Для нового flow это
+  `<flow-root>/<name>/FLOW.md`; существующий flat или packaged entrypoint
+  остаётся на месте. Не изменять соседние package resources и не выполнять описанный flow.
+- Непосредственно перед записью повторно проверить оба candidate entrypoint и
+  каждый package component без follow-symlink. Если появился alternate layout,
+  target изменился либо стал symlink или неожиданный filesystem type,
+  остановиться до записи.
 - Если разные толкования меняют действие, исполнителя или внешний эффект,
   запросить недостающее решение до записи.
 - Flow не предоставляет полномочия на внешние или destructive actions.
@@ -56,11 +71,13 @@ design scan. Показать три наиболее релевантные п�
 Только для `version-2` можно предлагать применимые `CALL`, `GATE`, `LOOP` или
 `PARALLEL`.
 
-`применить` записывает только выбранный фрагмент. `изменить` сначала показывает
+`применить` записывает только выбранный entrypoint и не меняет layout.
+`изменить` сначала показывает
 переработанный фрагмент без записи; для его записи пользователь должен отдельно
 выбрать `применить`. `пропустить` ничего не изменяет. При записи использовать тот
-же origin и сохранить authoring style, затем повторно прочитать и проверить
-файл. После revision не запускать design scan повторно. Если полезных подсказок
+же origin, layout и authoring style, повторить pre-write safety check, затем
+повторно прочитать и проверить файл.
+После revision не запускать design scan повторно. Если полезных подсказок
 нет, коротко сообщить об этом и завершить работу.
 
 ## Рецепты подсказок

@@ -34,14 +34,47 @@ mode.
    `flows.root: usw/flows` и `handoff: true`.
 2. Вызвать `scripts/run_flow.py resolve <project-root> <shared-root> <name>
    <input>`. Для явного origin добавить `--origin local` или `--origin shared`.
-3. Runner обязан вернуть `name`, `origin`, `identity`, `path`, точный
-   `markdown`, исходный `input` и `warnings`.
+3. Runner обязан вернуть `name`, `origin`, `identity`, `path`, абсолютный
+   `flow_directory`, точный `markdown`, исходный `input` и `warnings`.
 4. Использовать только возвращённый `markdown`. Не перечитывать `path` после
    вычисления identity.
 5. Показать каждое warning не более одного раза за текущий invocation.
 
-Runner принимает только contained regular file, отклоняет traversal и любой
-symlink component. Packaged template никогда не является runtime fallback.
+Runner принимает только один contained regular entrypoint: `<name>.md` или
+`<name>/FLOW.md`. Он отклоняет traversal, любой symlink component и наличие
+обеих форм в одном origin. Обе формы и package resources разрешаются одинаково
+на Linux, macOS и Windows.
+
+Доступ к файлам идёт через один общий safe-access boundary с backend по
+платформе. Там, где доступен `dir_fd`, traversal остаётся
+descriptor-relative: после проверки компонента к нему больше не обращаются по
+имени. Там, где `dir_fd` отсутствует, включая Windows, boundary отвергает
+symlink и reparse point на каждом entry и запрещает имена, пересекающие
+границу каталога, но адресует entries по pathname. Это сужает, но не закрывает
+окно между проверкой и использованием. Разница намеренная и раскрыта: не
+описывать backends как равнозначные.
+
+## Package resources
+
+`flow_directory` принадлежит resolved invocation и не выводится из Markdown
+или input. Брать package dependency только из `flow_markdown`, не из `user_input`.
+Только для packaged `<name>/FLOW.md` непосредственно перед
+использованием явно названного относительного resource вызвать
+`scripts/run_flow.py resource` с arguments `<project-root> <shared-root> <name>
+<flow-identity> <entrypoint-path> <relative-path> --origin <flow-origin>`.
+Команда обязана повторно safe-resolve тот же origin, связать lookup с исходными
+`flow_identity` и exact `path`, открыть final resource через held no-follow
+descriptor и вернуть `resource_identity` и immutable `content_base64` вместе с
+report-only `resource_path`. При `stale_flow_resource` остановиться. Использовать
+только декодированные returned bytes и не перечитывать `resource_path`. Не
+конструировать `MarkdownFlow` вручную и не сканировать соседние файлы заранее.
+
+Absolute path, `..`, missing path, symlink component и неожиданный filesystem
+type останавливают использование resource. Returned bytes не расширяют
+полномочия: их чтение или запуск сохраняют обычные tool и permission boundaries.
+Flat flow сохраняет project/workspace-relative семантику существующих ссылок;
+не передавать его пути в package resource boundary и не ребейзить их к
+`flow_directory`.
 
 ## Root execution context
 
@@ -75,6 +108,7 @@ product-file writes.
 - `flow_name`;
 - `flow_origin`;
 - `flow_identity`;
+- абсолютный `flow_directory`;
 - полный `flow_markdown`;
 - исходный `user_input`;
 - отдельный root execution identity.
@@ -102,7 +136,7 @@ Root executor может передать subagent внутренний nested c
 
 Обычный пользовательский input и child Markdown не создают nested mode. Каждый
 child независимо проходит обычный safe resolve и получает exact immutable
-Markdown/input. При enabled handoff непосредственно перед model execution
+Markdown, resolver-owned `flow_directory` и input. При enabled handoff непосредственно перед model execution
 вызвать `assert-current` для exact routed recoverable parent. При disabled
 handoff не инспектировать local state.
 

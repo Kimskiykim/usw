@@ -40,8 +40,9 @@ description: Semantically assess one named local or shared USW Markdown flow for
    safe name и exact origin, если он выбран.
 3. При loader error вернуть verdict `insufficient-data`, исходные error code и
    detail, затем остановиться.
-4. Использовать только returned `markdown`, `identity`, `origin`, `path` и
-   `warnings`. После получения identity не перечитывать `path`.
+4. Использовать только returned `markdown`, `identity`, `origin`, `path`,
+   `flow_directory` и `warnings`. После получения identity не перечитывать `path`
+   и не открывать sibling package resources.
 5. Не вызывать Begin, Outcome или другое execution действие. Не читать и не
    изменять HANDOFF, `.usw/FLOW.json` или operation state.
 
@@ -100,6 +101,13 @@ Approval внутри каждой итерации остаётся permission 
 - `missing` — авторитетная проверка подтверждает отсутствие;
 - `unverified` — доступный контекст не позволяет доказать наличие или
   отсутствие, включая обычную внешнюю dependency.
+
+Только для packaged `<name>/FLOW.md` относительный package resource, названный
+в returned Markdown, классифицировать как `unverified` dependency. Не вызывать
+resource resolver и не открывать sibling: assessment оценивает только immutable
+entrypoint bytes и не добавляет resource content в identity или evidence.
+Flat flow сохраняет workspace-relative semantics существующих ссылок; не
+классифицировать их как package resources и не ребейзить к `flow_directory`.
 
 Если доступен read-only contract skill или command, проверить обязательные
 inputs и известные retired selectors. Для `CALL FLOW` допустимо вызвать только
@@ -171,6 +179,7 @@ natural stop либо место неоднозначности. Не счита
 - Flow: <name>
 - Origin: <local|shared>
 - Path: <exact path>
+- Directory: <exact flow_directory>
 - Identity: <identity>
 - Verdict: <executable|executable-with-risks|not-executable|insufficient-data>
 - Basis: evidence-backed semantic model analysis; not machine guarantee.

@@ -71,6 +71,24 @@ class AtomicSkillContractTests(unittest.TestCase):
         self.assertIn("deterministic empty router", fallback)
         self.assertNotIn("{{updated_at}}", fallback)
 
+    def test_run_flow_keeps_packaged_resources_inside_resolved_context(self):
+        run = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "`flow_directory`",
+            "`scripts/run_flow.py resource`",
+            "`flow_identity` и exact `path`",
+            "`resource_identity` и immutable `content_base64`",
+            "не перечитывать `resource_path`",
+            "только из `flow_markdown`",
+            "не из `user_input`",
+            "Flat flow сохраняет project/workspace-relative",
+            "обычные tool и permission boundaries",
+        ):
+            self.assertIn(fragment, run)
+
     def test_writer_writes_only_authorized_planning_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
