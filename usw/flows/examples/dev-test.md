@@ -12,6 +12,10 @@
 
 - Версия: `version-2`
 
+## Dependencies
+
+- external skill: `ponytail-review`
+
 ## Порядок действий
 
 1. `capture-baseline` — основной чат перед реализацией сохраняет read-only
