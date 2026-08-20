@@ -10,21 +10,21 @@
 - [x] 2.3 Add the pathname-based backend: per-component reparse-point rejection covering junctions as well as symlinks, containment re-verified against the resolved path, and no link followed at the final open; verify its rejections match the POSIX backend's errors exactly.
 - [x] 2.4 Replace the module-level `fcntl` import and `_locked_local_directory` in `handoff_state.py` with the boundary's lock: `flock` where available, `msvcrt.locking` on a dedicated `.usw/.lock` with a bounded retry otherwise; a lock that cannot be acquired must fail with a handoff error rather than proceed. Landed ahead of 2.1-2.3 because it is the break that stops every run; the lock currently lives in `handoff_state.py` and moves into the shared boundary at 2.2. Backend selection probes `os.supports_dir_fd` and the presence of `fcntl` rather than `os.name`.
 - [x] 2.5 Route every `dir_fd` call site in `handoff_state.py` through the boundary; verify the complete suite passes on POSIX with no behavior change.
-- [ ] 2.6 Confirm on the Windows job that Begin, Outcome, Save, Resume, Finish and Cleanup all complete, and record the observed results.
+- [x] 2.6 Confirm on the Windows job that Begin, Outcome, Save, Resume, Finish and Cleanup all complete, and record the observed results.
 
 ## 3. Flow resolution on every platform
 
 - [x] 3.1 Add failing tests that a packaged `<name>/FLOW.md` and a packaged resource resolve through the pathname-based backend with the same name, origin, identity, path, flow directory and exact bytes as the descriptor-relative one.
 - [x] 3.2 Route `run_flow.py` traversal, entrypoint read and resource read through the boundary, and remove `unsupported_safe_flow_platform` as the ordinary outcome for a supported platform; keep it only for a platform outside the declared set.
 - [x] 3.3 Remove `_load_windows_flat_flow` and `_uses_windows_path_fallback` once the boundary covers both layouts, and update the tests that simulate Windows by patching that predicate so they exercise the backend instead.
-- [ ] 3.4 Confirm on the Windows job that both layouts, packaged resources, and the ambiguity and symlink rejections behave identically to POSIX, and record the observed results.
+- [x] 3.4 Confirm on the Windows job that both layouts, packaged resources, and the ambiguity and symlink rejections behave identically to POSIX, and record the observed results.
 
 ## 4. Disclosure and closing
 
 - [x] 4.1 Document the guarantee difference where safety is described: the safe-access module, the runner and handoff skill instructions, and the README platform section. State what the pathname-based backend does not prevent, without describing the two as equivalent.
-- [ ] 4.2 Remove `continue-on-error` from the Windows job so the platform becomes a real gate; verify the workflow is red when the suite fails there.
+- [x] 4.2 Remove `continue-on-error` from the Windows job so the platform becomes a real gate; verify the workflow is red when the suite fails there.
 - [x] 4.3 Record which backend was selected in the harness of the deterministic suite output, so an unexpectedly weaker backend on a POSIX platform is visible rather than silent.
-- [ ] 4.4 Run the complete suite on the supported Python floor and latest, `openspec validate --all --strict`, `openspec status --change support-windows-execution --json` and `git diff --check`, and record each command with its result.
+- [x] 4.4 Run the complete suite on the supported Python floor and latest, `openspec validate --all --strict`, `openspec status --change support-windows-execution --json` and `git diff --check`, and record each command with its result.
 
 ## Progress evidence
 
@@ -126,3 +126,52 @@ actually run, and 4.2 must not remove `continue-on-error` before it does. The jo
 exists and triggers on pushes to `dev/**` and on pull requests, but nothing has
 been committed or pushed, so it has never executed. Every Windows statement in
 this change remains unverified on Windows.
+
+### Windows verified on Windows
+
+The `windows-latest` job ran for the first time and then four more times as
+defects were fixed. Final state, run 32398766548 on commit 826e23c: every job
+green, on Linux and Windows, on Python 3.10 and 3.13. `continue-on-error` is
+off, so the platform is now a real gate rather than a report.
+
+What the real platform found that no simulation here could:
+
+- The evaluation harness split runner commands with POSIX rules, so every
+  Windows path was silently mangled and the runner never started (2.6/3.4
+  blocker, product defect).
+- The harness ran the runner in text mode without an encoding, so Windows used
+  cp1252 — which cannot encode the Russian USW instructions at all, meaning the
+  prompt could never reach a runner on that platform (product defect).
+- A cleanup-failure test hooked a bare entry name, the form only the
+  descriptor-relative backend passes, so the simulated failure never fired and
+  the test asserted nothing (test defect that had been hiding a gap).
+- Fixtures wrote text without pinning the newline and compared CRLF against LF;
+  the `msvcrt`-absence probe cannot run on Windows because the standard
+  library's own `subprocess` imports it; `install.sh` cannot execute there at
+  all (test defects).
+
+`test_final_read_uses_held_directory_descriptor` is skipped where the
+descriptor-relative backend is unavailable. It asserts the guarantee the
+pathname backend deliberately does not provide, so the skip records the
+disclosed difference rather than hiding a failure. It still runs wherever the
+guarantee can hold.
+
+Two platform differences the run exposed are documented in the README rather
+than left to be discovered: handoff files are not mode-restricted on Windows,
+which has no POSIX permission bits, and the shell installer is POSIX-only.
+
+### Final acceptance
+
+- `python3 -m unittest discover -s tests` — 231 tests, OK on Python 3.10, 3.11
+  and 3.13 locally; reports `safe-access backend: DescriptorDirectory`.
+- CI run 32398766548 — all five jobs successful: Linux 3.10, Linux 3.13,
+  Windows 3.10, Windows 3.13, OpenSpec validation.
+- `openspec validate --all --strict` — 17 of 17 items valid.
+- `openspec status --change support-windows-execution --json` — planning
+  artifacts complete.
+- `git diff --check` — exit 0.
+
+Archiving order still matters: `support-packaged-flows` also modifies the
+`text-flow-execution` requirement and still describes the removed
+`unsupported_safe_flow_platform` behavior. Archive that change first, then this
+one, or the older text will overwrite the newer.
