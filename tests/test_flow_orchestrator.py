@@ -742,6 +742,13 @@ class TextFlowRunnerTests(unittest.TestCase):
             self.assertIn("left untouched", invocation.warnings[0])
             self.assertEqual(before, legacy.read_bytes())
 
+    @unittest.skipUnless(
+        RUNNER.SAFE_ACCESS.supports_descriptor_relative_access(),
+        "asserts the descriptor-relative guarantee itself: that a component "
+        "swapped after it was trusted cannot change what is read. The pathname "
+        "backend deliberately does not provide it, which is disclosed rather "
+        "than hidden, so the assertion does not apply there.",
+    )
     def test_final_read_uses_held_directory_descriptor(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)

@@ -37,9 +37,6 @@ jobs:
   windows:
     name: Tests (Windows, Python ${{ matrix.python-version }})
     runs-on: windows-latest
-    # Windows support is being implemented; this job reports progress without
-    # blocking until the platform work lands. See support-windows-execution.
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
