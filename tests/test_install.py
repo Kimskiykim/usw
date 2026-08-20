@@ -37,6 +37,7 @@ class InstallTests(unittest.TestCase):
         env["HOME"] = str(home)
         env.pop("QWEN_HOME", None)
         env.pop("CODEX_HOME", None)
+        env.pop("CLAUDE_HOME", None)
         return subprocess.run(
             [str(INSTALL), *args],
             cwd=ROOT,
@@ -53,7 +54,7 @@ class InstallTests(unittest.TestCase):
             result = self.run_install(home)
 
             self.assertEqual(0, result.returncode, result.stderr)
-            for skills_dir in (home / ".qwen/skills", home / ".agents/skills"):
+            for skills_dir in (home / ".qwen/skills", home / ".agents/skills", home / ".claude/skills"):
                 for skill_name in self.SKILL_NAMES:
                     self.assertTrue((skills_dir / skill_name / "SKILL.md").is_file())
                 self.assertEqual(
@@ -88,7 +89,7 @@ class InstallTests(unittest.TestCase):
                             / example
                         ).is_file()
                     )
-            for commands_dir in (home / ".qwen/commands", home / ".codex/prompts"):
+            for commands_dir in (home / ".qwen/commands", home / ".codex/prompts", home / ".claude/commands"):
                 for command_name in self.COMMAND_NAMES:
                     self.assertTrue((commands_dir / command_name).is_file())
 
@@ -109,13 +110,13 @@ class InstallTests(unittest.TestCase):
             home = Path(directory)
             self.assertEqual(0, self.run_install(home).returncode)
             installed_skills = []
-            for skills_dir in (home / ".qwen/skills", home / ".agents/skills"):
+            for skills_dir in (home / ".qwen/skills", home / ".agents/skills", home / ".claude/skills"):
                 for skill_name in self.SKILL_NAMES:
                     path = skills_dir / skill_name / "SKILL.md"
                     path.write_text("stale\n", encoding="utf-8", newline="\n")
                     installed_skills.append((skill_name, path))
             installed_commands = []
-            for commands_dir in (home / ".qwen/commands", home / ".codex/prompts"):
+            for commands_dir in (home / ".qwen/commands", home / ".codex/prompts", home / ".claude/commands"):
                 for command_name in self.COMMAND_NAMES:
                     path = commands_dir / command_name
                     path.write_text("stale\n", encoding="utf-8", newline="\n")
@@ -140,7 +141,7 @@ class InstallTests(unittest.TestCase):
             home = Path(directory)
             legacy_skills = [
                 base / name
-                for base in (home / ".qwen/skills", home / ".agents/skills")
+                for base in (home / ".qwen/skills", home / ".agents/skills", home / ".claude/skills")
                 for name in (
                     "usw-init",
                     "usw-refine-task",
@@ -158,7 +159,7 @@ class InstallTests(unittest.TestCase):
                 (path / "SKILL.md").write_text("legacy\n", encoding="utf-8", newline="\n")
             legacy_commands = [
                 base / name
-                for base in (home / ".qwen/commands", home / ".codex/prompts")
+                for base in (home / ".qwen/commands", home / ".codex/prompts", home / ".claude/commands")
                 for name in (
                     "usw-route-task.md",
                     "usw-refine-intent.md",

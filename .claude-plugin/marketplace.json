@@ -1,0 +1,14 @@
+{
+  "name": "usw",
+  "owner": {
+    "name": "USW contributors",
+    "url": "https://github.com/Kimskiykim"
+  },
+  "plugins": [
+    {
+      "name": "usw",
+      "source": "./",
+      "description": "Create, find, assess, and run text-first Markdown workflows."
+    }
+  ]
+}

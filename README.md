@@ -345,6 +345,24 @@ codex plugin add usw@usw
 /usw-reviewer-llm-critic Scope: текущий diff
 ```
 
+## Claude Code
+
+Подключите marketplace и установите плагин:
+
+```bash
+claude plugin marketplace add Kimskiykim/usw
+claude plugin install usw@usw
+```
+
+После установки откройте новую сессию и вызовите `/usw-init`. Команды
+`/usw-handoff`, `/usw-resume` и `/usw-reviewer-llm-critic` станут доступны
+после того же перезапуска:
+
+```text
+/usw-init
+/usw-reviewer-llm-critic Scope: текущий diff
+```
+
 ## Прямая установка
 
 Для установки без extension/plugin manager клонируйте репозиторий и выполните:
@@ -352,9 +370,10 @@ codex plugin add usw@usw
 ```bash
 ./install.sh qwen
 ./install.sh codex
+./install.sh claude
 ```
 
-Без аргумента `./install.sh` установит command и skill для обоих агентов.
+Без аргумента `./install.sh` установит command и skill для всех трёх агентов.
 Установщик не перезаписывает существующие компоненты.
 
 Чтобы явно обновить уже установленный skill из текущего checkout, выполните:
@@ -363,8 +382,8 @@ codex plugin add usw@usw
 ./install.sh codex --force
 ```
 
-Для Qwen используйте `./install.sh qwen --force`, а для обоих агентов —
-`./install.sh --force`.
+Для Qwen используйте `./install.sh qwen --force`, для Claude Code —
+`./install.sh claude --force`, а для всех агентов сразу — `./install.sh --force`.
 
 ## Платформы
 

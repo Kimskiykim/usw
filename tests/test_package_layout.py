@@ -669,9 +669,41 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertTrue((ROOT / "commands" / command_name).is_file())
 
-    def test_claude_plugin_is_not_packaged(self):
-        self.assertFalse((ROOT / ".claude-plugin").exists())
+    def test_claude_plugin_points_to_shared_skills(self):
+        manifest = json.loads(
+            (ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+        marketplace = json.loads(
+            (ROOT / ".claude-plugin" / "marketplace.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        self.assertEqual("usw", manifest["name"])
+        self.assertIn("assess", manifest["description"])
+        plugin = marketplace["plugins"][0]
+        self.assertEqual("usw", plugin["name"])
+        self.assertEqual("./", plugin["source"])
+        for skill_name in (
+            "usw-initialize-project",
+            "usw-manage-handoff",
+            "usw-create-flow",
+            "usw-run-flow",
+            "usw-find-flow",
+            "usw-assess-flow",
+        ):
+            self.assertTrue((ROOT / "skills" / skill_name / "SKILL.md").is_file())
+        for command_name in (
+            "usw-init.md",
+            "usw-handoff.md",
+            "usw-resume.md",
+            "usw-reviewer-llm-critic.md",
+            "usw-find-flow.md",
+            "usw-assess-flow.md",
+        ):
+            self.assertTrue((ROOT / "commands" / command_name).is_file())
         self.assertFalse((ROOT / "plugins").exists())
+
 
 
 if __name__ == "__main__":
