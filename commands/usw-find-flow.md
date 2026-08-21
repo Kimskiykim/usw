@@ -1,7 +1,8 @@
 ---
-description: Find an existing runnable USW flow for an explicit intent.
+description: Найти существующий запускаемый USW flow по явному намерению.
 ---
 
-Find an existing local or shared Markdown flow for the supplied intent. Invoke
-the installed `usw-find-flow` skill and follow its instructions. Do not create,
-adapt or run a flow. Treat command arguments as the intent.
+Найти существующий локальный или общий Markdown flow по переданному намерению.
+Вызвать установленный skill `usw-find-flow` и следовать его инструкциям. Не
+создавать, не адаптировать и не запускать flow. Аргументы команды считать
+намерением.
