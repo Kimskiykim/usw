@@ -36,7 +36,7 @@
 
 - [x] 5.1 Report every scenario's rate before and after the whole change, on the same runner, and account for any drop. Recorded in the Whole-change behavior report below.
 - [x] 5.2 Run the complete suite on the supported Python floor and latest, `openspec validate --all --strict`, `openspec status --change consolidate-normative-text --json` and `git diff --check`, recording each result. Done 2026-08-21: Python 3.10.19 (supported floor) `250/250 OK`; Python 3.13.12 (CI latest) `250/250 OK`; strict OpenSpec validation `18 passed, 0 failed`; status JSON reported `schemaName: spec-driven`, `isComplete: true` and all four planning artifacts `done`; `git diff --check` exited 0 with no output.
-- [ ] 5.3 Confirm the deterministic suite contains no assertion that a particular sentence appears, except those recorded in 1.4.
+- [x] 5.3 Confirm the deterministic suite contains no assertion that a particular sentence appears, except those recorded in 1.4. Confirmed 2026-08-21 by auditing every deterministic test that reads shipped skill or reference bodies (`test_atomic_skill_contracts.py`, `test_eval_harness.py`, `test_flow_scenarios.py`, `test_install.py`, `test_package_layout.py`): positive checks otherwise name stable commands, codes, paths, identifiers, frontmatter flags, headings or recipe names. Exactly two semantic phrase checks remain, both documented with `Deliberate phrase assertion` docstrings and recorded in 1.4: nested-child durable-state discipline and rejected-block absence. Source-vs-installed byte equality verifies copying rather than wording; negative tombstones only prevent retired text from returning.
 
 ## Agreed order (recorded 2026-08-21)
 
