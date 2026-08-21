@@ -76,7 +76,7 @@ class InitializeUswTests(unittest.TestCase):
             project = Path(directory)
             legacy = project / "shared/refinements/example/session.md"
             legacy.parent.mkdir(parents=True)
-            legacy.write_text("legacy bytes\n", encoding="utf-8")
+            legacy.write_text("legacy bytes\n", encoding="utf-8", newline="\n")
             before = legacy.read_bytes()
             (project / "usw.yaml").write_text(
                 "schema_version: 1\n"
@@ -160,7 +160,7 @@ class InitializeUswTests(unittest.TestCase):
                 "schema_version: 1\n"
                 "future:\n  value: untouched\n"
             )
-            config_path.write_text(content, encoding="utf-8")
+            config_path.write_text(content, encoding="utf-8", newline="\n")
 
             config = INIT_USW.load_config(project)
 
@@ -297,10 +297,10 @@ class InitializeUswTests(unittest.TestCase):
             examples = flow_root / "examples"
             chat_review = examples / "chat-review.md"
             dev_test = examples / "dev-test.md"
-            chat_review.write_text("custom chat review\n", encoding="utf-8")
+            chat_review.write_text("custom chat review\n", encoding="utf-8", newline="\n")
             dev_test.unlink()
             legacy = flow_root / "flow-scenario-analysis.md"
-            legacy.write_text("legacy project scenario\n", encoding="utf-8")
+            legacy.write_text("legacy project scenario\n", encoding="utf-8", newline="\n")
             legacy_before = legacy.read_bytes()
 
             results = INIT_USW.initialize_usw(project)
@@ -322,9 +322,9 @@ class InitializeUswTests(unittest.TestCase):
             project = Path(directory)
             local_ignore_file = project / ".usw" / ".gitignore"
             local_ignore_file.parent.mkdir()
-            local_ignore_file.write_text("existing ignore\n", encoding="utf-8")
+            local_ignore_file.write_text("existing ignore\n", encoding="utf-8", newline="\n")
             handoff_file = project / ".usw" / "HANDOFF.md"
-            handoff_file.write_text("existing handoff\n", encoding="utf-8")
+            handoff_file.write_text("existing handoff\n", encoding="utf-8", newline="\n")
 
             results = INIT_USW.initialize_usw(project)
 
@@ -361,7 +361,7 @@ class InitializeUswTests(unittest.TestCase):
             )
             local_state = project / ".usw"
             local_state.mkdir()
-            (local_state / ".gitignore").write_text("*.tmp\n", encoding="utf-8")
+            (local_state / ".gitignore").write_text("*.tmp\n", encoding="utf-8", newline="\n")
 
             INIT_USW.initialize_usw(project)
 
@@ -382,7 +382,7 @@ class InitializeUswTests(unittest.TestCase):
             )
             local_state = project / ".usw"
             local_state.mkdir()
-            (local_state / ".gitignore").write_text("*\n", encoding="utf-8")
+            (local_state / ".gitignore").write_text("*\n", encoding="utf-8", newline="\n")
 
             INIT_USW.initialize_usw(project)
 
@@ -399,9 +399,9 @@ class InitializeUswTests(unittest.TestCase):
             )
             local_state = project / ".usw"
             local_state.mkdir()
-            (local_state / ".gitignore").write_text("*\n", encoding="utf-8")
+            (local_state / ".gitignore").write_text("*\n", encoding="utf-8", newline="\n")
             handoff = local_state / "HANDOFF.md"
-            handoff.write_text("existing handoff\n", encoding="utf-8")
+            handoff.write_text("existing handoff\n", encoding="utf-8", newline="\n")
             subprocess.run(
                 ["git", "add", "--force", ".usw/HANDOFF.md"],
                 cwd=project,

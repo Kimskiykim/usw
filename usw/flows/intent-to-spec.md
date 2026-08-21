@@ -18,6 +18,18 @@ OpenSpec change с файлами `change.md`, `design.md` и `tasks.md`. Flow �
 - проект и путь к репозиторию; по умолчанию используется текущий working
   directory.
 
+## Dependencies
+
+- external skills: `openspec-propose`, `openspec-update-change`,
+  `superpowers:dispatching-parallel-agents`;
+- external pre-flight skills, только для шага 0: `superpowers:brainstorming`,
+  `openspec-explore`;
+- bundled command: `usw-reviewer-llm-critic`.
+
+Если обязательная dependency недоступна в момент использования, вернуть
+`blocked`; не подменять её другим skill или prompt. Для gate-7.1 действует
+отдельная ветка `tool-unavailable` с ручным вердиктом пользователя.
+
 ## Хранилище
 
 - формальные OpenSpec-артефакты (`change.md`, `design.md`, `tasks.md`,
@@ -351,11 +363,5 @@ oversized gate-7.2 и каждый `gate-N: stuck`. Если таких вето
 ## Запуск
 
 ```text
-$usw-run-flow --local intent-to-spec "<intent или task>"
-```
-
-Если позже потребуется строгий runtime:
-
-```text
-$usw-run-flow --local intent-to-spec "<intent>" --experimental-structured
+$usw-run-flow --shared intent-to-spec "<intent или task>"
 ```

@@ -20,12 +20,12 @@ case "$#" in
     if [ "$2" = "--force" ]; then
       FORCE=1
     else
-      echo "Usage: ./install.sh [all|qwen|codex] [--force]" >&2
+      echo "Usage: ./install.sh [all|qwen|codex|claude] [--force]" >&2
       exit 2
     fi
     ;;
   *)
-    echo "Usage: ./install.sh [all|qwen|codex] [--force]" >&2
+    echo "Usage: ./install.sh [all|qwen|codex|claude] [--force]" >&2
     exit 2
     ;;
 esac
@@ -41,9 +41,12 @@ QWEN_COMMANDS_DIR="$QWEN_HOME_DIR/commands"
 CODEX_SKILLS_DIR="${HOME}/.agents/skills"
 CODEX_HOME_DIR="${CODEX_HOME:-${HOME}/.codex}"
 CODEX_COMMANDS_DIR="$CODEX_HOME_DIR/prompts"
+CLAUDE_HOME_DIR="${CLAUDE_HOME:-${HOME}/.claude}"
+CLAUDE_SKILLS_DIR="$CLAUDE_HOME_DIR/skills"
+CLAUDE_COMMANDS_DIR="$CLAUDE_HOME_DIR/commands"
 
 usage() {
-  echo "Usage: ./install.sh [all|qwen|codex] [--force]" >&2
+  echo "Usage: ./install.sh [all|qwen|codex|claude] [--force]" >&2
   exit 2
 }
 
@@ -127,8 +130,10 @@ case "$MODE" in
   all)
     check_agent_targets "$QWEN_SKILLS_DIR" "$QWEN_COMMANDS_DIR"
     check_agent_targets "$CODEX_SKILLS_DIR" "$CODEX_COMMANDS_DIR"
+    check_agent_targets "$CLAUDE_SKILLS_DIR" "$CLAUDE_COMMANDS_DIR"
     install_agent "$QWEN_SKILLS_DIR" "$QWEN_COMMANDS_DIR"
     install_agent "$CODEX_SKILLS_DIR" "$CODEX_COMMANDS_DIR"
+    install_agent "$CLAUDE_SKILLS_DIR" "$CLAUDE_COMMANDS_DIR"
     ;;
   qwen)
     check_agent_targets "$QWEN_SKILLS_DIR" "$QWEN_COMMANDS_DIR"
@@ -137,6 +142,10 @@ case "$MODE" in
   codex)
     check_agent_targets "$CODEX_SKILLS_DIR" "$CODEX_COMMANDS_DIR"
     install_agent "$CODEX_SKILLS_DIR" "$CODEX_COMMANDS_DIR"
+    ;;
+  claude)
+    check_agent_targets "$CLAUDE_SKILLS_DIR" "$CLAUDE_COMMANDS_DIR"
+    install_agent "$CLAUDE_SKILLS_DIR" "$CLAUDE_COMMANDS_DIR"
     ;;
   *)
     usage

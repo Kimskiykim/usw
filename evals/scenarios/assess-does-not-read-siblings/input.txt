@@ -1,0 +1,1 @@
+$usw-assess-flow --local check-release

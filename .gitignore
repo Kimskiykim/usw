@@ -1,5 +1,7 @@
 __pycache__/
 *.py[cod]
+.claude
 .codex
 .codex-plugin
 .DS_Store
+.superpowers

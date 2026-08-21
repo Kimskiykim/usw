@@ -1,87 +1,166 @@
-# guided-flow-authoring Specification
+# Спецификация guided-flow-authoring
 
 ## Purpose
-Define bounded, human-controlled design guidance applied after a Markdown flow
-is created, without silently changing the saved flow or inventing capabilities.
+Определяет bounded design guidance под контролем человека, применяемые после
+создания Markdown flow без скрытого изменения сохранённого flow и без
+выдумывания capabilities.
 
 ## Requirements
 
-### Requirement: Successful creation includes a bounded design scan
-After the initial save and report of the requested flow, `usw-create-flow` SHALL
-automatically perform a read-only design scan and return no more than three
-applicable suggestions.
+### Requirement: Успешное создание включает bounded design scan
+После первоначальной записи и отчёта о запрошенном flow `usw-create-flow` SHALL
+автоматически выполнить один read-only design scan. Scan SHALL сначала прочитать
+каталог рецептов `references/recipes.md` и по указанным в каталоге условиям
+выбрать не более трёх наиболее релевантных рецептов, отдавая приоритет пробелам
+в безопасности и проверяемости результата. Skill SHALL прочитать только файлы
+выбранных рецептов под `references/recipes/`; другие применимые рецепты SHALL
+быть названы одной строкой по каталогу без чтения их файлов. После явно
+выбранной revision design scan MUST NOT запускаться повторно.
 
-#### Scenario: Flow has several design gaps
-- **WHEN** more than three recipes could improve a saved flow
-- **THEN** the skill returns the three most relevant suggestions without
-  changing the file
+#### Scenario: У flow несколько design-пробелов
+- **WHEN** сохранённый flow можно улучшить более чем тремя рецептами
+- **THEN** skill возвращает три наиболее релевантные подсказки без изменения
+  файла и читает только файлы этих трёх рецептов
 
-#### Scenario: Flow has no concrete design gap
-- **WHEN** none of the recipes addresses a concrete risk or missing outcome
-- **THEN** the skill reports that there are no useful suggestions and returns
+#### Scenario: У flow нет конкретного design-пробела
+- **WHEN** ни один рецепт не устраняет конкретный риск или отсутствующий outcome
+- **THEN** skill сообщает, что полезных подсказок нет, и завершает работу
 
-### Requirement: Suggestions use a bounded recipe library
-The design scan SHALL consider verification, human decision, external-action
-approval, error handling, bounded refinement, independent checks and explicit
-capability reuse, and MUST NOT recommend a recipe merely for completeness.
+#### Scenario: Применимых рецептов больше лимита подробного scan
+- **WHEN** помимо выбранных трёх остаются другие применимые рецепты
+- **THEN** skill называет каждый из них одной строкой, без подробностей и без
+  чтения их файлов
 
-#### Scenario: Result is not verified
-- **WHEN** a flow can complete without an observable check of its result
-- **THEN** the skill suggests a verification step and, only if outcomes require
-  different actions, a decision gate after that verification
+#### Scenario: Revision применена
+- **WHEN** пользователь выбирает подсказку и revision записывается
+- **THEN** skill не запускает новый design scan
 
-#### Scenario: Retry has no safety contract
-- **WHEN** repetition could help but no exit criterion, attempt limit or safe
-  repeat behavior is known
-- **THEN** the skill does not suggest an unbounded or automatic retry
+### Requirement: Подсказки используют bounded library рецептов
+Design scan SHALL выбирать только из каталога `references/recipes.md`, который
+охватывает проверку результата, human decision, подтверждение внешнего действия,
+обработку ошибок, bounded refinement, независимые проверки, ревью субагентами,
+оркестрацию с субагентами, эскалацию, выбор из вариантов, сбор недостающих
+входов, обработку списка, ожидание внешнего события, адаптивную интенсивность и
+явное повторное использование capability. Рецепт SHALL предлагаться только при
+выполнении его условия из каталога и MUST NOT рекомендоваться просто для полноты.
 
-#### Scenario: Repeated work has an external side effect
-- **WHEN** a candidate refinement would repeat an external write or other
-  non-idempotent action
-- **THEN** the skill keeps that action and its approval outside the loop
+#### Scenario: Результат не проверяется
+- **WHEN** flow может завершиться без наблюдаемой проверки результата
+- **THEN** skill предлагает шаг проверки и, только если разные outcomes требуют
+  разных действий, decision gate после этой проверки
 
-#### Scenario: Checks are not independent
-- **WHEN** candidate checks depend on one another or have overlapping writes
-- **THEN** the skill does not suggest parallel execution
+#### Scenario: У retry нет safety contract
+- **WHEN** повтор может помочь, но неизвестны exit criterion, предел попыток или
+  безопасность повторного действия
+- **THEN** skill не предлагает неограниченный или автоматический retry
 
-### Requirement: Every suggestion is actionable
-Each suggestion MUST identify what to add, explain why it matters to the saved
-flow and provide ready Markdown with `применить`, `изменить` and `пропустить`
-choices.
+#### Scenario: Повторяемая работа имеет внешний side effect
+- **WHEN** предлагаемое refinement повторило бы внешнюю запись или другое
+  non-idempotent действие
+- **THEN** skill оставляет это действие и его approval за пределами loop
 
-#### Scenario: Ordinary flow receives guidance
-- **WHEN** the saved flow uses ordinary Markdown
-- **THEN** the proposed fragment uses ordinary prose without structured markers
+#### Scenario: Проверки не независимы
+- **WHEN** предлагаемые проверки зависят друг от друга или имеют пересекающиеся
+  writes
+- **THEN** skill не предлагает parallel execution
 
-#### Scenario: Structured flow receives guidance
-- **WHEN** the saved flow uses structured authoring
-- **THEN** the proposed fragment MAY use only applicable `CALL`, `GATE`, `LOOP`
-  and `PARALLEL` markers
+#### Scenario: Интенсивность контроля адаптируется к риску
+- **WHEN** предложенный flow меняет интенсивность контроля по объявленным
+  сигналам риска
+- **THEN** сигналы являются наблюдаемыми фактами, обязательное подтверждение
+  необратимого внешнего действия не отключается ни на одном уровне, а при
+  неопределённых сигналах выбирается более высокий уровень
 
-### Requirement: Capability reuse requires an explicitly available skill
-The skill MUST suggest `CALL SKILL` only when the user or current flow explicitly
-names a skill present in the current available-skills list. It MUST NOT discover
-contracts or suggest `CALL FLOW` in this version.
+### Requirement: Каждая подсказка применима
+Каждая подсказка MUST указывать, что добавить, объяснять пользу именно для
+сохранённого flow и предоставлять готовый Markdown с вариантами `применить`,
+`изменить` и `пропустить`. Когда fragment преобразуется в обычную прозу из
+рецепта, пример которого содержит contract tokens в обратных кавычках — статусы
+и варианты решения, которые человек вводит в ответ, — эти tokens SHALL
+сохраняться дословно, а не переводиться.
 
-#### Scenario: No capability is named
-- **WHEN** a flow contains a generic step without an explicitly named skill from
-  the current available-skills list
-- **THEN** the skill does not discover, invent or recommend a skill target
+#### Scenario: Обычный flow получает guidance
+- **WHEN** сохранённый flow использует обычный Markdown
+- **THEN** предлагаемый fragment использует обычную прозу без structured markers
 
-### Requirement: Revision remains human-controlled
-`usw-create-flow` MUST change the saved flow only after the user explicitly
-selects a suggestion and MUST preserve the selected origin and authoring style.
+#### Scenario: Structured flow получает guidance
+- **WHEN** сохранённый flow использует structured authoring
+- **THEN** предлагаемый fragment MAY использовать только применимые markers
+  `CALL`, `GATE`, `LOOP` и `PARALLEL`
 
-#### Scenario: User selects one suggestion
-- **WHEN** three suggestions are shown and the user applies only one
-- **THEN** only that revision is written and the other suggestions have no
-  effect
+#### Scenario: Contract tokens рецепта сохраняются при преобразовании в прозу
+- **WHEN** contract tokens из примера рецепта, например `approve`, `change` и
+  `cancel`, встраиваются в обычный flow
+- **THEN** tokens сохраняются дословно, а окружающие markers превращаются в
+  обычную прозу
 
-#### Scenario: User asks to change a suggestion
-- **WHEN** the user chooses `изменить`
-- **THEN** the skill previews a revised fragment and does not write until a
-  later explicit `применить`
+### Requirement: Повторное использование capability требует явно доступного skill
+Skill MUST предлагать `CALL SKILL` только когда пользователь или текущий flow
+явно называет skill, присутствующий в текущем списке available skills. В этой
+версии skill MUST NOT обнаруживать contracts или предлагать `CALL FLOW`.
 
-#### Scenario: User skips all suggestions
-- **WHEN** the user selects no proposed revision
-- **THEN** the saved flow remains byte-for-byte unchanged
+#### Scenario: Capability не названа
+- **WHEN** flow содержит общий шаг без явно названного skill из текущего списка
+  available skills
+- **THEN** skill не обнаруживает, не выдумывает и не рекомендует skill target
+
+### Requirement: Revision остаётся под контролем человека
+`usw-create-flow` MUST изменять сохранённый flow только после того, как
+пользователь явно выбрал подсказку, и MUST сохранять выбранные origin и authoring
+style.
+
+#### Scenario: Пользователь выбирает одну подсказку
+- **WHEN** показаны три подсказки, а пользователь применяет только одну
+- **THEN** записывается только эта revision, а другие подсказки не влияют на flow
+
+#### Scenario: Пользователь просит изменить подсказку
+- **WHEN** пользователь выбирает `изменить`
+- **THEN** skill показывает preview переработанного fragment, явно повторно
+  предлагает `применить`, `изменить` и `пропустить` и не записывает fragment до
+  отдельного последующего `применить`
+
+#### Scenario: Пользователь пропускает все подсказки
+- **WHEN** пользователь не выбирает ни одну предложенную revision
+- **THEN** сохранённый flow остаётся byte-for-byte неизменным
+
+### Requirement: Проектирование от цели согласуется до записи
+Когда пользователь описывает цель, а не готовые шаги, `usw-create-flow` SHALL
+сначала прочитать каталог рецептов, предложить черновик линейных нумерованных
+шагов happy path и назвать только блоки, чьи условия каталога действительно
+выполняются для цели, каждый с причиной в одном предложении. Структура MUST быть
+согласована с пользователем до записи. Согласованные блоки SHALL встраиваться в
+записанный flow из файлов их рецептов; отклонённые блоки MUST NOT встраиваться.
+
+#### Scenario: Часть блоков согласована, часть отклонена
+- **WHEN** пользователь одобряет часть предложенных блоков и отклоняет остальные
+- **THEN** записанный flow включает каждый одобренный блок и ни одного
+  отклонённого
+
+#### Scenario: Обычный flow проектируется от цели
+- **WHEN** записываемый flow использует обычный Markdown
+- **THEN** встроенные блоки используют простую нумерованную прозу без markers
+  `CALL`, `GATE`, `LOOP` и `PARALLEL`
+
+#### Scenario: Для цели не нужны structural blocks
+- **WHEN** ни одно условие каталога не выполняется для описанной цели
+- **THEN** черновик остаётся линейным и ни один блок не предлагается для полноты
+
+### Requirement: Сигналы сложности предупреждают, но не блокируют
+`usw-create-flow` SHALL проверять текст flow до записи и во время design scan по
+объявленным сигналам сложности: более примерно двенадцати шагов на одном уровне,
+`GATE` с более чем четырьмя ветками, `LOOP` внутри `LOOP` либо содержащий
+`PARALLEL` или вызов другого flow, `PARALLEL` с более чем тремя или зависимыми
+ветками и неявные переходы «вернуться к шагу N». При любом сигнале skill SHALL
+предупредить, что flow может исполняться ненадёжно, предложить одно конкретное
+упрощение и рекомендовать после сохранения запустить
+`$usw-assess-flow [--local|--shared] <name>`. Запись MUST NOT блокироваться:
+решение остаётся за пользователем.
+
+#### Scenario: Передан перегруженный черновик
+- **WHEN** текст flow до записи вызывает сигнал сложности
+- **THEN** skill предупреждает, предлагает конкретное упрощение, рекомендует
+  `$usw-assess-flow` и всё равно записывает flow, если пользователь его сохраняет
+
+#### Scenario: Сигналов нет
+- **WHEN** текст flow не вызывает ни одного сигнала сложности
+- **THEN** skill записывает flow без предупреждения о сложности

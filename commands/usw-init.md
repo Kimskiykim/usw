@@ -1,7 +1,7 @@
 ---
-description: Initialize USW in the current project.
+description: Инициализировать USW в текущем проекте.
 ---
 
-Initialize USW in the current project. Invoke the installed
-`usw-initialize-project` skill and follow its instructions. Do not reproduce the
-initialization logic in this command.
+Инициализировать USW в текущем проекте. Вызвать установленный skill
+`usw-initialize-project` и следовать его инструкциям. Не воспроизводить логику
+инициализации в этой команде.

@@ -1,9 +1,23 @@
 # USW
 
-USW — устанавливаемый самостоятельный workflow для Qwen Code и Codex.
+USW — устанавливаемый самостоятельный workflow для Qwen Code, Codex и
+Claude Code: именованные Markdown flow, которые модель исполняет как текст,
+плюс локальное routed-состояние для передачи работы между сессиями.
 
-Первая команда харнеса инициализирует standalone USW в текущем проекте и сразу
-создаёт:
+Нормативный источник правил — спецификации в
+[`openspec/specs/`](openspec/specs/). README — обзор: он говорит, что USW
+делает и как его поставить, а точные обязательства и сценарии живут в спеках.
+Skills в [`skills/`](skills/) — производные инструкции для исполнителя.
+
+## Быстрый старт
+
+```text
+/usw-init
+$usw-create-flow Создай flow plan-check из проверки плана.
+$usw-run-flow plan-check "Проверь текущий план"
+```
+
+Первая команда инициализирует standalone USW в текущем проекте и сразу создаёт:
 
 ```text
 <project>/
@@ -20,267 +34,125 @@ USW — устанавливаемый самостоятельный workflow �
             └── refine-intent.md
 ```
 
-При effective `handoff: true` `.usw/HANDOFF.md` создаётся как пустой
-детерминированный router локальных операций. Mutable recovery state появляется
-лениво в `.usw/handoffs/<operation-id-hex>.md` при первом Begin. При
-`handoff: false` initializer и runtime не читают, не проверяют и не изменяют
-router, operation directory или operation-scoped candidates.
-`.usw/.gitignore` с `*` — удобный local default, а решение о tracking остаётся
-за пользователем и не проверяется initializer-ом. `.usw/flows/` создаётся только
-при первом local custom flow, а `.usw/refinements/` — при первом уточнении
-намерения; `/usw-init` эти lazy directories не материализует. Четыре flow
-examples создаются только в shared `<flows.root>/examples/`.
+Инициализация аддитивна: существующие файлы не перезаписываются, небезопасные
+или symlinked roots отклоняются до записи, lazy-каталоги (`.usw/flows/`,
+`.usw/refinements/`, `.usw/handoffs/`, artifact roots) появляются при первом
+использовании. `usw.yaml` версии 1 выбирает project-relative roots (по
+умолчанию `usw`, `usw/flows`, `usw/reviews`) и optional top-level
+`handoff: true|false`; отсутствие поля означает `true`. Для детерминированной
+инициализации нужен Python 3.10+ (`python3`, затем `python`); без него skill
+спрашивает разрешение на менее детерминированный LLM fallback с тем же
+контрактом. Подробности: [project-initialization](openspec/specs/project-initialization/spec.md),
+[workspace-configuration](openspec/specs/workspace-configuration/spec.md).
 
-`usw.yaml` версии 1 выбирает project-relative roots и optional top-level
-`handoff: true|false`. Отсутствующее поле означает `true`. По умолчанию
-используются `usw`, `usw/flows` и `usw/reviews`.
-Инициализация аддитивна: существующие файлы не
-перезаписываются. Небезопасные, пересекающиеся или symlinked roots отклоняются
-до записи. Если поздняя I/O-ошибка оставила partial workspace, устраните причину
-и повторите `/usw-init`: существующие bytes сохранятся, а отсутствующие
-артефакты будут достроены.
-
-`/usw-init` не создаёт `changes/`, `reviews/` и `templates/` заранее. Точный
-artifact destination создаёт использующий его flow только при необходимости.
-
-Для детерминированной инициализации skill сначала ищет Python 3.10+ под именем
-`python3`, затем `python`. Если совместимого интерпретатора нет, он спрашивает
-разрешение на менее детерминированный LLM fallback с тем же функциональным v1
-contract, включая safe custom roots. Ошибка уже найденного
-Python-скрипта fallback не включает и всегда сообщается как есть.
-
-## Lifecycle и артефакты
-
-Инициализированные `chat-review`, `dev-test`, `plan-small-steps` и
-`refine-intent` — ненормативные примеры, а не автоматически активные flow.
-Runner не исполняет их на месте. Скопируйте нужный файл из
-`<flows.root>/examples/` в `<flows.root>/<name>.md`, адаптируйте под проект и
-только затем запускайте. Конкретные gates, writes и артефакты определяет
-скопированный project-owned flow.
-
-`tasks.md` — единственный completion source, `task.md` хранит task contract и
-milestones, `development-evidence.md` и `testing-evidence.md` имеют разных
-writers, а каждый review attempt создаёт новый immutable receipt. Новые tasks
-используют `Artifact model: v1`; явно зарегистрированные ранние tasks остаются
-`legacy` без выдуманного evidence.
-
-Product source identity — canonical `USW-SOURCE-V1` digest полного конечного
-tracked/Git-visible untracked tree. `.git`, `.usw` и configured workflow roots
-исключены: workflow-only запись или commit не инвалидирует evidence, изменение
-product file инвалидирует.
-
-### Routed handoff
-
-При включённом handoff каждый top-level запуск получает уникальный
-`usw-operation:<hex>` и собственный state-файл. `.usw/HANDOFF.md` показывает
-summary задачи, flow, status, exact operation ID и ссылку на state-файл.
-Operation document остаётся authoritative для status, проверок и recovery
-context.
-
-Перед паузой активного запуска сохраните только его актуальное состояние:
-
-```text
-/usw-handoff
-```
-
-Команда адресует exact ID, возвращённый Begin, и сохраняет flow, origin,
-identity, input digest, status, выполненное, narrative current position,
-blocker, проверки, references и ровно одно следующее действие. Это компактная
-локальная summary, а не machine cursor, shared history или лог tool calls.
-
-В новой сессии восстановите конкретный контекст:
-
-```text
-/usw-resume <operation-id>
-```
-
-Без ID пустой router сообщает, что продолжать нечего, единственная route
-выбирается автоматически, а несколько routes показываются списком без
-автоматического продолжения. `in_progress` означает возможное прерывание и
-никогда не запускается повторно автоматически. `paused`, `blocked` и
-`decision_required` требуют явного решения.
-
-Два независимых чата могут работать одновременно:
-
-```text
-чат UI:      Begin → usw-operation:<ui-hex>  → handoffs/<ui-hex>.md
-чат backend: Begin → usw-operation:<api-hex> → handoffs/<api-hex>.md
-```
-
-Их короткие router/state transitions сериализуются, но сами flow не
-сериализуются. Это заявление пользователя о независимости: USW не обнаруживает
-и не разрешает конфликты в product files, поэтому UI и backend scope должны
-быть действительно разделены либо координироваться обычными средствами Git.
-Даже одинаковые flow/input получают разные IDs, а Outcome или Save могут
-изменить только exact зарегистрированную operation.
-
-`completed` и `failed` остаются доступными для inspect и не заменяются
-следующим Begin. Очистка всегда адресная:
-
-```text
-/usw-handoff finish <operation-id>
-```
-
-Без ID Finish использует те же zero/one/many rules. Он удаляет только выбранную
-route и её operation files; остальные запуски остаются зарегистрированы.
-Чтобы безопасно убрать сразу все terminal entries и сохранить активные:
-
-```text
-/usw-handoff cleanup
-```
-
-Текущий generic single-state HANDOFF при первом обращении мигрирует в router
-без потери recovery content. Старый role-based HANDOFF остаётся read-only до
-explicit Finish. Для rollback на USW, который понимает только single-state
-HANDOFF, сначала завершите через Finish все routed operations, затем замените
-пустой router на generic idle HANDOFF старой версии. Product files и flow
-менять для rollback не требуется.
-
-### Nested flows
-
-Named child flow, запущенный root executor-ом, использует execution identity
-родителя и не получает собственную route. Перед child model execution
-проверяется exact recoverable parent; child не вызывает Begin, Outcome, Save
-или Finish и возвращает root-у фактический status/result. Только root агрегирует
-результаты детей и записывает свой Outcome. Независимые children могут
-исполняться параллельно, но USW не создаёт scheduler, durable child registry,
-automatic retry или conflict detection.
+Четыре установленных примера — ненормативные заготовки в
+`<flows.root>/examples/`, а не активные flow: скопируйте нужный в
+`<flows.root>/<name>/FLOW.md` или `<flows.root>/<name>.md`, адаптируйте и
+запускайте ([flow-examples](openspec/specs/flow-examples/spec.md)).
 
 ## Text-first execution
 
-`usw-run-flow` принимает input и имя flow, ищет `<name>.md` сначала в
-`.usw/flows`, затем в shared `flows.root`, читает документ ровно один раз и
-передаёт модели exact Markdown вместе с исходным input. Identity вычисляется из
-тех же bytes. Версия, DSL, action names, bindings и normalized plan не
-требуются. Metadata внутри файла никогда не переключает execution mode.
-
-`$usw-create-flow` создаёт ordinary Markdown по умолчанию. Формат может быть
-любым понятным человеку:
-
-```markdown
-# Проверка плана
-
-1. Разбей задачу на небольшие шаги.
-2. Проверь, что каждый шаг можно подтвердить отдельным тестом.
-3. Покажи результат человеку.
-```
-
-`$usw-create-flow --structured` создаёт человекочитаемый `version-2`.
-`CALL`, `GATE`, `LOOP` и `PARALLEL` помогают описать процесс, но не включают
-parser и не обещают deterministic transitions, atomic parallelism или durable
-cursor. При существенной неоднозначности модель возвращает
-`decision_required`.
-
-После успешного сохранения `usw-create-flow` автоматически показывает до трёх
-применимых design suggestions: verification, human decision, approval внешнего
-действия, error handling, bounded refinement, независимые проверки или reuse
-явно названного skill из текущего списка доступных skills. Каждая подсказка
-объясняет конкретный риск и содержит готовый Markdown. Flow изменяется только
-после выбора `применить`; `изменить` сначала показывает новый preview без
-записи, а `пропустить` сохраняет уже записанный файл без revision.
-
-Flow text не предоставляет полномочия. Commit, push, PR, deploy, release,
-destructive и другие внешние действия используют обычные permission boundaries.
-
-Создание и запуск custom flow:
+`$usw-run-flow` принимает kebab-case имя и input, ищет flow сначала в
+`.usw/flows`, затем в shared `flows.root`, и поддерживает две формы entrypoint:
 
 ```text
-$usw-create-flow Создай flow plan-check из проверки плана.
-$usw-run-flow plan-check "Проверь текущий план"
+usw/flows/
+├── review/FLOW.md
+└── review/scripts/check.py
 ```
 
-Для создания `--local`/`-l` явно выбирает developer-local root. Для запуска без
-origin selector local flow имеет приоритет над shared; `--local` и `--shared`
-ограничивают поиск одним root:
+Canonical layout — `<name>/FLOW.md`; `<name>.md` остаётся совместимым и не
+мигрирует автоматически. Обе формы одного name в одном origin останавливают
+resolution с `ambiguous_flow_layout`. Runner читает entrypoint ровно один раз
+и передаёт модели exact Markdown, input и resolver-owned `flow_directory`;
+package resources разрешаются только по явной ссылке из packaged `FLOW.md` и
+возвращаются как immutable bytes. Flow text не предоставляет полномочий:
+commit, push, deploy и другие внешние действия требуют обычных разрешений.
+Правила: [text-flow-execution](openspec/specs/text-flow-execution/spec.md),
+[local-custom-flows](openspec/specs/local-custom-flows/spec.md).
+
+`$usw-create-flow` создаёт обычный Markdown по умолчанию; `--structured`
+выбирает человекочитаемый `version-2` с маркерами `CALL`, `GATE`, `LOOP`,
+`PARALLEL` — это авторская конвенция, а не machine DSL
+([markdown-flow-composition](openspec/specs/markdown-flow-composition/spec.md)).
+После сохранения skill проводит короткий design scan по каталогу из пятнадцати
+рецептов и предлагает не более трёх применимых улучшений с вариантами
+`применить`, `изменить`, `пропустить`; при проектировании от цели согласованные
+блоки встраиваются в flow, а перегруженный черновик получает предупреждение о
+сложности без блокировки записи
+([guided-flow-authoring](openspec/specs/guided-flow-authoring/spec.md)).
+
+`--experimental-structured` и внутренние команды снятого structured runtime
+отклоняются до mutation; `.usw/FLOW.json` не читается и не изменяется. Снятый
+parser и его тесты сохранены в `research/structured-runtime/` и не
+устанавливаются. Ненормативный roadmap (compiler → machine flow → iterator)
+появится только отдельным change с измеримой потребностью в machine
+guarantees.
+
+## Routed handoff
+
+При включённом handoff каждый top-level запуск регистрирует уникальную
+operation с собственным state-файлом; `.usw/HANDOFF.md` — validated router и
+таблица текущих операций. Сохранение и восстановление:
 
 ```text
-$usw-create-flow --local Создай flow personal-check из проверки плана.
-$usw-run-flow personal-check "Проверь мой план"
+/usw-handoff
+/usw-resume <operation-id>
 ```
 
-Structured authoring запускается тем же обычным путём:
+Независимые запуски не блокируют друг друга, даже одинаковые flow/input
+получают разные IDs, а Outcome и Save адресуют только exact операцию. USW не
+обнаруживает конфликты в product files — независимость scope остаётся
+заявлением пользователя. Очистка адресная:
 
 ```text
-$usw-create-flow --structured Создай flow review-gate.
-$usw-run-flow review-gate "Проверь изменение"
+/usw-handoff finish <operation-id>
+/usw-handoff cleanup
 ```
 
-`--experimental-structured` и внутренние команды `validate`, `run-script`,
-`checkpoint-save`, `checkpoint-resume` сняты. Старый вызов останавливается до
-mutation и предлагает повторить run без flag.
+Finish удаляет одну route, cleanup — сразу все terminal operations, сохраняя
+активные. Generic single-state HANDOFF мигрирует в router при первом
+обращении; старый role-based HANDOFF читается только для recovery до explicit
+Finish. Для rollback на старую версию завершите routed operations через
+Finish и замените пустой router на generic idle HANDOFF. Полный контракт:
+[live-operation-state](openspec/specs/live-operation-state/spec.md).
 
-Existing `.usw/FLOW.json` не читается, не изменяется и не удаляется. При его
-наличии показывается одно предупреждение за invocation, после чего text flow
-может продолжиться.
+Named child flow, запущенный root executor-ом, использует identity родителя,
+не получает собственную route и не пишет durable state; только root агрегирует
+результаты и записывает Outcome
+([nested-flow-execution](openspec/specs/nested-flow-execution/spec.md)).
 
-```text
-resolve exact Markdown bytes → optional Begin/root operation → root model
-nested child → assert-current(root) → child result → root aggregation
-root natural stop → Outcome(exact root ID, без automatic retry)
-/usw-handoff finish <operation-id> → remove exact route
-```
+Артефакты исполнения — `tasks.md` как единственный completion source,
+task contracts, раздельное Development/Testing evidence, immutable review
+receipts и `USW-SOURCE-V1` product source identity — определены в
+[execution-artifacts](openspec/specs/execution-artifacts/spec.md).
 
-Снятый parser, typed runtime, JSON checkpoints, специализированные тесты и два
-superseded change-пакета сохранены в `research/structured-runtime/`. Они не
-устанавливаются и не входят в normative specs или основной test discovery.
-
-Ненормативный roadmap:
-
-```text
-text flow → compiler → derived machine flow → durable state → iterator
-```
-
-Compiler и iterator появятся только в отдельном change с измеримой потребностью
-в machine guarantees.
-
-## Оценка flow
-
-Явная команда `$usw-assess-flow` проверяет один существующий flow на
-исполняемость, логические разрывы, зависимости и потенциально бесконечные
-циклы, но не запускает flow и ничего не изменяет:
+## Оценка и поиск flow
 
 ```text
 $usw-assess-flow [--local|-l|--shared] <flow-name> [<scenario-input>]
 ```
 
-Без origin selector используется local-first resolution. Необязательный
-scenario input добавляет трассу одного пути, но не скрывает проблемы других
-веток. Отчёт содержит terminal paths, dependency ledger, findings с evidence и
-один verdict: `executable`, `executable-with-risks`, `not-executable` или
-`insufficient-data`.
-
-Это evidence-backed семантическая оценка модели: она не является machine guarantee,
-parser-backed proof или recursive validation вызываемых flow.
-Assessment не читает HANDOFF, не создаёт runtime state и не применяет
-предложенные исправления.
-
-## Поиск flow
-
-Команда `/usw-find-flow` по одному явному намерению ищет подходящий уже
-существующий runnable flow среди direct local и shared Markdown entries:
+Явная команда `$usw-assess-flow` проверяет один существующий flow на
+исполняемость, логические разрывы, зависимости и незавершающиеся циклы, ничего
+не запуская и не изменяя. Отчёт содержит terminal paths, dependency ledger,
+findings с evidence и один verdict: `executable`, `executable-with-risks`,
+`not-executable` или `insufficient-data`. Это evidence-backed семантическая
+оценка модели, не machine guarantee
+([flow-assessment](openspec/specs/flow-assessment/spec.md)).
 
 ```text
 /usw-find-flow "Проверь текущий план перед реализацией"
 ```
 
-При однозначном совпадении finder возвращает name, origin, path, краткое
-основание и готовую команду `$usw-run-flow` с исходным намерением. При
-равноценных вариантах он показывает `ambiguous`, а при отсутствии подходящего
-flow — `no-match`.
+Finder по одному намерению ищет существующий runnable flow среди direct local
+и shared entries и возвращает `match` с готовой командой `$usw-run-flow`,
+`ambiguous` или `no-match`, ничего не создавая и не запуская
+([flow-discovery](openspec/specs/flow-discovery/spec.md)).
 
-Finder ничего не создаёт и не запускает, не читает HANDOFF и не ищет packaged
-examples, внешние каталоги или другие проекты. Для нового процесса отдельно
-используйте `$usw-create-flow`, для выбранного существующего —
-`$usw-run-flow`.
-
-## Готовые процессы
-
-Декомпозиция задачи и пошаговое уточнение intent поставляются как обычные
-примеры `plan-small-steps.md` и `refine-intent.md`. Их можно скопировать,
-изменить и запустить теми же `$usw-create-flow` и `$usw-run-flow`, без отдельных
-skills и commands. `./install.sh --force` удаляет прежние компоненты
-`usw-plan-small-steps`, `usw-refine-intent`, `usw-structured-review` и
-`usw-explain-me`; существующие пользовательские артефакты не изменяются.
+Декомпозиция задачи и уточнение intent поставляются как обычные примеры
+`plan-small-steps.md` и `refine-intent.md` — их копируют и запускают теми же
+командами, без отдельных skills.
 
 ## Qwen Code
 
@@ -324,6 +196,24 @@ codex plugin add usw@usw
 /usw-reviewer-llm-critic Scope: текущий diff
 ```
 
+## Claude Code
+
+Подключите marketplace и установите плагин:
+
+```bash
+claude plugin marketplace add Kimskiykim/usw
+claude plugin install usw@usw
+```
+
+После установки откройте новую сессию и вызовите `/usw-init`. Команды
+`/usw-handoff`, `/usw-resume` и `/usw-reviewer-llm-critic` станут доступны
+после того же перезапуска:
+
+```text
+/usw-init
+/usw-reviewer-llm-critic Scope: текущий diff
+```
+
 ## Прямая установка
 
 Для установки без extension/plugin manager клонируйте репозиторий и выполните:
@@ -331,9 +221,10 @@ codex plugin add usw@usw
 ```bash
 ./install.sh qwen
 ./install.sh codex
+./install.sh claude
 ```
 
-Без аргумента `./install.sh` установит command и skill для обоих агентов.
+Без аргумента `./install.sh` установит command и skill для всех трёх агентов.
 Установщик не перезаписывает существующие компоненты.
 
 Чтобы явно обновить уже установленный skill из текущего checkout, выполните:
@@ -342,11 +233,42 @@ codex plugin add usw@usw
 ./install.sh codex --force
 ```
 
-Для Qwen используйте `./install.sh qwen --force`, а для обоих агентов —
-`./install.sh --force`.
+Для Qwen используйте `./install.sh qwen --force`, для Claude Code —
+`./install.sh claude --force`, а для всех агентов сразу — `./install.sh --force`.
+`./install.sh --force` также удаляет снятые компоненты прежних версий;
+пользовательские артефакты не изменяются.
+
+## Платформы
+
+USW поддерживает Linux, macOS и Windows. Все возможности, включая routed handoff
+и обе формы flow, доступны на каждой из них.
+
+Доступ к файлам идёт через один общий safe-access boundary, у которого две
+реализации, и защита у них не одинаковая. Там, где операционная система
+предоставляет descriptor-relative доступ — на Linux и macOS — проверенный
+компонент пути больше не адресуется по имени, поэтому подменить его после
+проверки нельзя. На Windows такого механизма нет: boundary отвергает symlink,
+junction и reparse point на каждом шаге и запрещает имена, выходящие за пределы
+каталога, но обращается к записям по пути. Это сужает окно между проверкой и
+использованием, но не закрывает его.
+
+Практически это означает следующее. Обычные ошибки — ссылка, ведущая за пределы
+проекта, неверный тип файла, выход за границы каталога — отвергаются одинаково
+на всех платформах. А от процесса, который **целенаправленно подменяет** путь
+ровно между проверкой и чтением, Windows не защищён. Такому процессу нужны права
+записи в ваш проект; получив их, он может просто отредактировать сам `FLOW.md`.
+
+Ещё два отличия Windows, выявленные прогоном на самой платформе. Файлы handoff
+там не ограничены по правам доступа: POSIX-биты прав Windows не реализует, а на
+Linux и macOS эти файлы создаются с режимом `0600`. И `install.sh` — POSIX-скрипт,
+на Windows он не исполняется; ставьте USW через extension или plugin manager
+своего агента, как описано выше.
 
 ## Разработка
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+Поведенческие сценарии (opt-in, локальные, с настроенным runner) описаны в
+[`evals/README.md`](evals/README.md).

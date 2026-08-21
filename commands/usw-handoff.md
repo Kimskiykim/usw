@@ -1,14 +1,15 @@
 ---
-description: Save the current developer-local USW handoff.
+description: Сохранить текущий локальный для разработчика USW handoff.
 ---
 
-Save the current developer-local work state. Invoke the installed
-`usw-manage-handoff` skill in save mode for the exact current operation and
-follow its instructions. If the user asks to clear all finished work or passes
-`cleanup`, use cleanup mode; it removes only `completed` and `failed`
-operations. If the user asks to finish one operation, use finish mode with its
-exact ID. Treat other command arguments as selection context. With no ID,
-follow the skill's zero/one/many rules and never choose among multiple
-operations automatically. If handoff is disabled in `usw.yaml`, explain that
-no router, operation file or candidate was read or changed. Do not reproduce
-workflow logic in this command.
+Сохранить текущее локальное состояние работы. Вызвать установленный skill
+`usw-manage-handoff` в режиме save для точной текущей операции и следовать его
+инструкциям. Если пользователь просит очистить всю завершённую работу или
+передаёт `cleanup`, использовать режим cleanup; он удаляет только операции
+`completed` и `failed`. Если пользователь просит завершить одну операцию,
+использовать режим finish с её точным идентификатором. Остальные аргументы
+команды считать контекстом выбора. Без идентификатора следовать правилам skill
+для нуля, одной и многих операций и никогда не выбирать среди нескольких
+операций автоматически. Если handoff отключён в `usw.yaml`, объяснить, что ни
+роутер, ни файл операции, ни кандидат не читались и не изменялись. Не
+воспроизводить логику работы в этой команде.

@@ -15,8 +15,8 @@
 
 - bundled command: `usw-reviewer-llm-critic`
 
-Если обязательная dependency недоступна, вернуть `decision_required` до
-запуска subagents. Не подменять dependency другим skill или prompt.
+Если обязательная dependency недоступна, вернуть `blocked` до запуска
+subagents. Не подменять dependency другим skill или prompt.
 
 ## Вход
 
@@ -105,9 +105,9 @@ review-budget-reason: <triggers и factors либо low-risk reason>
 выполняет ровно одно read-only discovery review непосредственно по этим трём
 блокам.
 
-Reviewers ничего не меняют. Tool-unavailable, пустой или не соответствующий
-output contract результат возвращает `decision_required`; автоматически не
-повторять и не подменять reviewer-а.
+Reviewers ничего не меняют. Tool-unavailable результат возвращает `blocked`;
+пустой или не соответствующий output contract результат возвращает
+`decision_required`. Автоматически не повторять и не подменять reviewer-а.
 
 ### 3. Дедуплицировать candidates
 

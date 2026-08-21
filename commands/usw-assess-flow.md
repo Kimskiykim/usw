@@ -1,7 +1,8 @@
 ---
-description: Assess one named USW Markdown flow without running or changing it.
+description: Оценить один именованный USW flow в Markdown, не запуская и не изменяя его.
 ---
 
-Invoke the installed `usw-assess-flow` skill and follow its instructions. Treat command arguments
-as the optional origin selector, flow name and optional scenario input. Do not
-execute, repair or modify the assessed flow.
+Вызвать установленный skill `usw-assess-flow` и следовать его инструкциям.
+Аргументы команды считать необязательным селектором origin, именем flow и
+необязательным входом сценария. Не исполнять, не исправлять и не изменять
+оцениваемый flow.

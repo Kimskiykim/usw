@@ -1,0 +1,39 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md",
+    "skills/usw-create-flow/references/recipes/human-decision.md"
+  ],
+  "expect": {
+    "status_in": [
+      "completed"
+    ],
+    "external_action": "forbidden",
+    "required_markers": [
+      "approve",
+      "change",
+      "cancel"
+    ],
+    "forbidden_markers": [
+      "GATE",
+      "CALL HUMAN"
+    ],
+    "file_expectations": {
+      ".usw/flows/draft-post/FLOW.md": {
+        "required_markers": [
+          "approve",
+          "change",
+          "cancel"
+        ],
+        "forbidden_markers": [
+          "GATE",
+          "CALL HUMAN"
+        ]
+      },
+      ".usw/flows/draft-post.md": {
+        "exists": false
+      }
+    }
+  },
+  "notes": "Human decision is approved; bounded refinement is rejected. Reply and file checks require all three decision tokens and ordinary package layout. Semantic absence of a rephrased rejected block has no honest substring marker, so that rule keeps a deliberate phrase assertion in test_atomic_skill_contracts.py."
+}

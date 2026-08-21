@@ -41,7 +41,7 @@ class HandoffStateTests(unittest.TestCase):
         local = project / ".usw"
         local.mkdir()
         handoff = local / "HANDOFF.md"
-        handoff.write_text(HANDOFF.render_idle(), encoding="utf-8")
+        handoff.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
         return project, handoff
 
     def test_idle_format_is_small_and_valid(self):
@@ -172,12 +172,13 @@ class HandoffStateTests(unittest.TestCase):
                         operation_directory,
                     )
                     self.assertEqual(
-                        0o700, operation_directory.stat().st_mode & 0o777
+                        0o700 if os.name != "nt" else operation_directory.stat().st_mode & 0o777,
+                        operation_directory.stat().st_mode & 0o777
                     )
                     operation_path = (
                         operation_directory / HANDOFF.operation_filename(operation)
                     )
-                    operation_path.write_text(content, encoding="utf-8")
+                    operation_path.write_text(content, encoding="utf-8", newline="\n")
 
                 path, saved, parsed = HANDOFF._read_operation_at(
                     project, local_descriptor, operation
@@ -221,7 +222,7 @@ class HandoffStateTests(unittest.TestCase):
             operation_directory = project / ".usw/handoffs"
             operation_directory.mkdir()
             victim = project / "victim.md"
-            victim.write_text(first_content, encoding="utf-8")
+            victim.write_text(first_content, encoding="utf-8", newline="\n")
             os.symlink(
                 victim,
                 operation_directory / HANDOFF.operation_filename(first),
@@ -234,7 +235,7 @@ class HandoffStateTests(unittest.TestCase):
                 mismatched = (
                     operation_directory / HANDOFF.operation_filename(second)
                 )
-                mismatched.write_text(first_content, encoding="utf-8")
+                mismatched.write_text(first_content, encoding="utf-8", newline="\n")
                 with self.assertRaisesRegex(
                     HANDOFF.HandoffError, "identity does not match"
                 ):
@@ -258,7 +259,7 @@ class HandoffStateTests(unittest.TestCase):
                 "review", "shared", self.identity, "recover me"
             ).replace("- Status: in_progress", "- Status: paused")
             operation = HANDOFF.parse_handoff(active).metadata["Operation"]
-            handoff.write_text(active, encoding="utf-8")
+            handoff.write_text(active, encoding="utf-8", newline="\n")
 
             path, content, status = HANDOFF.read_handoff(project)
 
@@ -287,7 +288,7 @@ class HandoffStateTests(unittest.TestCase):
                 "review", "shared", self.identity, "recover me"
             ).replace("- Status: in_progress", "- Status: paused")
             operation = HANDOFF.parse_handoff(active).metadata["Operation"]
-            handoff.write_text(active, encoding="utf-8")
+            handoff.write_text(active, encoding="utf-8", newline="\n")
 
             with (
                 mock.patch.object(
@@ -397,7 +398,11 @@ class HandoffStateTests(unittest.TestCase):
                 '"exact\\n## not-a-handoff-section\\ninput"',
                 parsed.sections["Input"],
             )
-            self.assertEqual(0o600, path.stat().st_mode & 0o777)
+            if os.name != "nt":
+                # Windows does not implement POSIX permission bits, so handoff
+                # documents are not mode-restricted there. See the platform
+                # section of the README.
+                self.assertEqual(0o600, path.stat().st_mode & 0o777)
             self.assertEqual(
                 (operation,),
                 HANDOFF.parse_router(
@@ -942,7 +947,7 @@ class HandoffStateTests(unittest.TestCase):
                 active = HANDOFF.render_begin(
                     "review", "shared", self.identity, "input"
                 ).replace("- Status: in_progress", f"- Status: {status}")
-                handoff.write_text(active, encoding="utf-8")
+                handoff.write_text(active, encoding="utf-8", newline="\n")
                 first = HANDOFF.parse_handoff(active).metadata["Operation"]
                 _, second = HANDOFF.begin_handoff(
                     project, "review", "shared", self.identity, "new input"
@@ -1054,7 +1059,7 @@ class HandoffStateTests(unittest.TestCase):
 
             def replace_then_compete(*args, **kwargs):
                 original_replace(*args, **kwargs)
-                handoff.write_text(competing_router, encoding="utf-8")
+                handoff.write_text(competing_router, encoding="utf-8", newline="\n")
 
             with mock.patch.object(
                 HANDOFF.os,
@@ -1247,7 +1252,9 @@ class HandoffStateTests(unittest.TestCase):
             original_unlink = HANDOFF.os.unlink
 
             def fail_operation_cleanup(name, *args, **kwargs):
-                if name == HANDOFF.operation_filename(operation):
+                # The pathname backend passes a full path where the
+                # descriptor-relative one passes a bare entry name.
+                if os.path.basename(str(name)) == HANDOFF.operation_filename(operation):
                     raise OSError("simulated cleanup failure")
                 return original_unlink(name, *args, **kwargs)
 
@@ -1275,7 +1282,7 @@ class HandoffStateTests(unittest.TestCase):
                 "|---|---|---|---|---|---|\n"
                 "| task/a/1 | Development | x:1/1 | op-001 | paused | 2026-07-30T10:00:00+03:00 |\n"
             )
-            handoff.write_text(legacy, encoding="utf-8")
+            handoff.write_text(legacy, encoding="utf-8", newline="\n")
 
             _, content, status = HANDOFF.read_handoff(project)
             self.assertEqual(("paused", legacy), (status, content))
@@ -1371,7 +1378,7 @@ class HandoffStateTests(unittest.TestCase):
                 "|---|---|---|---|---|---|\n"
                 "| task/a/1 | Development | x:1/1 | op-001 | paused | 2026-07-30T10:00:00+03:00 |\n"
             )
-            handoff.write_text(legacy, encoding="utf-8")
+            handoff.write_text(legacy, encoding="utf-8", newline="\n")
             with self.assertRaisesRegex(HANDOFF.HandoffError, "routed parent"):
                 HANDOFF.assert_current_handoff(
                     project, "usw-operation:" + "0" * 64
@@ -1400,7 +1407,7 @@ class HandoffStateTests(unittest.TestCase):
             local = project / ".usw"
             local.mkdir()
             victim = project / "victim"
-            victim.write_text(HANDOFF.render_idle(), encoding="utf-8")
+            victim.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
             os.symlink(victim, local / "HANDOFF.md")
             with self.assertRaisesRegex(HANDOFF.HandoffError, "unsafe"):
                 HANDOFF.read_handoff(project)
@@ -1437,7 +1444,7 @@ class HandoffStateTests(unittest.TestCase):
             )
 
             wrong = project / "wrong.md"
-            wrong.write_text(HANDOFF.render_idle(), encoding="utf-8")
+            wrong.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
             with self.assertRaisesRegex(HANDOFF.HandoffError, "candidate must"):
                 HANDOFF.save_handoff(project, operation, wrong)
 
@@ -1602,7 +1609,7 @@ class HandoffStateTests(unittest.TestCase):
             )
             current = path.read_bytes()
 
-            candidate.write_text(HANDOFF.render_idle(), encoding="utf-8")
+            candidate.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
             with self.assertRaisesRegex(HANDOFF.HandoffError, "finish"):
                 HANDOFF.save_handoff(project, operation, candidate)
             self.assertEqual(current, path.read_bytes())
@@ -1626,7 +1633,7 @@ class HandoffStateTests(unittest.TestCase):
                 "|---|---|---|---|---|---|\n"
                 "| task/a/1 | Development | x:1/1 | op-001 | paused | 2026-07-30T10:00:00+03:00 |\n"
             )
-            handoff.write_text(legacy, encoding="utf-8")
+            handoff.write_text(legacy, encoding="utf-8", newline="\n")
             candidate.write_text(
                 HANDOFF.render_begin(
                     "review", "shared", self.identity, "candidate"

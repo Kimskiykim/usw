@@ -1,43 +1,47 @@
-# local-custom-flows Specification
+# Спецификация local-custom-flows
 
 ## Purpose
-Define safe local/shared selection without changing the text execution mode.
+Определяет безопасный выбор local/shared без изменения режима text execution.
 
 ## Requirements
 
-### Requirement: Explicit origin selection
-The system SHALL treat `--local` and `-l` as equivalent explicit selectors for
-developer-local flows and `--shared` as the explicit shared selector.
+### Requirement: Явный выбор origin
+Система SHALL считать `--local` и `-l` равнозначными явными selectors для
+developer-local flows, а `--shared` — явным selector shared origin.
 
-#### Scenario: Create a local flow
-- **WHEN** a user creates a named flow with `--local` or `-l`
-- **THEN** the system writes only `.usw/flows/<name>.md`
+#### Scenario: Создание local flow
+- **WHEN** пользователь создаёт именованный flow с `--local` или `-l`
+- **THEN** система записывает только `.usw/flows/<name>.md`
 
-#### Scenario: Run a shared flow
-- **WHEN** a user runs a named flow with `--shared`
-- **THEN** the system loads only `<flows.root>/<name>.md`
+#### Scenario: Запуск shared flow
+- **WHEN** пользователь запускает именованный flow с `--shared`
+- **THEN** система загружает только `<flows.root>/<name>.md`
 
-### Requirement: Implicit lookup is local-first
-Without an explicit selector the system SHALL look in `.usw/flows` first and
-then in configured `flows.root`.
+### Requirement: Неявный lookup использует local-first
+Без явного selector система SHALL сначала искать в `.usw/flows`, а затем в
+настроенном `flows.root`.
 
-#### Scenario: Both origins contain the same name
-- **WHEN** a local and shared flow have the same safe name
-- **THEN** the local file is selected and its origin is reported
+#### Scenario: Оба origin содержат одинаковое имя
+- **WHEN** local и shared flows имеют одинаковое safe name
+- **THEN** выбирается local file и возвращается его origin
 
 ### Requirement: Local и shared используют единый text path
-After origin selection USW SHALL create the same immutable Markdown invocation.
-Metadata, origin and `version-2` markers MUST NOT select a different executor.
-Identity SHALL include origin even when names and Markdown bytes are equal.
+После выбора origin USW SHALL создавать одинаковый immutable Markdown
+invocation. Metadata, origin и markers `version-2` MUST NOT выбирать другой
+executor. Identity SHALL включать origin, даже если names и Markdown bytes
+совпадают.
 
-#### Scenario: Equal content in different origins
-- **WHEN** local and shared flows have equal names and Markdown
-- **THEN** each selected invocation has an origin-specific identity and the same execution semantics
+#### Scenario: Одинаковый content в разных origins
+- **WHEN** local и shared flows имеют одинаковые names и Markdown
+- **THEN** каждый выбранный invocation получает origin-specific identity и
+  одинаковую execution semantics
 
-### Requirement: Local flow paths stay inside safe local state
-The system MUST reject a local root or target that traverses a symbolic link or
-resolves to a non-regular flow file.
+### Requirement: Paths local flow остаются внутри безопасного local state
+Система MUST отклонять local root или target, проходящий через symbolic link
+либо разрешающийся в flow file, который не является regular.
 
-#### Scenario: Local flow path is unsafe
-- **WHEN** `.usw`, `.usw/flows`, an intermediate component or the selected file is unsafe
-- **THEN** creation or execution stops before reading, writing or invoking the flow
+#### Scenario: Path local flow небезопасен
+- **WHEN** `.usw`, `.usw/flows`, intermediate component или выбранный file
+  небезопасен
+- **THEN** создание или execution останавливается до чтения, записи или вызова
+  flow

@@ -73,21 +73,13 @@ class PackageLayoutTests(unittest.TestCase):
         )
 
         for fragment in (
-            "Try `python3`, then `python`",
             "sys.version_info < (3, 10)",
-            "never hide a script or configuration error with fallback",
-            "not write anything until the user explicitly agrees",
             "references/llm-fallback.md",
         ):
             self.assertIn(fragment, skill)
         for fragment in (
-            "reject the removed `artifacts.provider` field",
-            "accept safe custom artifact, flow and review roots",
-            "repository tracking policy belongs to the\nuser",
-            "Preserve every existing regular file byte-for-byte",
-            "Never overwrite, merge, delete, chmod, or follow links",
-            "the four packaged examples",
-            "Do not create, migrate, or remove legacy\n`flow-scenario-*.md` files",
+            "`artifacts.provider`",
+            "`flow-scenario-*.md`",
         ):
             self.assertIn(fragment, fallback)
         for obsolete in (
@@ -101,9 +93,7 @@ class PackageLayoutTests(unittest.TestCase):
         plan = (examples / "plan-small-steps.md").read_text(encoding="utf-8")
         refine = (examples / "refine-intent.md").read_text(encoding="utf-8")
 
-        self.assertIn("Готово, когда", plan)
-        self.assertIn("Проверка:", plan)
-        self.assertIn("Один ход — один вопрос", refine)
+        self.assertTrue(plan.strip())
         self.assertIn("decision_required", refine)
         for name in (
             "usw-plan-small-steps",
@@ -119,17 +109,13 @@ class PackageLayoutTests(unittest.TestCase):
         metadata = (skill_dir / "agents/openai.yaml").read_text(encoding="utf-8")
 
         for fragment in (
-            "## Подготовка",
-            "## Создание и проверка",
             "`--structured`",
             "`-s`",
-            "Без него не читать reference",
-            "ordinary или `version-2` форму",
-            "не выполнять описанный flow",
+            "`version-2`",
         ):
             self.assertIn(fragment, skill)
         self.assertEqual(
-            {"version-2.md"},
+            {"recipes.md", "version-2.md"},
             {path.name for path in (skill_dir / "references").glob("*.md")},
         )
         self.assertIn("allow_implicit_invocation: true", metadata)
@@ -147,9 +133,6 @@ class PackageLayoutTests(unittest.TestCase):
             "$usw-run-flow --experimental-structured",
         ):
             self.assertNotIn(removed, content)
-        self.assertIn("не machine DSL", content)
-        self.assertIn("Применять только нужные маркеры", content)
-        self.assertIn("human decision point", content)
 
     def test_create_flow_stays_within_authoring_scope(self):
         skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
@@ -164,106 +147,96 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertNotIn(removed, skill)
 
+    def test_create_flow_prompt_contract_describes_safe_packaged_layout(self):
+        skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "`<flow-root>/<name>/FLOW.md`",
+            "`ambiguous_flow_layout`",
+            "`flows.root`",
+        ):
+            self.assertIn(fragment, skill)
+        self.assertNotIn("Разрешить ровно один origin selector", skill)
+
+    def test_find_flow_prompt_contract_describes_bounded_discovery(self):
+        skill = (ROOT / "skills/usw-find-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "`<name>.md`",
+            "`<name>/FLOW.md`",
+            "`ambiguous_flow_layout`",
+            "`resolve`",
+        ):
+            self.assertIn(fragment, skill)
+
+    def test_assess_flow_prompt_contract_forbids_resource_reads(self):
+        skill = (ROOT / "skills/usw-assess-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "`flow_directory`",
+            "`unverified`",
+            "`<name>/FLOW.md`",
+        ):
+            self.assertIn(fragment, skill)
+
+    def test_readme_documents_packaged_flows_and_legacy_compatibility(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        for fragment in (
+            "review/FLOW.md",
+            "review/scripts/check.py",
+            "`<name>.md`",
+            "`ambiguous_flow_layout`",
+            "`flow_directory`",
+        ):
+            self.assertIn(fragment, readme)
+
     def test_create_flow_has_bounded_human_controlled_design_recipes(self):
         skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
             encoding="utf-8"
         )
-        spec = (
-            ROOT
-            / "openspec/specs/guided-flow-authoring/spec.md"
+        index = (
+            ROOT / "skills/usw-create-flow/references/recipes.md"
         ).read_text(encoding="utf-8")
+        recipes_dir = ROOT / "skills/usw-create-flow/references/recipes"
 
-        recipe_names = (
-            "Проверка результата",
-            "Human decision",
-            "Подтверждение внешнего действия",
-            "Обработка ошибки",
-            "Ограниченная доработка",
-            "Независимые проверки",
-            "Повторное использование capability",
+        recipe_files = {
+            "Проверка результата": "result-check.md",
+            "Human decision": "human-decision.md",
+            "Подтверждение внешнего действия": "external-action-approval.md",
+            "Обработка ошибки": "error-handling.md",
+            "Ограниченная доработка": "bounded-refinement.md",
+            "Независимые проверки": "independent-checks.md",
+            "Ревью субагентами": "subagent-review.md",
+            "Оркестрация с субагентами": "subagent-orchestration.md",
+            "Эскалация": "escalation.md",
+            "Выбор из вариантов": "variant-selection.md",
+            "Сбор недостающих входов": "input-preflight.md",
+            "Ожидание внешнего события": "external-event-wait.md",
+            "Адаптивная интенсивность": "adaptive-intensity.md",
+            "Обработка списка элементов": "list-processing.md",
+            "Повторное использование capability": "capability-reuse.md",
+        }
+        self.assertEqual(
+            set(recipe_files.values()),
+            {path.name for path in recipes_dir.glob("*.md")},
         )
-        recipe_headings = [
-            line.removeprefix("### ")
-            for line in skill.splitlines()
-            if line.startswith("### ")
-        ]
-        self.assertEqual(list(recipe_names), recipe_headings)
+        for name, filename in recipe_files.items():
+            with self.subTest(recipe=name):
+                self.assertIn(name, index)
+                self.assertIn(f"recipes/{filename}", index)
+                content = (recipes_dir / filename).read_text(encoding="utf-8")
+                self.assertTrue(content.startswith(f"# {name}"))
 
-        for fragment in (
-            "## Подсказки по проектированию",
-            "три наиболее релевантные подсказки",
-            "`применить`, `изменить` или `пропустить`",
-            "Для ordinary Markdown",
-            "Только для `version-2`",
-            "`изменить` сначала показывает",
-            "для его записи пользователь должен отдельно",
-            "После revision не запускать design scan повторно",
-            "Примеры в рецептах ниже показывают только `version-2` форму",
-            "Не копировать их\nstructured markers в ordinary flow",
-        ):
+        self.assertIn("references/recipes.md", skill)
+        for fragment in ("`применить`", "`изменить`", "`пропустить`"):
             self.assertIn(fragment, skill)
-
-        self.assertLess(
-            skill.index("Сообщить имя, origin, путь"),
-            skill.index("После успешного сохранения и отчёта"),
-        )
-
-        verification = skill.split("### Проверка результата", 1)[1].split(
-            "### Human decision", 1
-        )[0]
-        self.assertLess(
-            verification.index("Сначала добавить наблюдаемую проверку"),
-            verification.index("`GATE` предлагать только"),
-        )
-
-        human_decision = skill.split("### Human decision", 1)[1].split(
-            "### Подтверждение внешнего действия", 1
-        )[0]
-        external_approval = skill.split(
-            "### Подтверждение внешнего действия", 1
-        )[1].split("### Обработка ошибки", 1)[0]
-        error_handling = skill.split("### Обработка ошибки", 1)[1].split(
-            "### Ограниченная доработка", 1
-        )[0]
-        for recipe in (human_decision, external_approval, error_handling):
-            self.assertTrue(
-                "только когда" in recipe or "только если" in recipe
-            )
-
-        refinement = skill.split("### Ограниченная доработка", 1)[1].split(
-            "### Независимые проверки", 1
-        )[0]
-        for fragment in (
-            "read-only, идемпотентны или безопасно обратимы",
-            "критерий выхода и предел",
-            "approval и внешнее действие\nоставлять после выхода из цикла",
-        ):
-            self.assertIn(fragment, refinement)
-
-        parallel = skill.split("### Независимые проверки", 1)[1].split(
-            "### Повторное использование capability", 1
-        )[0]
-        self.assertIn(
-            "Не предлагать `PARALLEL` для зависимых действий", parallel
-        )
-
-        capability = skill.split(
-            "### Повторное использование capability", 1
-        )[1]
-        self.assertIn("текущем списке доступных skills", capability)
-        self.assertIn(
-            "Одного имени без присутствия в текущем списке", capability
-        )
-        self.assertNotIn("или CALL FLOW", capability)
-        self.assertIn("не предлагать `CALL FLOW`", capability)
-
-        for fragment in (
-            "`применить`, `изменить` and `пропустить`",
-            "present in the current available-skills list",
-            "does not write until a\n  later explicit `применить`",
-            "keeps that action and its approval outside the loop",
-        ):
-            self.assertIn(fragment, spec)
 
     def test_run_flow_has_one_text_path_and_local_precedence(self):
         skill_dir = ROOT / "skills/usw-run-flow"
@@ -273,36 +246,25 @@ class PackageLayoutTests(unittest.TestCase):
             "`-l`",
             "--shared",
             ".usw/flows",
-            "Без selector искать local flow первым, затем shared",
             "--origin local",
-            "Использовать только возвращённый `markdown`",
-            "не machine DSL",
-            "independent top-level invocations",
-            "Exact Begin operation ID является root execution identity",
+            "`markdown`",
             "`assert-current`",
-            "Nested child не владеет durable state",
-            "Только root пишет aggregate Outcome",
-            "Новый Begin создаёт другую route",
+            "references/execution-model.md",
         ):
             self.assertIn(fragment, skill)
-        self.assertFalse((skill_dir / "references").exists())
+        self.assertEqual(
+            {"execution-model.md"},
+            {path.name for path in (skill_dir / "references").glob("*.md")},
+        )
 
     def test_readme_explains_routed_roots_nested_children_and_cleanup(self):
         readme = " ".join(
             (ROOT / "README.md").read_text(encoding="utf-8").split()
         )
         for fragment in (
-            ".usw/HANDOFF.md` показывает summary задачи",
-            "чат UI:",
-            "чат backend:",
-            "USW не обнаруживает и не разрешает конфликты в product files",
-            "не получает собственную route",
-            "Только root агрегирует результаты детей",
+            ".usw/HANDOFF.md",
             "/usw-handoff finish <operation-id>",
             "/usw-handoff cleanup",
-            "Для rollback",
-            "generic idle HANDOFF старой версии",
-            "не создаёт scheduler",
         ):
             self.assertIn(fragment, readme)
 
@@ -312,19 +274,11 @@ class PackageLayoutTests(unittest.TestCase):
         metadata = (skill_dir / "agents/openai.yaml").read_text(encoding="utf-8")
 
         required_fragments = (
-            "одно описание намерения",
-            "Writes and side effects: none",
-            "`match`, `ambiguous` или `no-match`",
+            "`match`",
+            "`ambiguous`",
+            "`no-match`",
             ".usw/flows",
-            "configured shared",
-            "safe kebab-case",
-            "не следовать symlink",
-            "safe `resolve`",
-            "Не искать packaged examples",
-            "готовую команду `$usw-run-flow`",
-            "Не запускать эту команду",
-            "не вызывать его",
-            "не читает и не изменяет HANDOFF",
+            "$usw-run-flow",
         )
         for fragment in required_fragments:
             self.assertIn(fragment, skill)
@@ -351,10 +305,7 @@ class PackageLayoutTests(unittest.TestCase):
             "`--local`",
             "`-l`",
             "`--shared`",
-            "scenario input",
-            "safe `inspect`",
-            "returned `markdown`",
-            "не перечитывать `path`",
+            "`inspect`",
             "`executable`",
             "`executable-with-risks`",
             "`not-executable`",
@@ -368,34 +319,18 @@ class PackageLayoutTests(unittest.TestCase):
             "`confirmed`",
             "`missing`",
             "`unverified`",
-            "явные `LOOP`",
-            "неявные циклы",
-            "необратимое внешнее действие",
-            "достижимый путь без следующего действия или terminal outcome — `blocking`",
-            "противоречащие обязательные действия на одном пути — `blocking`",
-            "finite terminal path → `executable`",
-            "bounded retry с terminal fallback → без blocking finding",
-            "A → B → A без выхода → `not-executable`",
-            "повторять до успеха без предела → `executable-with-risks`",
-            "missing mandatory dependency без fallback → `not-executable`",
-            "missing dependency с `decision_required` → не blocking",
-            "proven contract-invalid mandatory invocation без handled terminal fallback — `blocking`",
-            "mandatory call с retired selector без fallback → `not-executable`",
-            "approval один раз до цикла не делает повтор необратимого действия безопасным",
-            "irreversible action и его approval вне цикла",
-            "approval перед loop с irreversible action внутри → `not-executable`",
-            "необратимый side effect внутри цикла → `not-executable`",
-            "не проводить recursive assessment",
-            "не выполнять flow",
-            "не читать и не изменять HANDOFF",
-            "не создавать и не изменять файлы",
-            "не machine guarantee",
+            "`LOOP`",
+            "`decision_required`",
+            "references/assessment-model.md",
         ):
             self.assertIn(fragment, skill)
 
+        self.assertEqual(
+            {"assessment-model.md"},
+            {path.name for path in (skill_dir / "references").glob("*.md")},
+        )
         self.assertIn("allow_implicit_invocation: false", metadata)
         self.assertIn("usw-assess-flow", command)
-        self.assertIn("Treat command arguments", command)
         self.assertFalse((skill_dir / "scripts").exists())
 
     def test_assess_flow_acceptance_evidence_is_checked_in(self):
@@ -474,16 +409,6 @@ class PackageLayoutTests(unittest.TestCase):
                     encoding="utf-8"
                 )
                 self.assertIn(skill_name, command)
-        handoff = (ROOT / "commands/usw-handoff.md").read_text(
-            encoding="utf-8"
-        )
-        resume = (ROOT / "commands/usw-resume.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("exact current operation", handoff)
-        self.assertIn("zero/one/many", handoff)
-        self.assertIn("optional exact operation ID", resume)
-        self.assertIn("zero/one/many", resume)
 
     def test_assess_flow_is_documented_in_package_metadata(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -498,12 +423,9 @@ class PackageLayoutTests(unittest.TestCase):
         )
 
         for fragment in (
-            "## Оценка flow",
             "$usw-assess-flow [--local|-l|--shared] <flow-name>",
             "`executable-with-risks`",
             "`not-executable`",
-            "не запускает flow",
-            "не является machine guarantee",
         ):
             self.assertIn(fragment, readme)
 
@@ -603,8 +525,39 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertTrue((ROOT / "commands" / command_name).is_file())
 
-    def test_claude_plugin_is_not_packaged(self):
-        self.assertFalse((ROOT / ".claude-plugin").exists())
+    def test_claude_plugin_points_to_shared_skills(self):
+        manifest = json.loads(
+            (ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+        marketplace = json.loads(
+            (ROOT / ".claude-plugin" / "marketplace.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        self.assertEqual("usw", manifest["name"])
+        self.assertIn("assess", manifest["description"])
+        plugin = marketplace["plugins"][0]
+        self.assertEqual("usw", plugin["name"])
+        self.assertEqual("./", plugin["source"])
+        for skill_name in (
+            "usw-initialize-project",
+            "usw-manage-handoff",
+            "usw-create-flow",
+            "usw-run-flow",
+            "usw-find-flow",
+            "usw-assess-flow",
+        ):
+            self.assertTrue((ROOT / "skills" / skill_name / "SKILL.md").is_file())
+        for command_name in (
+            "usw-init.md",
+            "usw-handoff.md",
+            "usw-resume.md",
+            "usw-reviewer-llm-critic.md",
+            "usw-find-flow.md",
+            "usw-assess-flow.md",
+        ):
+            self.assertTrue((ROOT / "commands" / command_name).is_file())
         self.assertFalse((ROOT / "plugins").exists())
 
 

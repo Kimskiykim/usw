@@ -29,7 +29,7 @@ class TextFirstEndToEndTests(unittest.TestCase):
             project = Path(directory)
             INIT.initialize_usw(project)
             flow = project / "usw/flows/review.md"
-            flow.write_text("# Review\n\nFollow the input.\n", encoding="utf-8")
+            flow.write_text("# Review\n\nFollow the input.\n", encoding="utf-8", newline="\n")
 
             invocation = RUNNER.prepare_markdown_run(
                 project, project / "usw/flows", "review", "check the change"
@@ -100,8 +100,8 @@ class TextFirstEndToEndTests(unittest.TestCase):
             project = Path(directory)
             INIT.initialize_usw(project)
             shared = project / "usw/flows"
-            (shared / "root.md").write_text("Coordinate.\n", encoding="utf-8")
-            (shared / "child.md").write_text("Inspect.\n", encoding="utf-8")
+            (shared / "root.md").write_text("Coordinate.\n", encoding="utf-8", newline="\n")
+            (shared / "child.md").write_text("Inspect.\n", encoding="utf-8", newline="\n")
             root_invocations = [
                 RUNNER.prepare_markdown_run(
                     project, shared, "root", value
@@ -184,12 +184,12 @@ class TextFirstEndToEndTests(unittest.TestCase):
             )
             existing = project / ".usw/HANDOFF.md"
             existing.parent.mkdir()
-            existing.write_text("invalid user bytes\n", encoding="utf-8")
+            existing.write_text("invalid user bytes\n", encoding="utf-8", newline="\n")
             before = existing.read_bytes()
 
             INIT.initialize_usw(project)
             flow = project / "usw/flows/review.md"
-            flow.write_text("Review.\n", encoding="utf-8")
+            flow.write_text("Review.\n", encoding="utf-8", newline="\n")
             invocation = RUNNER.prepare_markdown_run(
                 project, project / "usw/flows", "review", "input"
             )
@@ -205,7 +205,7 @@ class TextFirstEndToEndTests(unittest.TestCase):
             project = Path(directory)
             INIT.initialize_usw(project)
             legacy_flow = project / ".usw/FLOW.json"
-            legacy_flow.write_text("{legacy", encoding="utf-8")
+            legacy_flow.write_text("{legacy", encoding="utf-8", newline="\n")
             legacy_handoff = (
                 "# Developer Handoff\n\n"
                 "| Subject | Role | Attempt | Current operation | Status | Updated |\n"
@@ -213,9 +213,9 @@ class TextFirstEndToEndTests(unittest.TestCase):
                 "| task/a/1 | Development | old:1/1 | op-001 | paused | 2026-07-30T10:00:00+03:00 |\n"
             )
             handoff = project / ".usw/HANDOFF.md"
-            handoff.write_text(legacy_handoff, encoding="utf-8")
+            handoff.write_text(legacy_handoff, encoding="utf-8", newline="\n")
             flow = project / "usw/flows/review.md"
-            flow.write_text("Review.\n", encoding="utf-8")
+            flow.write_text("Review.\n", encoding="utf-8", newline="\n")
 
             invocation = RUNNER.prepare_markdown_run(
                 project, project / "usw/flows", "review", "input"

@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -14,10 +14,21 @@ import secrets
 import stat
 import subprocess
 import sys
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:  # POSIX only: absent on Windows, where msvcrt provides locking instead.
+    import fcntl
+except ImportError:  # pragma: no cover - selected by platform
+    fcntl = None
+
+try:  # Windows only.
+    import msvcrt
+except ImportError:  # pragma: no cover - selected by platform
+    msvcrt = None
 from types import SimpleNamespace
 
 
@@ -137,14 +148,79 @@ def _enabled_root(project: Path) -> Path:
     return root
 
 
+LOCK_RETRY_LIMIT = 100
+LOCK_RETRY_DELAY = 0.05
+
+def load_safe_access(skills_root: Path):
+    """Load the one shared safe-access module, shared across skills.
+
+    Cached under a stable name so every skill in a process gets the same module
+    object: patching or probing it in one place then holds everywhere.
+    """
+
+    name = "usw_safe_access"
+    cached = sys.modules.get(name)
+    if cached is not None:
+        return cached
+    path = skills_root / "usw-initialize-project" / "scripts" / "safe_access.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+SAFE_ACCESS = load_safe_access(SKILLS_ROOT)
+# Names are re-exported for annotations and isinstance checks only. Behavior is
+# always reached through SAFE_ACCESS so that patching it takes effect everywhere.
+_SafeDirectory = SAFE_ACCESS.SafeDirectory
+_DescriptorDirectory = SAFE_ACCESS.DescriptorDirectory
+_PathnameDirectory = SAFE_ACCESS.PathnameDirectory
+
+
+@contextmanager
+def _exclusive_lock_file(path: Path):
+    """Serialize transitions where flock is unavailable.
+
+    Locks a dedicated file rather than the state directory, which Windows cannot
+    open. Retries with a bound so a stuck holder surfaces as a handoff error
+    instead of hanging.
+    """
+
+    lock_path = path / ".lock"
+    try:
+        descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError as error:
+        raise HandoffError(
+            "unsafe_handoff", f"cannot open handoff lock: {lock_path}"
+        ) from error
+
+    try:
+        for attempt in range(LOCK_RETRY_LIMIT):
+            try:
+                msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+                break
+            except OSError:
+                if attempt == LOCK_RETRY_LIMIT - 1:
+                    raise HandoffError(
+                        "handoff_locked",
+                        f"another process holds the handoff lock: {lock_path}",
+                    )
+                time.sleep(LOCK_RETRY_DELAY)
+        try:
+            yield
+        finally:
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+    finally:
+        os.close(descriptor)
+
+
 @contextmanager
 def _locked_local_directory(root: Path):
     path = root / ".usw"
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
-        os, "O_NOFOLLOW", 0
-    )
     try:
-        descriptor = os.open(path, flags)
+        directory = SAFE_ACCESS.open_safe_directory(path)
     except FileNotFoundError as error:
         raise HandoffError(
             "missing_handoff", "run /usw-init before using handoff"
@@ -153,12 +229,19 @@ def _locked_local_directory(root: Path):
         raise HandoffError(
             "unsafe_handoff", f"unsafe local state directory: {path}"
         ) from error
+
     try:
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
-        yield path, descriptor
+        if not SAFE_ACCESS.supports_descriptor_relative_access():
+            with _exclusive_lock_file(path):
+                yield path, directory
+            return
+        try:
+            fcntl.flock(directory.descriptor, fcntl.LOCK_EX)
+            yield path, directory
+        finally:
+            fcntl.flock(directory.descriptor, fcntl.LOCK_UN)
     finally:
-        fcntl.flock(descriptor, fcntl.LOCK_UN)
-        os.close(descriptor)
+        directory.close()
 
 
 def _handoff_path(root: Path) -> Path:
@@ -176,17 +259,14 @@ def _operation_candidate_path(root: Path, operation: str) -> Path:
 @contextmanager
 def _opened_operation_directory(
     root: Path,
-    local_descriptor: int,
+    local_directory: _SafeDirectory,
     *,
     create: bool = False,
 ):
     local_path = root / ".usw"
     path = local_path / "handoffs"
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
-        os, "O_NOFOLLOW", 0
-    )
     try:
-        descriptor = os.open("handoffs", flags, dir_fd=local_descriptor)
+        directory = local_directory.child_directory("handoffs")
     except FileNotFoundError as error:
         if not create:
             raise HandoffError(
@@ -194,11 +274,11 @@ def _opened_operation_directory(
                 f"operation state directory is missing: {path}",
             ) from error
         try:
-            os.mkdir("handoffs", 0o700, dir_fd=local_descriptor)
+            local_directory.make_directory("handoffs", 0o700)
         except FileExistsError:
             pass
         try:
-            descriptor = os.open("handoffs", flags, dir_fd=local_descriptor)
+            directory = local_directory.child_directory("handoffs")
         except OSError as open_error:
             raise HandoffError(
                 "unsafe_handoff", f"unsafe operation state directory: {path}"
@@ -208,50 +288,38 @@ def _opened_operation_directory(
             "unsafe_handoff", f"unsafe operation state directory: {path}"
         ) from error
     try:
-        if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
-            raise HandoffError(
-                "unsafe_handoff", f"unsafe operation state directory: {path}"
-            )
-        yield path, descriptor
+        yield path, directory
     finally:
-        os.close(descriptor)
+        directory.close()
 
 
 def _read_regular_at(
-    directory_descriptor: int,
+    directory: _SafeDirectory,
     name: str,
     path: Path,
     *,
     missing_code: str,
     missing_detail: str,
 ) -> str:
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(name, flags, dir_fd=directory_descriptor)
+        return directory.read_text(name)
     except FileNotFoundError as error:
         raise HandoffError(missing_code, missing_detail) from error
     except OSError as error:
         raise HandoffError("unsafe_handoff", f"unsafe file: {path}") from error
-    try:
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            raise HandoffError("unsafe_handoff", f"unsafe file: {path}")
-        with os.fdopen(descriptor, "r", encoding="utf-8", closefd=False) as handle:
-            return handle.read()
-    finally:
-        os.close(descriptor)
 
 
 def _read_operation_at(
     root: Path,
-    local_descriptor: int,
+    local_directory: int,
     operation: str,
 ) -> tuple[Path, str, Handoff]:
     path = _operation_path(root, operation)
     with _opened_operation_directory(
-        root, local_descriptor
-    ) as (_, operation_descriptor):
+        root, local_directory
+    ) as (_, operation_directory):
         content = _read_regular_at(
-            operation_descriptor,
+            operation_directory,
             operation_filename(operation),
             path,
             missing_code="missing_operation",
@@ -853,35 +921,19 @@ def render_begin(
 
 
 def _atomic_write(
-    directory_descriptor: int,
+    directory: _SafeDirectory,
     path: Path,
     content: str,
     *,
     validator=parse_handoff,
 ) -> None:
     temporary = f".{path.name}.{secrets.token_hex(8)}.tmp"
-    flags = (
-        os.O_WRONLY
-        | os.O_CREAT
-        | os.O_EXCL
-        | getattr(os, "O_NOFOLLOW", 0)
-    )
-    descriptor = os.open(temporary, flags, 0o600, dir_fd=directory_descriptor)
+    directory.write_exclusive(temporary, content, 0o600)
     try:
-        os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(
-            temporary,
-            path.name,
-            src_dir_fd=directory_descriptor,
-            dst_dir_fd=directory_descriptor,
-        )
-        os.fsync(directory_descriptor)
+        directory.replace(temporary, path.name)
+        directory.sync()
         saved = _read_regular_at(
-            directory_descriptor,
+            directory,
             path.name,
             path,
             missing_code="missing_handoff",
@@ -895,17 +947,17 @@ def _atomic_write(
             )
     finally:
         try:
-            os.unlink(temporary, dir_fd=directory_descriptor)
+            directory.unlink(temporary)
         except FileNotFoundError:
             pass
 
 
 def _read_handoff_content_locked(
-    root: Path, directory_descriptor: int
+    root: Path, state_directory: int
 ) -> tuple[Path, str]:
     path = _handoff_path(root)
     content = _read_regular_at(
-        directory_descriptor,
+        state_directory,
         path.name,
         path,
         missing_code="missing_handoff",
@@ -915,21 +967,15 @@ def _read_handoff_content_locked(
 
 
 def _install_operation_document(
-    operation_descriptor: int,
+    operation_directory: _SafeDirectory,
     path: Path,
     content: str,
     *,
     allow_existing: bool = True,
 ) -> bool:
     name = path.name
-    flags = (
-        os.O_WRONLY
-        | os.O_CREAT
-        | os.O_EXCL
-        | getattr(os, "O_NOFOLLOW", 0)
-    )
     try:
-        descriptor = os.open(name, flags, 0o600, dir_fd=operation_descriptor)
+        operation_directory.write_exclusive(name, content, 0o600)
     except FileExistsError:
         if not allow_existing:
             raise HandoffError(
@@ -937,7 +983,7 @@ def _install_operation_document(
                 f"operation document already exists: {path}",
             )
         saved = _read_regular_at(
-            operation_descriptor,
+            operation_directory,
             name,
             path,
             missing_code="missing_operation",
@@ -951,14 +997,9 @@ def _install_operation_document(
             )
         return False
     try:
-        os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.fsync(operation_descriptor)
+        operation_directory.sync()
         saved = _read_regular_at(
-            operation_descriptor,
+            operation_directory,
             name,
             path,
             missing_code="missing_operation",
@@ -973,16 +1014,16 @@ def _install_operation_document(
         return True
     except BaseException:
         try:
-            os.unlink(name, dir_fd=operation_descriptor)
+            operation_directory.unlink(name)
         except FileNotFoundError:
             pass
         raise
 
 
 def _ensure_router_locked(
-    root: Path, directory_descriptor: int
+    root: Path, state_directory: int
 ) -> tuple[Path, Router | None, str]:
-    path, content = _read_handoff_content_locked(root, directory_descriptor)
+    path, content = _read_handoff_content_locked(root, state_directory)
     state_format = handoff_format(content)
     if state_format == "router":
         return path, parse_router(content), content
@@ -993,7 +1034,7 @@ def _ensure_router_locked(
     if current.status == "idle":
         candidate = render_readable_router()
         _atomic_write(
-            directory_descriptor,
+            state_directory,
             path,
             candidate,
             validator=parse_router,
@@ -1005,10 +1046,10 @@ def _ensure_router_locked(
     created = False
     try:
         with _opened_operation_directory(
-            root, directory_descriptor, create=True
-        ) as (_, operation_descriptor):
+            root, state_directory, create=True
+        ) as (_, operation_directory):
             created = _install_operation_document(
-                operation_descriptor, operation_path, content
+                operation_directory, operation_path, content
             )
         candidate = render_readable_router(
             (
@@ -1023,7 +1064,7 @@ def _ensure_router_locked(
             )
         )
         _atomic_write(
-            directory_descriptor,
+            state_directory,
             path,
             candidate,
             validator=parse_router,
@@ -1033,10 +1074,10 @@ def _ensure_router_locked(
         if created:
             try:
                 with _opened_operation_directory(
-                    root, directory_descriptor
-                ) as (_, operation_descriptor):
-                    os.unlink(operation_path.name, dir_fd=operation_descriptor)
-                    os.fsync(operation_descriptor)
+                    root, state_directory
+                ) as (_, operation_directory):
+                    operation_directory.unlink(operation_path.name)
+                    operation_directory.sync()
             except FileNotFoundError:
                 pass
         raise
@@ -1044,11 +1085,11 @@ def _ensure_router_locked(
 
 def _registered_operation_locked(
     root: Path,
-    directory_descriptor: int,
+    state_directory: int,
     operation: str,
 ) -> tuple[Path, Router, Path, str, Handoff]:
     _operation_suffix(operation)
-    router_path, router, _ = _ensure_router_locked(root, directory_descriptor)
+    router_path, router, _ = _ensure_router_locked(root, state_directory)
     if router is None:
         raise HandoffError(
             "legacy_recovery_required",
@@ -1060,14 +1101,14 @@ def _registered_operation_locked(
             f"operation is not registered: {operation}",
         )
     operation_path, content, current = _read_operation_at(
-        root, directory_descriptor, operation
+        root, state_directory, operation
     )
     return router_path, router, operation_path, content, current
 
 
 def _write_operation_at(
     root: Path,
-    directory_descriptor: int,
+    state_directory: int,
     operation: str,
     content: str,
 ) -> Path:
@@ -1083,10 +1124,10 @@ def _write_operation_at(
             "operation document identity does not match its route",
         )
     with _opened_operation_directory(
-        root, directory_descriptor
-    ) as (_, operation_descriptor):
+        root, state_directory
+    ) as (_, operation_directory):
         _atomic_write(
-            operation_descriptor,
+            operation_directory,
             path,
             content,
             validator=parse_handoff,
@@ -1095,21 +1136,21 @@ def _write_operation_at(
 
 
 def _read_handoff_locked(
-    root: Path, directory_descriptor: int
+    root: Path, state_directory: int
 ) -> tuple[Path, str, str]:
-    path, content = _read_handoff_content_locked(root, directory_descriptor)
+    path, content = _read_handoff_content_locked(root, state_directory)
     return path, content, parse_handoff(content).status
 
 
 def _operation_summaries_locked(
     root: Path,
-    directory_descriptor: int,
+    state_directory: int,
     router: Router,
 ) -> tuple[dict[str, str], ...]:
     summaries = []
     for operation in router.operations:
         path, _, current = _read_operation_at(
-            root, directory_descriptor, operation
+            root, state_directory, operation
         )
         summaries.append(
             {
@@ -1128,15 +1169,15 @@ def _operation_summaries_locked(
 
 def _write_readable_router_locked(
     root: Path,
-    directory_descriptor: int,
+    state_directory: int,
     path: Path,
     router: Router,
 ) -> str:
     candidate = render_readable_router(
-        _operation_summaries_locked(root, directory_descriptor, router)
+        _operation_summaries_locked(root, state_directory, router)
     )
     _atomic_write(
-        directory_descriptor,
+        state_directory,
         path,
         candidate,
         validator=parse_router,
@@ -1148,15 +1189,15 @@ def discover_handoffs(
     project: Path,
 ) -> tuple[Path, str, tuple[dict[str, str], ...], bool]:
     root = _enabled_root(project)
-    with _locked_local_directory(root) as (_, descriptor):
-        path, router, content = _ensure_router_locked(root, descriptor)
+    with _locked_local_directory(root) as (_, directory):
+        path, router, content = _ensure_router_locked(root, directory)
         if router is None:
             return path, content, (), True
-        summaries = _operation_summaries_locked(root, descriptor, router)
+        summaries = _operation_summaries_locked(root, directory, router)
         readable = render_readable_router(summaries)
         if content != readable:
             _atomic_write(
-                descriptor,
+                directory,
                 path,
                 readable,
                 validator=parse_router,
@@ -1173,8 +1214,8 @@ def discover_handoffs(
 def assert_current_handoff(project: Path, operation: str) -> Path:
     root = _enabled_root(project)
     _operation_suffix(operation)
-    with _locked_local_directory(root) as (_, descriptor):
-        router_path, content = _read_handoff_content_locked(root, descriptor)
+    with _locked_local_directory(root) as (_, directory):
+        router_path, content = _read_handoff_content_locked(root, directory)
         if handoff_format(content) != "router":
             raise HandoffError(
                 "inactive_parent",
@@ -1187,7 +1228,7 @@ def assert_current_handoff(project: Path, operation: str) -> Path:
                 f"parent operation is not registered: {operation}",
             )
         operation_path, _, current = _read_operation_at(
-            root, descriptor, operation
+            root, directory, operation
         )
         if current.status not in RECOVERABLE_STATUSES:
             raise HandoffError(
@@ -1206,8 +1247,8 @@ def read_handoff(
     operation: str | None = None,
 ) -> tuple[Path, str, str]:
     root = _enabled_root(project)
-    with _locked_local_directory(root) as (_, descriptor):
-        path, router, content = _ensure_router_locked(root, descriptor)
+    with _locked_local_directory(root) as (_, directory):
+        path, router, content = _ensure_router_locked(root, directory)
         if router is None:
             if operation is not None:
                 raise HandoffError(
@@ -1217,7 +1258,7 @@ def read_handoff(
             return path, content, parse_handoff(content).status
         if operation is not None:
             _, _, operation_path, operation_content, current = (
-                _registered_operation_locked(root, descriptor, operation)
+                _registered_operation_locked(root, directory, operation)
             )
             return operation_path, operation_content, current.status
         if not router.operations:
@@ -1229,7 +1270,7 @@ def read_handoff(
             )
         operation = router.operations[0]
         operation_path, operation_content, current = _read_operation_at(
-            root, descriptor, operation
+            root, directory, operation
         )
         return operation_path, operation_content, current.status
 
@@ -1245,8 +1286,8 @@ def begin_handoff(
     expected_writes: tuple[str, ...] = (),
 ) -> tuple[Path, str]:
     root = _enabled_root(project)
-    with _locked_local_directory(root) as (_, descriptor):
-        router_path, router, _ = _ensure_router_locked(root, descriptor)
+    with _locked_local_directory(root) as (_, directory):
+        router_path, router, _ = _ensure_router_locked(root, directory)
         if router is None:
             raise HandoffError(
                 "legacy_recovery_required",
@@ -1270,17 +1311,17 @@ def begin_handoff(
         created = False
         try:
             with _opened_operation_directory(
-                root, descriptor, create=True
-            ) as (_, operation_descriptor):
+                root, directory, create=True
+            ) as (_, operation_directory):
                 created = _install_operation_document(
-                    operation_descriptor,
+                    operation_directory,
                     operation_path,
                     candidate,
                     allow_existing=False,
                 )
             _write_readable_router_locked(
                 root,
-                descriptor,
+                directory,
                 router_path,
                 Router(tuple(sorted((*router.operations, operation)))),
             )
@@ -1288,12 +1329,10 @@ def begin_handoff(
             if created:
                 try:
                     with _opened_operation_directory(
-                        root, descriptor
-                    ) as (_, operation_descriptor):
-                        os.unlink(
-                            operation_path.name, dir_fd=operation_descriptor
-                        )
-                        os.fsync(operation_descriptor)
+                        root, directory
+                    ) as (_, operation_directory):
+                        operation_directory.unlink(operation_path.name)
+                        operation_directory.sync()
                 except FileNotFoundError:
                     pass
             raise
@@ -1316,9 +1355,9 @@ def outcome_handoff(
     if status not in OUTCOME_STATUSES:
         raise HandoffError("invalid_transition", f"invalid outcome status: {status}")
     root = _enabled_root(project)
-    with _locked_local_directory(root) as (_, descriptor):
+    with _locked_local_directory(root) as (_, directory):
         router_path, router, path, _, current = _registered_operation_locked(
-            root, descriptor, operation
+            root, directory, operation
         )
         if current.status not in RECOVERABLE_STATUSES:
             raise HandoffError(
@@ -1360,10 +1399,10 @@ def outcome_handoff(
         candidate = _render_active(metadata=metadata, sections=sections)
         parse_handoff(candidate)
         result = _write_operation_at(
-            root, descriptor, operation, candidate
+            root, directory, operation, candidate
         )
         _write_readable_router_locked(
-            root, descriptor, router_path, router
+            root, directory, router_path, router
         )
         return result
 
@@ -1382,15 +1421,15 @@ def save_handoff(
         raise HandoffError(
             "invalid_candidate", f"candidate must be {expected}"
         )
-    with _locked_local_directory(root) as (_, descriptor):
+    with _locked_local_directory(root) as (_, directory):
         router_path, router, target, _, current = _registered_operation_locked(
-            root, descriptor, operation
+            root, directory, operation
         )
         with _opened_operation_directory(
-            root, descriptor
-        ) as (_, operation_descriptor):
+            root, directory
+        ) as (_, operation_directory):
             content = _read_regular_at(
-                operation_descriptor,
+                operation_directory,
                 candidate.name,
                 candidate,
                 missing_code="missing_candidate",
@@ -1460,15 +1499,15 @@ def save_handoff(
         metadata["Updated"] = _timestamp()
         content = _render_active(metadata=metadata, sections=parsed.sections)
         parse_handoff(content)
-        _write_operation_at(root, descriptor, operation, content)
+        _write_operation_at(root, directory, operation, content)
         _write_readable_router_locked(
-            root, descriptor, router_path, router
+            root, directory, router_path, router
         )
         with _opened_operation_directory(
-            root, descriptor
-        ) as (_, operation_descriptor):
-            os.unlink(candidate.name, dir_fd=operation_descriptor)
-            os.fsync(operation_descriptor)
+            root, directory
+        ) as (_, operation_directory):
+            operation_directory.unlink(candidate.name)
+            operation_directory.sync()
         return target, parsed.status
 
 
@@ -1477,8 +1516,8 @@ def finish_handoff(
     operation: str | None = None,
 ) -> Path:
     root = _enabled_root(project)
-    with _locked_local_directory(root) as (_, descriptor):
-        path, router, _ = _ensure_router_locked(root, descriptor)
+    with _locked_local_directory(root) as (_, directory):
+        path, router, _ = _ensure_router_locked(root, directory)
         if router is None:
             if operation is not None:
                 raise HandoffError(
@@ -1486,7 +1525,7 @@ def finish_handoff(
                     "legacy HANDOFF has no routed operation identity",
                 )
             _atomic_write(
-                descriptor,
+                directory,
                 path,
                 render_readable_router(),
                 validator=parse_router,
@@ -1502,7 +1541,7 @@ def finish_handoff(
                     "multiple operations are registered; select one from Show",
                 )
             operation = router.operations[0]
-        _registered_operation_locked(root, descriptor, operation)
+        _registered_operation_locked(root, directory, operation)
 
         remaining = tuple(
             current
@@ -1511,29 +1550,29 @@ def finish_handoff(
         )
         _write_readable_router_locked(
             root,
-            descriptor,
+            directory,
             path,
             Router(remaining),
         )
         with _opened_operation_directory(
-            root, descriptor
-        ) as (_, operation_descriptor):
+            root, directory
+        ) as (_, operation_directory):
             for name in (
                 operation_candidate_filename(operation),
                 operation_filename(operation),
             ):
                 try:
-                    os.unlink(name, dir_fd=operation_descriptor)
+                    operation_directory.unlink(name)
                 except FileNotFoundError:
                     pass
-            os.fsync(operation_descriptor)
+            operation_directory.sync()
         return path
 
 
 def cleanup_handoffs(project: Path) -> tuple[Path, tuple[str, ...]]:
     root = _enabled_root(project)
-    with _locked_local_directory(root) as (_, descriptor):
-        path, router, _ = _ensure_router_locked(root, descriptor)
+    with _locked_local_directory(root) as (_, directory):
+        path, router, _ = _ensure_router_locked(root, directory)
         if router is None:
             raise HandoffError(
                 "legacy_recovery_required",
@@ -1541,12 +1580,12 @@ def cleanup_handoffs(project: Path) -> tuple[Path, tuple[str, ...]]:
             )
         terminal: list[str] = []
         for operation in router.operations:
-            _, _, current = _read_operation_at(root, descriptor, operation)
+            _, _, current = _read_operation_at(root, directory, operation)
             if current.status in TERMINAL_STATUSES:
                 terminal.append(operation)
         if not terminal:
             _write_readable_router_locked(
-                root, descriptor, path, router
+                root, directory, path, router
             )
             return path, ()
 
@@ -1558,23 +1597,23 @@ def cleanup_handoffs(project: Path) -> tuple[Path, tuple[str, ...]]:
         )
         _write_readable_router_locked(
             root,
-            descriptor,
+            directory,
             path,
             Router(remaining),
         )
         with _opened_operation_directory(
-            root, descriptor
-        ) as (_, operation_descriptor):
+            root, directory
+        ) as (_, operation_directory):
             for operation in removed:
                 for name in (
                     operation_candidate_filename(operation),
                     operation_filename(operation),
                 ):
                     try:
-                        os.unlink(name, dir_fd=operation_descriptor)
+                        operation_directory.unlink(name)
                     except FileNotFoundError:
                         pass
-            os.fsync(operation_descriptor)
+            operation_directory.sync()
         return path, removed
 
 

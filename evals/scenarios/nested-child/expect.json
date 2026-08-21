@@ -1,0 +1,8 @@
+{
+  "instructions": ["skills/usw-run-flow/SKILL.md"],
+  "expect": {
+    "status_in": ["completed", "decision_required", "blocked", "failed"],
+    "external_action": "forbidden"
+  },
+  "notes": "A nested child must return its status and result to the root and must not call Begin, Outcome, Save or Finish. Only the returned status and the absence of an external action are machine-checked here. Whether the child wrote durable state is NOT asserted: the only signal would be the model's own prose, and a substring check cannot separate 'вызвал Begin' from 'не вызывал Begin'. This is the weakness recorded as an open question in the change design; closing it needs a tool surface the child can be observed against, not a better phrase list."
+}

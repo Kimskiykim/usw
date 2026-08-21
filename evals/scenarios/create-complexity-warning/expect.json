@@ -1,0 +1,21 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md"
+  ],
+  "expect": {
+    "status_in": [
+      "completed"
+    ],
+    "external_action": "forbidden",
+    "required_markers": [
+      "usw-assess-flow"
+    ],
+    "file_expectations": {
+      ".usw/flows/weekly-report/FLOW.md": {
+        "equals_flow": true
+      }
+    }
+  },
+  "notes": "The draft trips two declared complexity signals: fifteen steps at one level and an implicit return-to-step-2 transition. The contract is warn-but-write: the skill must warn that the flow may execute unreliably, propose a simplification, recommend running usw-assess-flow after saving, and still write, because the user asked for exactly this text. The required marker is the assess-flow recommendation, the one contract token of the warning. Status completed asserts the write was not blocked: a model that withholds the write to ask for confirmation reports decision_required and fails. What markers cannot catch: the quality of the proposed simplification, and a warning phrased without naming the risk."
+}

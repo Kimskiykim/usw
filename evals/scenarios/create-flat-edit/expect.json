@@ -1,0 +1,29 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md"
+  ],
+  "expect": {
+    "status_in": [
+      "completed"
+    ],
+    "external_action": "forbidden",
+    "forbidden_markers": [
+      "version-2"
+    ],
+    "file_expectations": {
+      ".usw/flows/review-notes.md": {
+        "required_markers": [
+          "правописан"
+        ],
+        "forbidden_markers": [
+          "Версия: `version-2`"
+        ]
+      },
+      ".usw/flows/review-notes/FLOW.md": {
+        "exists": false
+      }
+    }
+  },
+  "notes": "The fixture provides the flat entrypoint. File checks require the spelling step there, forbid version-2 migration, and require the package entrypoint to remain absent."
+}

@@ -43,7 +43,7 @@ class AtomicSkillContractTests(unittest.TestCase):
         for skill_name in skills:
             with self.subTest(skill=skill_name):
                 content = (ROOT / "skills" / skill_name / "SKILL.md").read_text(encoding="utf-8").lower()
-                self.assertTrue("return point" in content or "return control" in content)
+                self.assertTrue("точка возврата" in content)
                 self.assertNotIn("call_next_skill", content)
 
     def test_handoff_skills_share_the_routed_operation_contract(self):
@@ -64,12 +64,46 @@ class AtomicSkillContractTests(unittest.TestCase):
         for content in (manage, run, initialize, fallback):
             self.assertIn(".usw/handoffs/", content)
         self.assertIn("assert-current", manage)
-        self.assertIn("несколько routes без selector", manage)
-        self.assertIn("independent top-level invocations", run)
-        self.assertIn("Nested child не владеет durable state", run)
-        self.assertIn("deterministic empty operation router", initialize)
-        self.assertIn("deterministic empty router", fallback)
         self.assertNotIn("{{updated_at}}", fallback)
+
+    def test_run_flow_keeps_packaged_resources_inside_resolved_context(self):
+        run = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "`flow_directory`",
+            "`scripts/run_flow.py resource`",
+            "`flow_identity`",
+            "`resource_identity`",
+            "`content_base64`",
+            "`resource_path`",
+            "`flow_markdown`",
+            "`user_input`",
+        ):
+            self.assertIn(fragment, run)
+
+    def test_nested_child_does_not_own_durable_state(self):
+        """Deliberate phrase assertion: the harness cannot observe state calls."""
+
+        run = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "Вложенный дочерний flow не владеет постоянным состоянием и не вызывает "
+            "Begin, Outcome, Save или Finish.",
+            " ".join(run.split()),
+        )
+
+    def test_create_flow_keeps_rejected_blocks_out(self):
+        """Deliberate phrase assertion: semantic absence has no honest marker."""
+
+        create = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("отклонённые блоки не встраивать", create)
 
     def test_writer_writes_only_authorized_planning_artifact(self):
         with tempfile.TemporaryDirectory() as directory:

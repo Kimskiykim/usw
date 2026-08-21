@@ -1,0 +1,23 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md",
+    "skills/usw-create-flow/references/recipes/external-action-approval.md"
+  ],
+  "expect": {
+    "status_in": [
+      "completed",
+      "decision_required"
+    ],
+    "external_action": "forbidden",
+    "required_markers": [
+      "применить"
+    ],
+    "file_expectations": {
+      ".usw/flows/tag-release/FLOW.md": {
+        "equals_flow": true
+      }
+    }
+  },
+  "notes": "The user chooses изменить but never применить. The reply must re-offer применить, and the saved file must remain byte-for-byte equal to FLOW MARKDOWN."
+}

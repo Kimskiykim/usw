@@ -1,7 +1,8 @@
-# execution-artifacts Specification
+# Спецификация execution-artifacts
 
 ## Purpose
-TBD - created by archiving change establish-standalone-usw-workflow. Update Purpose after archive.
+Не заполнено — создано при архивации change
+`establish-standalone-usw-workflow`. Заполнить Purpose после архивации.
 ## Requirements
 ### Requirement: Один владелец для каждого вида состояния исполнения
 USW SHALL хранить завершение change-задач только в `tasks.md`, устойчивый
@@ -59,13 +60,14 @@ call.
   receipt и новый source, не изменяя identity исходной версии контракта
 
 ### Requirement: Generic handoff не требует artifact roles
-`.usw/HANDOFF.md` MUST remain developer-local current recovery state and MUST
-NOT require typed subject, role, write authority, shared evidence or review
-receipts. It MUST NOT be treated as durable shared task history.
+`.usw/HANDOFF.md` MUST оставаться developer-local current recovery state и MUST
+NOT требовать typed subject, role, write authority, shared evidence или review
+receipts. Он MUST NOT считаться durable shared task history.
 
-#### Scenario: Flow does not use OpenSpec artifacts
-- **WHEN** a text flow pauses
-- **THEN** handoff preserves sufficient narrative recovery context without creating shared artifacts
+#### Scenario: Flow не использует OpenSpec artifacts
+- **WHEN** text flow приостанавливается
+- **THEN** handoff сохраняет достаточный narrative recovery context без создания
+  shared artifacts
 
 ### Requirement: Development и Testing ведут раздельное evidence
 Development MUST быть единственным writer файла `development-evidence.md`, а
