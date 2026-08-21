@@ -48,7 +48,7 @@
 - создать `.usw/.gitignore` с `*` и завершающим переводом строки;
 - создать `<flows.root>/examples/` и скопировать туда ровно четыре packaged
   examples: `chat-review.md`, `dev-test.md`, `plan-small-steps.md` и
-  `refine-intent.md`.
+  `refine-intent.md`, а также поясняющий их назначение `README.md`.
 
 Не создавать `<artifacts.root>/changes/`, `<artifacts.root>/templates/`,
 `<reviews.root>/` и `.usw/handoffs/`: точный destination создаёт та

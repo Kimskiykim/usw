@@ -15,6 +15,7 @@ byte-for-byte.
 
 - `usw.yaml`;
 - `<flows.root>/examples/{chat-review.md,dev-test.md,plan-small-steps.md,refine-intent.md}`;
+- `<flows.root>/examples/README.md` с пояснением назначения примеров;
 - `.usw/.gitignore`;
 - empty routed `.usw/HANDOFF.md` только при effective `handoff: true`.
 

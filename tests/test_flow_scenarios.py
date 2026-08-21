@@ -124,8 +124,9 @@ class TextFlowContractTests(unittest.TestCase):
         self.assertIn("version-2", structured)
         self.assertNotIn("--experimental-structured", create)
 
-    def test_examples_are_non_normative_text_flows(self):
+    def test_examples_are_isolated_text_flows(self):
         examples = ROOT / "skills/usw-initialize-project/templates/flows/examples"
+        readme = examples / "README.md"
         self.assertEqual(
             {
                 "chat-review.md",
@@ -133,11 +134,14 @@ class TextFlowContractTests(unittest.TestCase):
                 "plan-small-steps.md",
                 "refine-intent.md",
             },
-            {path.name for path in examples.glob("*.md")},
+            {path.name for path in examples.glob("*.md") if path != readme},
         )
+        self.assertIn("не запускаемые flow", readme.read_text(encoding="utf-8"))
         for path in examples.glob("*.md"):
+            if path == readme:
+                continue
             content = path.read_text(encoding="utf-8")
-            self.assertIn("Ненормативный пример", content)
+            self.assertIn("# Flow:", content)
             self.assertNotIn("--experimental-structured", content)
 
     def test_chat_review_declares_adaptive_quorum_contract(self):

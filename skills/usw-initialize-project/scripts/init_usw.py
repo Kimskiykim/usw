@@ -25,6 +25,7 @@ FLOW_EXAMPLE_PATHS = (
     "plan-small-steps.md",
     "refine-intent.md",
 )
+FLOW_EXAMPLE_README = "README.md"
 
 
 class ConfigError(OSError):
@@ -377,6 +378,9 @@ def validate_workspace_paths(project_root: Path, config: WorkspaceConfig) -> Non
         )
         for example in FLOW_EXAMPLE_PATHS
     )
+    expected_paths.append(
+        (f"{config.flow_root}/examples/{FLOW_EXAMPLE_README}", "file")
+    )
     for rendered_path, expected_kind in expected_paths:
         parts = Path(rendered_path).parts
         current = project_root
@@ -430,6 +434,16 @@ def initialize_usw(project: Path) -> list[tuple[Path, bool]]:
             ),
         )
         for example in FLOW_EXAMPLE_PATHS
+    )
+    results.append(
+        (
+            flow_example_directory / FLOW_EXAMPLE_README,
+            create_file(
+                project_root,
+                flow_example_directory / FLOW_EXAMPLE_README,
+                read_template(f"flows/examples/{FLOW_EXAMPLE_README}"),
+            ),
+        )
     )
     results.append(
         (
