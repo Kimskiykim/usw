@@ -29,9 +29,8 @@ flow, когда пользователь только обсуждает, ре�
 
 ## Разрешение
 
-1. Использовать переданный корень открытого проекта буквально, не искать
-   `.git` и не подниматься к родительскому каталогу. Прочитать `usw.yaml`; без
-   файла использовать `flows.root: usw/flows` и `handoff: true`.
+1. Использовать текущую открытую папку как `<project>`. Прочитать `usw.yaml`;
+   без файла использовать `flows.root: usw/flows` и `handoff: true`.
 2. Вызвать `scripts/run_flow.py resolve <project-root> <shared-root> <name>
    <input>`. Для явного origin добавить `--origin local` или `--origin shared`.
 3. Скрипт обязан вернуть `name`, `origin`, `identity`, `path`, абсолютный
