@@ -10,10 +10,12 @@
 
 ## 2. Изменить инструкцию
 
-- [ ] 2.1 Добавить в `usw-create-flow` согласованный русский текст для нового
+- [x] 2.1 Добавить в `usw-create-flow` согласованный русский текст для нового
   flow без `--structured` или `-s`, сохранив ordinary Markdown по умолчанию.
-- [ ] 2.2 Повторить новый scenario и `create-flat-edit` по три раза; записать
-  GREEN rates и проверить transcripts.
+- [x] 2.2 Повторить новый scenario и `create-flat-edit` по три раза; записать
+  GREEN rates и проверить transcripts. Оба scenario: `3/3 [pass]`. Во всех
+  новых-flow transcripts уведомление стоит до черновика; flat-edit не получает
+  уведомление и сохраняет обычный flat entrypoint.
 
 ## 3. Принять и установить
 
