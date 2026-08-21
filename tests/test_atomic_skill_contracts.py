@@ -48,6 +48,13 @@ class AtomicSkillContractTests(unittest.TestCase):
             self.assertNotIn("ближайший git root", content, relative)
             self.assertNotIn("nearest git root", content, relative)
 
+    def test_flow_skills_resolve_shared_root_from_project_config(self):
+        for skill_name in ("usw-run-flow", "usw-find-flow", "usw-assess-flow"):
+            content = (ROOT / "skills" / skill_name / "SKILL.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("<project>/<flows.root>", content, skill_name)
+
     def test_atomic_skills_declare_input_write_output_and_return_boundaries(self):
         skills = (
             "usw-initialize-project", "usw-manage-handoff",

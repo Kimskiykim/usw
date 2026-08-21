@@ -29,15 +29,18 @@ flow, когда пользователь только обсуждает, ре�
 
 ## Разрешение
 
-1. Использовать текущую открытую папку как `<project>`. Прочитать `usw.yaml`;
-   без файла использовать `flows.root: usw/flows` и `handoff: true`.
-2. Вызвать `scripts/run_flow.py resolve <project-root> <shared-root> <name>
-   <input>`. Для явного origin добавить `--origin local` или `--origin shared`.
-3. Скрипт обязан вернуть `name`, `origin`, `identity`, `path`, абсолютный
+1. Использовать текущую открытую папку как `<project>`. Прочитать
+   `<project>/usw.yaml`; без файла использовать `flows.root: usw/flows` и
+   `handoff: true`.
+2. Вычислить абсолютный `<shared-root>` как `<project>/<flows.root>`. По
+   умолчанию это `<project>/usw/flows`, а не сам `<project>`.
+3. Вызвать `scripts/run_flow.py resolve <project> <shared-root> <name> <input>`.
+   Для явного origin добавить `--origin local` или `--origin shared`.
+4. Скрипт обязан вернуть `name`, `origin`, `identity`, `path`, абсолютный
    `flow_directory`, точный `markdown`, исходный `input` и `warnings`.
-4. Использовать только возвращённый `markdown`. Не перечитывать `path` после
+5. Использовать только возвращённый `markdown`. Не перечитывать `path` после
    вычисления identity.
-5. Показать каждое предупреждение не более одного раза за текущий вызов.
+6. Показать каждое предупреждение не более одного раза за текущий вызов.
 
 Скрипт принимает одну содержащуюся внутри корня обычную точку входа —
 `<name>.md` или `<name>/FLOW.md` — и отклоняет выход за пределы корня, symlink
@@ -53,7 +56,7 @@ flow, когда пользователь только обсуждает, ре�
   `user_input`.
 - Только для упакованного `<name>/FLOW.md`, непосредственно перед
   использованием явно названного относительного ресурса, вызвать
-  `scripts/run_flow.py resource` с аргументами `<project-root> <shared-root>
+  `scripts/run_flow.py resource` с аргументами `<project> <shared-root>
   <name> <flow-identity> <entrypoint-path> <relative-path> --origin
   <flow-origin>`. Команда вернёт `resource_identity` и неизменяемый
   `content_base64` вместе с `resource_path` только для отчёта.
