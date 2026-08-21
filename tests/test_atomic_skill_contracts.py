@@ -34,6 +34,20 @@ class AtomicSkillContractTests(unittest.TestCase):
                     path,
                 )
 
+    def test_skills_do_not_discover_project_root_from_git(self):
+        paths = (
+            "skills/usw-initialize-project/SKILL.md",
+            "skills/usw-initialize-project/references/llm-fallback.md",
+            "skills/usw-manage-handoff/SKILL.md",
+            "skills/usw-run-flow/SKILL.md",
+            "skills/usw-find-flow/SKILL.md",
+            "skills/usw-assess-flow/SKILL.md",
+        )
+        for relative in paths:
+            content = (ROOT / relative).read_text(encoding="utf-8").lower()
+            self.assertNotIn("ближайший git root", content, relative)
+            self.assertNotIn("nearest git root", content, relative)
+
     def test_atomic_skills_declare_input_write_output_and_return_boundaries(self):
         skills = (
             "usw-initialize-project", "usw-manage-handoff",
