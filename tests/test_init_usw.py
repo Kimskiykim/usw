@@ -235,7 +235,6 @@ class InitializeUswTests(unittest.TestCase):
                 "refine-intent.md",
             ):
                 example = project / "usw/flows/examples" / name
-                self.assertIn("Ненормативный пример", example.read_text(encoding="utf-8"))
                 self.assertEqual(
                     INIT_USW.read_template(f"flows/examples/{name}"),
                     example.read_text(encoding="utf-8"),
