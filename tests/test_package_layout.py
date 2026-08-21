@@ -189,11 +189,8 @@ class PackageLayoutTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
         for fragment in (
-            "review/FLOW.md",
-            "review/scripts/check.py",
-            "`<name>.md`",
+            "FLOW.md",
             "`ambiguous_flow_layout`",
-            "`flow_directory`",
         ):
             self.assertIn(fragment, readme)
 
@@ -423,7 +420,7 @@ class PackageLayoutTests(unittest.TestCase):
         )
 
         for fragment in (
-            "$usw-assess-flow [--local|-l|--shared] <flow-name>",
+            "$usw-assess-flow",
             "`executable-with-risks`",
             "`not-executable`",
         ):

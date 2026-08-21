@@ -1,6 +1,6 @@
 # USW
 
-USW — устанавливаемый workflow для Qwen Code, Codex и Claude Code.
+USW — устанавливаемый workflow для Qwen Code, Codex, Claude Code и GigaCode.
 Вы описываете рабочий процесс (flow) обычным Markdown-файлом, а модель
 исполняет его как текст — без DSL и отдельного рантайма. Плюс к этому USW
 умеет сохранять состояние работы между сессиями (handoff).
@@ -32,6 +32,14 @@ qwen extensions install https://github.com/Kimskiykim/usw
 ```
 
 Для локальной разработки в Qwen: `qwen extensions link .`
+
+### GigaCode
+
+```bash
+gigacode extensions install https://github.com/Kimskiykim/usw
+```
+
+Формат расширения тот же, что у Qwen ([gigacode-extension.json](gigacode-extension.json)).
 
 ### Без менеджера плагинов
 
@@ -107,12 +115,14 @@ LLM-fallback с тем же результатом.
 ## Как устроены flow
 
 Flow — это Markdown-файл. Runner читает его один раз и передаёт модели
-точный текст вместе с input. Две поддерживаемые формы:
+точный текст, input и каталог flow (`flow_directory`). Две поддерживаемые
+формы:
 
 ```text
 usw/flows/
-├── review/FLOW.md        # каноничная: каталог с FLOW.md и ресурсами рядом
-└── plan-check.md         # совместимая: одиночный файл
+├── review/FLOW.md            # каноничная: каталог с FLOW.md и ресурсами рядом
+├── review/scripts/check.py   # ресурсы flow лежат в его каталоге
+└── plan-check.md             # совместимая: одиночный файл `<name>.md`
 ```
 
 `$usw-run-flow` ищет flow сначала в локальном `.usw/flows`, затем в общем
@@ -135,7 +145,11 @@ usw/flows/
 
 ## Оценка и поиск flow
 
-`$usw-assess-flow <name>` проверяет существующий flow, ничего не запуская:
+```text
+$usw-assess-flow [--local|-l|--shared] <flow-name> [<scenario-input>]
+```
+
+Команда проверяет существующий flow, ничего не запуская:
 исполним ли он, где логические разрывы, какие у него зависимости, нет ли
 незавершающихся циклов. Итог — отчёт с одним вердиктом: `executable`,
 `executable-with-risks`, `not-executable` или `insufficient-data`. Это
