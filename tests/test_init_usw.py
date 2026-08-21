@@ -211,6 +211,7 @@ class InitializeUswTests(unittest.TestCase):
                 ".usw/.gitignore",
                 ".usw/HANDOFF.md",
                 "usw.yaml",
+                "usw/flows/examples/README.md",
                 "usw/flows/examples/chat-review.md",
                 "usw/flows/examples/dev-test.md",
                 "usw/flows/examples/plan-small-steps.md",
@@ -233,6 +234,7 @@ class InitializeUswTests(unittest.TestCase):
                 "dev-test.md",
                 "plan-small-steps.md",
                 "refine-intent.md",
+                "README.md",
             ):
                 example = project / "usw/flows/examples" / name
                 self.assertEqual(
