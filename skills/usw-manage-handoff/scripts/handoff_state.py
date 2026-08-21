@@ -129,12 +129,10 @@ class Router:
 
 
 def find_project_root(start: Path) -> Path:
+    """Return the exact supplied project directory."""
     start = start.expanduser().resolve()
     if not start.is_dir():
         raise HandoffError("invalid_project", f"project is not a directory: {start}")
-    for candidate in (start, *start.parents):
-        if (candidate / ".git").exists():
-            return candidate
     return start
 
 

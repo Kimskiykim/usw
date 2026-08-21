@@ -258,19 +258,19 @@ class InitializeUswTests(unittest.TestCase):
 
             self.assertFalse((project / "hello_world.py").exists())
 
-    def test_uses_nearest_git_root(self):
+    def test_uses_exact_project_root_inside_parent_git_repo(self):
         with tempfile.TemporaryDirectory() as directory:
-            project = Path(directory)
-            (project / ".git").mkdir()
-            nested = project / "src" / "feature"
-            nested.mkdir(parents=True)
+            parent = Path(directory)
+            (parent / ".git").mkdir()
+            project = parent / "src" / "feature"
+            project.mkdir(parents=True)
 
-            results = INIT_USW.initialize_usw(nested)
+            results = INIT_USW.initialize_usw(project)
 
             for path, _ in results:
                 self.assertTrue(path.is_relative_to(project.resolve()))
             self.assertEqual(project.resolve() / "usw.yaml", results[0][0])
-            self.assertEqual(project.resolve() / ".usw" / "HANDOFF.md", results[-1][0])
+            self.assertFalse((parent / "usw.yaml").exists())
 
     def test_second_initialization_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:

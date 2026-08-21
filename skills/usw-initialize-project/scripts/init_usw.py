@@ -243,14 +243,10 @@ def render_handoff() -> str:
 
 
 def find_project_root(start: Path) -> Path:
-    """Return the nearest Git root, or the supplied directory if none exists."""
+    """Return the exact supplied project directory."""
     start = start.expanduser().resolve()
     if not start.is_dir():
         raise NotADirectoryError(f"Project path is not a directory: {start}")
-
-    for candidate in (start, *start.parents):
-        if (candidate / ".git").exists():
-            return candidate
     return start
 
 

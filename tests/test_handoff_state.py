@@ -44,6 +44,15 @@ class HandoffStateTests(unittest.TestCase):
         handoff.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
         return project, handoff
 
+    def test_project_root_is_exact_inside_parent_git_repo(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            (parent / ".git").mkdir()
+            project = parent / "nested"
+            project.mkdir()
+
+            self.assertEqual(project.resolve(), HANDOFF.find_project_root(project))
+
     def test_idle_format_is_small_and_valid(self):
         content = HANDOFF.render_idle(
             datetime(2026, 7, 30, 10, 0, tzinfo=timezone.utc)
