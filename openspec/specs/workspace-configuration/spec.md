@@ -29,6 +29,15 @@ configuration fields.
 - **WHEN** v1 configuration содержит `artifacts.provider`
 - **THEN** configuration отклоняется до managed writes с указанием удалить field
 
+### Requirement: Корень проекта задаётся явно
+USW SHALL использовать переданный корень открытого проекта буквально и MUST
+NOT выбирать другой workspace по наличию `.git` в родительском каталоге.
+
+#### Scenario: Проект вложен в другой Git repository
+- **WHEN** USW получает вложенную открытую папку как project root
+- **THEN** configuration и managed paths разрешаются внутри неё без ancestor
+  discovery
+
 ### Requirement: Configured roots безопасны
 USW MUST принимать только project-relative artifact, flow и review roots,
 которые остаются внутри проекта через реальные directories и не проходят через
