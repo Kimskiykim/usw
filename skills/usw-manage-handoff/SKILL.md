@@ -1,48 +1,51 @@
 ---
 name: usw-manage-handoff
-description: Manage optional developer-local routed work state in .usw/HANDOFF.md.
+description: Управлять необязательным локальным для разработчика состоянием маршрутизированной работы в .usw/HANDOFF.md.
 ---
 
-# Manage USW handoff
+# Управление USW handoff
 
-Handoff — optional developer-local recovery state, а не shared artifact, audit
-log, product-file lock или machine cursor.
+Handoff — необязательное локальное для разработчика состояние восстановления,
+а не общий артефакт, журнал аудита, блокировка файлов продукта или машинный
+курсор.
 
-## Configuration boundary
+## Граница конфигурации
 
-Сначала найти ближайший Git root и прочитать top-level `handoff` из `usw.yaml`.
-Отсутствующее поле означает `true`.
+Сначала найти ближайший Git root и прочитать поле верхнего уровня `handoff` из
+`usw.yaml`. Отсутствующее поле означает `true`.
 
 При `handoff: false` не проверять наличие, тип или содержимое
-`.usw/HANDOFF.md`, `.usw/handoffs/` и operation-scoped candidates, не создавать
-и не изменять их. Для любого mode объяснить, что capability отключена
+`.usw/HANDOFF.md`, `.usw/handoffs/` и кандидатов уровня операции, не создавать
+и не изменять их. Для любого режима объяснить, что возможность отключена
 конфигурацией, и вернуть управление.
 
-При enabled handoff использовать `scripts/handoff_state.py`. Missing HANDOFF
-требует `/usw-init`.
+При включённом handoff использовать `scripts/handoff_state.py`. Отсутствующий
+HANDOFF требует `/usw-init`.
 
-## Routed state
+## Маршрутизированное состояние
 
-`.usw/HANDOFF.md` — validated Markdown router и единственная таблица текущих
-operations; authoritative mutable status и recovery context живут в operation
-document `.usw/handoffs/<operation-hex>.md`. Статусы operation: `in_progress`,
-`paused`, `blocked`, `decision_required`, `failed`, `completed`. Empty router
-означает отсутствие зарегистрированной работы.
+`.usw/HANDOFF.md` — проверенный Markdown-роутер и единственная таблица текущих
+операций; авторитетный изменяемый статус и контекст восстановления живут в
+документе операции `.usw/handoffs/<operation-hex>.md`. Статусы операции:
+`in_progress`, `paused`, `blocked`, `decision_required`, `failed`,
+`completed`. Пустой роутер означает отсутствие зарегистрированной работы.
 
-Operation document содержит flow name, origin, flow identity, input digest,
-operation identity, one-line `Summary`, immutable `Started`, latest `Updated`,
-`Workspace` и human-readable sections: Input, Done, Current position, Next
-action, Blocker, Checks, References. `Current position` — narrative text.
-Workspace и summary информационны: write authority и ownership они не дают.
+Документ операции содержит имя flow, origin, identity flow, дайджест входа,
+identity операции, однострочный `Summary`, неизменяемый `Started`, последний
+`Updated`, `Workspace` и человекочитаемые разделы: Input, Done, Current
+position, Next action, Blocker, Checks, References. `Current position` —
+повествовательный текст. Workspace и summary информационны: полномочий на
+запись и владения они не дают.
 
-Устройство router, вывод identity, семантика lock и миграции generic или
-legacy HANDOFF — в [references/state-model.md](references/state-model.md).
-Legacy role-based HANDOFF доступен только для Show/Resume/Finish и блокирует
-Begin до Finish.
+Устройство роутера, вывод identity, семантика блокировки и миграции обычного
+или устаревшего HANDOFF — в
+[references/state-model.md](references/state-model.md). Устаревший HANDOFF на
+основе ролей доступен только для Show, Resume и Finish и блокирует Begin до
+Finish.
 
 ## Begin
 
-Begin доступен после безопасного resolve flow:
+Begin доступен после безопасного разрешения flow:
 
 ```text
 python3 <script> begin <project> <flow> <origin> <flow-identity> <exact-input>
@@ -50,13 +53,14 @@ python3 <script> begin <project> <flow> <origin> <flow-identity> <exact-input>
   [--expected-write <path-or-area>]...
 ```
 
-- Executor не начинается до успешного Begin: script возвращает operation ID и
-  path только после подтверждённых записей document и router.
-- Другие recoverable или terminal operations не блокируют новый Begin. Даже
-  одинаковые flow/input получают разные IDs. USW не проверяет, пересекаются ли
-  их product writes.
-- Summary передавать one-line; expected writes — только фактически следующие
-  из scope, это informational hints.
+- Исполнитель не начинается до успешного Begin: скрипт возвращает
+  идентификатор и путь операции только после подтверждённых записей документа
+  и роутера.
+- Другие восстановимые или терминальные операции не блокируют новый Begin.
+  Даже одинаковые flow и вход получают разные идентификаторы. USW не
+  проверяет, пересекаются ли их записи в продукт.
+- Summary передавать однострочным; ожидаемые записи — только фактически
+  следующие из задачи, это информационные подсказки.
 
 ## Outcome
 
@@ -74,82 +78,86 @@ python3 <script> outcome <project> <status>
   [--observed-change <path-or-area>]...
 ```
 
-- Передавать ID, возвращённый Begin. Missing, finished, mismatched и terminal
-  target script отклоняет, не меняя другие operations.
-- Permission boundary записывать как `decision_required`; checks должны быть
+- Передавать идентификатор, возвращённый Begin. Отсутствующую, завершённую,
+  несовпадающую и терминальную цель скрипт отклоняет, не меняя другие
+  операции.
+- Границу разрешений записывать как `decision_required`; проверки должны быть
   фактическими.
-- Observed changes передавать только из фактического root outcome; изменения
-  из общего `git status` operation не приписываются.
+- Наблюдаемые изменения передавать только из фактического корневого исхода;
+  изменения из общего `git status` операции не приписываются.
 
 ## Save
 
-Для явного `/usw-handoff` подготовить candidate
+Для явного `/usw-handoff` подготовить кандидата
 `.usw/handoffs/<operation-hex>.next.md`, затем вызвать:
 
 ```text
 python3 <script> save <project> <operation-id> <candidate>
 ```
 
-- Save обновляет только exact recoverable operation: identity, flow/input
-  context, Started, workspace base и expected writes не меняются, legacy и
-  terminal state не заменяются.
-- Не создавать историю tool calls и не записывать выдуманные результаты.
-- После подтверждения candidate удаляется.
+- Save обновляет только точную восстановимую операцию: identity, контекст
+  flow и входа, Started, база рабочего пространства и ожидаемые записи не
+  меняются, устаревшее и терминальное состояние не заменяются.
+- Не создавать историю вызовов инструментов и не записывать выдуманные
+  результаты.
+- После подтверждения кандидат удаляется.
 
 ## Show и Resume
 
-Вызвать `show` или `resume` с optional exact operation ID:
+Вызвать `show` или `resume` с необязательным точным идентификатором операции:
 
 ```text
 python3 <script> resume <project> [operation-id]
 ```
 
-- empty router — продолжать нечего;
-- одна route без selector — выбрать её;
-- несколько routes без selector — показать validated список
+- пустой роутер — продолжать нечего;
+- один маршрут без селектора — выбрать его;
+- несколько маршрутов без селектора — показать проверенный список
   summary/flow/status/Started/Updated и ждать выбора, ничего не продолжая;
-- `in_progress` — mutation могла прерваться, не повторять автоматически;
-- `paused`, `blocked`, `decision_required` — показать recovery context и ждать
-  явного продолжения той же operation;
-- `failed`, `completed` — показать terminal outcome и явные варианты Finish
+- `in_progress` — изменение могло прерваться, не повторять автоматически;
+- `paused`, `blocked`, `decision_required` — показать контекст восстановления
+  и ждать явного продолжения той же операции;
+- `failed`, `completed` — показать терминальный исход и явные варианты Finish
   или Cleanup;
-- legacy — показать role context только для recovery.
+- устаревший — показать контекст роли только для восстановления.
 
-## Read-only parent check
+## Проверка родителя только на чтение
 
-Nested executor перед model execution вызывает:
+Вложенный исполнитель перед исполнением моделью вызывает:
 
 ```text
 python3 <script> assert-current <project> <parent-operation-id>
 ```
 
-Check принимает только exact registered `in_progress`, `paused`, `blocked` или
-`decision_required` parent и ничего не изменяет ни при успехе, ни при отказе.
-Nested executor не вызывает Begin, Outcome, Save или Finish.
+Проверка принимает только точного зарегистрированного родителя в статусе
+`in_progress`, `paused`, `blocked` или `decision_required` и ничего не изменяет
+ни при успехе, ни при отказе. Вложенный исполнитель не вызывает Begin,
+Outcome, Save или Finish.
 
 ## Finish
 
-Finish адресуется exact operation ID:
+Finish адресуется точному идентификатору операции:
 
 ```text
 python3 <script> finish <project> [operation-id]
 ```
 
-- Без ID применить те же zero/one/many selection rules.
-- Удаляются только route выбранной operation, её document и candidate.
-- Не архивировать состояние и не изменять product files.
+- Без идентификатора применить те же правила выбора для нуля, одной и многих
+  операций.
+- Удаляются только маршрут выбранной операции, её документ и кандидат.
+- Не архивировать состояние и не изменять файлы продукта.
 
 ## Cleanup
 
-Cleanup удаляет сразу все зарегистрированные terminal operations и не трогает
-`in_progress`, `paused`, `blocked` или `decision_required`:
+Cleanup удаляет сразу все зарегистрированные терминальные операции и не
+трогает `in_progress`, `paused`, `blocked` или `decision_required`:
 
 ```text
 python3 <script> cleanup <project>
 ```
 
-Если terminal operations отсутствуют, вернуть пустой список и ничего не
-удалять. Legacy HANDOFF очищается только через explicit Finish.
+Если терминальных операций нет, вернуть пустой список и ничего не удалять.
+Устаревший HANDOFF очищается только через явный Finish.
 
-Return point: после одного подтверждённого Begin, Outcome, Save, Show, Resume,
-assert-current, Finish или Cleanup.
+Точка возврата: после одного подтверждённого Begin, Outcome, Save, Show,
+Resume, assert-current, Finish или Cleanup.

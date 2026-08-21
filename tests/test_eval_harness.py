@@ -91,7 +91,7 @@ class ScenarioLoadingTests(unittest.TestCase):
 
         self.assertIn("unique-flow-marker", prompt)
         self.assertIn("unique-input-marker", prompt)
-        self.assertIn("Run a USW flow", prompt)
+        self.assertIn("Запуск USW flow", prompt)
         self.assertIn(HARNESS.RESULT_PREFIX, prompt)
         self.assertNotIn("HANDOFF Router", prompt)
 

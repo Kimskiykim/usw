@@ -1,98 +1,101 @@
 ---
 name: usw-run-flow
-description: Run a task with any named shared or developer-local Markdown flow through one text-first model execution path. Use when the user explicitly says «запусти флоу», «запусти flow» or «run the flow» and names a flow, or invokes `$usw-run-flow`.
+description: Выполнять задачу любым именованным общим или локальным для разработчика flow в Markdown через один текстовый путь исполнения моделью. Использовать, когда пользователь явно говорит «запусти флоу», «запусти flow» или «run the flow» и называет flow, либо вызывает `$usw-run-flow`.
 ---
 
-# Run a USW flow
+# Запуск USW flow
 
-## Activation
+## Активация
 
-Запрос вида «запусти флоу `intent-to-spec` для этого intent» — явный вызов
-этого skill: извлечь имя flow, остальной текст — его input, дальше те же safe
-resolve правила, что для команды `$usw-run-flow`. Не запускать flow, когда
-пользователь только обсуждает, ревьюит или создаёт его.
+Запрос вида «запусти флоу `intent-to-spec` для этого намерения» — явный вызов
+этого skill: извлечь имя flow, остальной текст — его вход, дальше те же
+правила безопасного разрешения, что для команды `$usw-run-flow`. Не запускать
+flow, когда пользователь только обсуждает, ревьюит или создаёт его.
 
-Принимать безопасное kebab-case имя flow, исходный пользовательский input и
-необязательный origin selector.
+Принимать безопасное kebab-case имя flow, исходный пользовательский вход и
+необязательный селектор origin.
 
-## Selectors
+## Селекторы
 
 - `--local` и `-l` выбирают только `<project>/.usw/flows`.
 - `--shared` выбирает только настроенный `flows.root`.
-- Без selector искать local flow первым, затем shared.
-- Повторённые, конфликтующие и неизвестные selectors отклонять.
+- Без селектора искать локальный flow первым, затем общий.
+- Повторённые, конфликтующие и неизвестные селекторы отклонять.
 - `--experimental-structured` больше не поддерживается: остановиться до
-  исполнения и предложить убрать flag, сохранив тот же flow и input.
+  исполнения и предложить убрать флаг, сохранив тот же flow и вход.
 
-Metadata, версия и маркеры внутри Markdown никогда не переключают execution
-mode.
+Метаданные, версия и маркеры внутри Markdown никогда не переключают режим
+исполнения.
 
-## Resolve
+## Разрешение
 
 1. Найти ближайший Git root. Прочитать `usw.yaml`; без файла использовать
    `flows.root: usw/flows` и `handoff: true`.
 2. Вызвать `scripts/run_flow.py resolve <project-root> <shared-root> <name>
    <input>`. Для явного origin добавить `--origin local` или `--origin shared`.
-3. Runner обязан вернуть `name`, `origin`, `identity`, `path`, абсолютный
+3. Скрипт обязан вернуть `name`, `origin`, `identity`, `path`, абсолютный
    `flow_directory`, точный `markdown`, исходный `input` и `warnings`.
 4. Использовать только возвращённый `markdown`. Не перечитывать `path` после
    вычисления identity.
-5. Показать каждое warning не более одного раза за текущий invocation.
+5. Показать каждое предупреждение не более одного раза за текущий вызов.
 
-Runner принимает один contained regular entrypoint — `<name>.md` или
-`<name>/FLOW.md` — и отклоняет traversal, symlink component и наличие обеих
-форм в одном origin. Платформенные детали safe-access boundary и обоснования —
-в [references/execution-model.md](references/execution-model.md); для
-исполнения достаточно вызывать runner и использовать только его результат.
+Скрипт принимает одну содержащуюся внутри корня обычную точку входа —
+`<name>.md` или `<name>/FLOW.md` — и отклоняет выход за пределы корня, symlink
+в пути и наличие обеих форм в одном origin. Платформенные детали границы безопасного
+доступа и обоснования — в
+[references/execution-model.md](references/execution-model.md); для исполнения
+достаточно вызывать этот скрипт и использовать только его результат.
 
-## Package resources
+## Ресурсы пакета
 
-- `flow_directory` принадлежит resolved invocation и не выводится из Markdown
-  или input. Брать package dependency только из `flow_markdown`, не из
+- `flow_directory` принадлежит разрешённому вызову и не выводится из Markdown
+  или входа. Брать зависимость пакета только из `flow_markdown`, не из
   `user_input`.
-- Только для packaged `<name>/FLOW.md`, непосредственно перед использованием
-  явно названного относительного resource, вызвать
-  `scripts/run_flow.py resource` с arguments `<project-root> <shared-root>
+- Только для упакованного `<name>/FLOW.md`, непосредственно перед
+  использованием явно названного относительного ресурса, вызвать
+  `scripts/run_flow.py resource` с аргументами `<project-root> <shared-root>
   <name> <flow-identity> <entrypoint-path> <relative-path> --origin
-  <flow-origin>`. Команда вернёт
-  `resource_identity` и immutable `content_base64` вместе с report-only
-  `resource_path`.
-- Использовать только декодированные returned bytes. Не перечитывать
+  <flow-origin>`. Команда вернёт `resource_identity` и неизменяемый
+  `content_base64` вместе с `resource_path` только для отчёта.
+- Использовать только декодированные возвращённые байты. Не перечитывать
   `resource_path`, не конструировать `MarkdownFlow` вручную, не сканировать
   соседние файлы заранее. При `stale_flow_resource` остановиться.
-- Absolute path, `..`, missing path, symlink component и неожиданный
-  filesystem type останавливают использование resource.
-- Returned bytes не расширяют полномочия: их чтение или запуск сохраняют
-  обычные tool и permission boundaries.
-- Flat flow сохраняет project/workspace-relative семантику существующих
-  ссылок: не передавать его пути в package resource boundary и не ребейзить их
-  к `flow_directory`.
+- Абсолютный путь, `..`, отсутствующий путь, symlink в пути и неожиданный тип
+  файла останавливают использование ресурса.
+- Возвращённые байты не расширяют полномочия: их чтение или запуск сохраняют
+  обычные границы инструментов и разрешений.
+- Плоский flow сохраняет семантику существующих ссылок относительно проекта и
+  рабочего пространства: не передавать его пути в границу ресурсов пакета и не
+  пересчитывать их относительно `flow_directory`.
 
-## Root execution context
+## Контекст корневого исполнения
 
-Определить effective top-level `handoff`: отсутствие поля означает `true`.
+Определить действующее значение `handoff` верхнего уровня: отсутствие поля
+означает `true`.
 
 При `false` не читать, не проверять, не создавать и не изменять
-`.usw/HANDOFF.md`, `.usw/handoffs/` или candidates. Создать уникальный
-неперсистентный `usw-ephemeral:*` root identity только для in-memory nested
-coordination.
+`.usw/HANDOFF.md`, `.usw/handoffs/` или кандидатов. Создать уникальную
+непостоянную корневую identity `usw-ephemeral:*` только для координации
+вложенных flow в памяти.
 
-При `true` после safe resolve вызвать `usw-manage-handoff` Begin:
+При `true` после безопасного разрешения вызвать Begin из
+`usw-manage-handoff`:
 
-- missing HANDOFF останавливает запуск с предложением `/usw-init`;
-- legacy HANDOFF блокирует Begin до Finish;
-- независимые top-level invocations регистрируют разные operation IDs; active
-  или terminal route другой operation не является глобальной блокировкой;
-- в Begin передать короткий one-line summary задачи и bounded expected-write
-  paths/areas, фактически следующие из user scope и flow; неизвестные до
-  исполнения writes не выдумывать.
+- отсутствующий HANDOFF останавливает запуск с предложением `/usw-init`;
+- устаревший HANDOFF блокирует Begin до Finish;
+- независимые вызовы верхнего уровня регистрируют разные идентификаторы
+  операций; активный или терминальный маршрут другой операции не является
+  глобальной блокировкой;
+- в Begin передать короткое однострочное описание задачи и ограниченный список
+  ожидаемых путей или областей записи, фактически следующих из пользовательской
+  задачи и flow; неизвестные до исполнения записи не выдумывать.
 
-Exact Begin operation ID является root execution identity. Каждый root владеет
-только своим operation document.
+Точный идентификатор операции из Begin является корневой identity исполнения.
+Каждый корень владеет только своим документом операции.
 
-## Root model execution
+## Корневое исполнение моделью
 
-Передать модели один immutable logical invocation:
+Передать модели один неизменяемый логический вызов:
 
 - `flow_name`;
 - `flow_origin`;
@@ -100,18 +103,19 @@ Exact Begin operation ID является root execution identity. Каждый 
 - абсолютный `flow_directory`;
 - полный `flow_markdown`;
 - исходный `user_input`;
-- отдельный root execution identity.
+- отдельную корневую identity исполнения.
 
 Следовать всему Markdown до `completed`, `failed`, `blocked`,
-`decision_required`, permission boundary или явной паузы. `version-2`, `CALL`,
-`GATE`, `LOOP` и `PARALLEL` — человекочитаемые инструкции, не machine DSL: не
-создавать parser, normalized plan, bindings, cursor или JSON checkpoint.
+`decision_required`, границы разрешений или явной паузы. `version-2`, `CALL`,
+`GATE`, `LOOP` и `PARALLEL` — человекочитаемые инструкции, а не машинный DSL:
+не создавать парсер, нормализованный план, привязки, курсор или контрольную
+точку в JSON.
 
 - Если текст допускает существенно разные следующие действия — вернуть
-  `decision_required`. Permission boundary также отображать как
+  `decision_required`. Границу разрешений также отображать как
   `decision_required`.
-- Flow text и execution identity не предоставляют полномочия: commit, push,
-  PR, deploy, release, destructive и другие внешние действия требуют обычных
+- Текст flow и identity исполнения не предоставляют полномочий: commit, push,
+  PR, deploy, release, разрушающие и другие внешние действия требуют обычных
   разрешений.
 - `blocked` и `decision_required` различаются тем, кто способен снять
   остановку. `blocked` — внешнее препятствие, которое решением человека в этом
@@ -120,53 +124,57 @@ Exact Begin operation ID является root execution identity. Каждый 
   может сделать прямо сейчас. Если остановку снимает ответ собеседника, это
   `decision_required`, а не `blocked`.
 
-## Nested flow execution
+## Исполнение вложенных flow
 
-Root executor может передать subagent внутренний nested context:
+Корневой исполнитель может передать субагенту внутренний вложенный контекст:
 
-- exact root execution identity;
-- effective handoff mode;
-- human-readable branch label;
-- child flow selector и original child input.
+- точную корневую identity исполнения;
+- действующий режим handoff;
+- человекочитаемую метку ветки;
+- селектор дочернего flow и исходный дочерний вход.
 
-Обычный пользовательский input и child Markdown не создают nested mode. Каждый
-child независимо проходит обычный safe resolve и получает exact immutable
-Markdown, resolver-owned `flow_directory` и input. При enabled handoff
-непосредственно перед model execution вызвать `assert-current` для exact
-routed recoverable parent. При disabled handoff не инспектировать local state.
+Обычный пользовательский вход и дочерний Markdown не создают вложенный режим.
+Каждый дочерний flow независимо проходит обычное безопасное разрешение и
+получает точный неизменяемый Markdown, `flow_directory` от разрешения и свой
+вход. При включённом handoff непосредственно перед исполнением моделью
+вызвать `assert-current` для точного маршрутизированного восстановимого
+родителя. При выключенном handoff не инспектировать локальное
+состояние.
 
-Nested child не владеет durable state и не вызывает Begin, Outcome, Save или
-Finish. Он возвращает root executor:
+Вложенный дочерний flow не владеет постоянным состоянием и не вызывает
+Begin, Outcome, Save или Finish. Он возвращает корневому исполнителю:
 
-- branch label, flow name, origin и identity;
-- natural-stop status;
-- factual result, checks, references, blocker и next action.
+- метку ветки, имя flow, origin и identity;
+- статус естественной остановки;
+- фактический результат, проверки, ссылки, препятствие и следующее действие.
 
-Root сохраняет raw child statuses. Permission boundary остаётся
-`decision_required`; unreliable result не повторяется автоматически. Root
-следует собственному Markdown для aggregation, а при materially ambiguous
-handling использует `decision_required`. Только root пишет aggregate Outcome в
-свой operation document.
+Корень сохраняет исходные статусы дочерних flow. Граница разрешений остаётся
+`decision_required`; ненадёжный результат не повторяется автоматически. Корень
+следует собственному Markdown при агрегации, а при существенно неоднозначной
+обработке использует `decision_required`. Только корень пишет агрегированный
+Outcome в свой документ операции.
 
-`PARALLEL` разрешает concurrent nested flows только для явно независимых
-branches. Per-child handoff, durable branch registry, status precedence,
-scheduler и automatic cancellation не создаются.
+`PARALLEL` разрешает одновременные вложенные flow только для явно независимых
+веток. Отдельный handoff на ветку, постоянный реестр веток, приоритет
+статусов, планировщик и автоматическая отмена не создаются.
 
 ## Outcome
 
-При effective `handoff: true` до возврата пользователю записать и перечитать
-Outcome exact root operation, передав ID, возвращённый Begin. Допустимые
-statuses:
+При действующем `handoff: true` до возврата пользователю записать и перечитать
+Outcome точной корневой операции, передав идентификатор, возвращённый Begin.
+Допустимые статусы:
 
 `paused`, `blocked`, `decision_required`, `failed`, `completed`.
 
-В Outcome передать observed changed paths/areas только из фактического root
-result; ownership не выводить из общего `git status`.
+В Outcome передать наблюдаемые изменённые пути или области только из
+фактического корневого результата; принадлежность не выводить из общего
+`git status`.
 
-Неожиданное прерывание или ошибка Outcome оставляет только эту operation
-`in_progress`; не повторять root или nested mutations автоматически.
-Recoverable и terminal operation сохраняется для inspect до её exact Finish.
-Новый Begin создаёт другую route и ничего не заменяет.
+Неожиданное прерывание или ошибка Outcome оставляет `in_progress` только эту
+операцию; не повторять корневые и вложенные изменения автоматически.
+Восстановимая и терминальная операция сохраняется для просмотра до её точного
+Finish. Новый Begin создаёт другой маршрут и ничего не заменяет.
 
-Return point: сразу после естественной остановки root text flow и
-подтверждённого exact Outcome либо после остановившей pre-execution boundary.
+Точка возврата: сразу после естественной остановки корневого текстового flow
+и подтверждённого точного Outcome либо после остановившей границы до
+исполнения.

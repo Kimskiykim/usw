@@ -43,7 +43,7 @@ class AtomicSkillContractTests(unittest.TestCase):
         for skill_name in skills:
             with self.subTest(skill=skill_name):
                 content = (ROOT / "skills" / skill_name / "SKILL.md").read_text(encoding="utf-8").lower()
-                self.assertTrue("return point" in content or "return control" in content)
+                self.assertTrue("точка возврата" in content)
                 self.assertNotIn("call_next_skill", content)
 
     def test_handoff_skills_share_the_routed_operation_contract(self):
@@ -91,7 +91,8 @@ class AtomicSkillContractTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "Nested child не владеет durable state и не вызывает Begin, Outcome, Save или Finish.",
+            "Вложенный дочерний flow не владеет постоянным состоянием и не вызывает "
+            "Begin, Outcome, Save или Finish.",
             " ".join(run.split()),
         )
 

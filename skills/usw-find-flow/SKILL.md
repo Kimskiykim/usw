@@ -1,76 +1,78 @@
 ---
 name: usw-find-flow
-description: Find an existing runnable local or shared USW Markdown flow for one explicit intent without creating or executing anything. Use only when the user explicitly invokes usw-find-flow.
+description: Находить существующий запускаемый локальный или общий USW flow в Markdown по одному явному намерению, ничего не создавая и не выполняя. Использовать только при явном вызове usw-find-flow.
 ---
 
-# Find a USW flow
+# Поиск USW flow
 
 Принимать одно описание намерения и искать подходящий уже существующий
-runnable flow.
+запускаемый flow.
 
-## Capability contract
+## Контракт возможности
 
-- Input: одно явное описание намерения.
-- Writes and side effects: none.
-- Output: `match`, `ambiguous` или `no-match`.
-- Return point: сразу после результата поиска; не создавать и не запускать
+- Вход: одно явное описание намерения.
+- Записи и побочные эффекты: отсутствуют.
+- Выход: `match`, `ambiguous` или `no-match`.
+- Точка возврата: сразу после результата поиска; не создавать и не запускать
   flow и не вызывать другой skill.
 
-## Bounded discovery
+## Ограниченный поиск
 
-1. Найти ближайший Git root и использовать config resolution
-   `usw-run-flow`: без `usw.yaml` shared root равен `usw/flows`.
-2. Рассматривать только direct entrypoints в:
-   - developer-local `<project>/.usw/flows`;
-   - configured shared `<project>/<flows.root>`.
-3. Принимать direct regular `<name>.md` и direct `<name>/FLOW.md` только с
-   safe kebab-case name, real package directory и regular entrypoint.
-   Не обходить package resource directories или другие каталоги и не следовать symlink.
-4. Для каждого dual-layout name вызвать safe `resolve` с точным origin. Только
-   его `ambiguous_flow_layout` считать подтверждённой layout ambiguity и
-   использовать paths только из resolver error. Вернуть `ambiguous` с этой
-   причиной и обоими entrypoint paths; не читать, не пропускать и не
-   ранжировать ни одну форму.
+1. Найти ближайший Git root и использовать то же разрешение конфигурации, что
+   `usw-run-flow`: без `usw.yaml` общий root равен `usw/flows`.
+2. Рассматривать только прямые точки входа в:
+   - локальном `<project>/.usw/flows`;
+   - настроенном общем `<project>/<flows.root>`.
+3. Принимать прямой обычный файл `<name>.md` и прямой `<name>/FLOW.md` только
+   с безопасным kebab-case именем, реальной директорией пакета и обычным
+   файлом точки входа. Не обходить директории ресурсов пакета или другие
+   каталоги и не следовать symlink.
+4. Для каждого имени с двумя раскладками вызвать безопасный `resolve` с
+   точным origin. Только его `ambiguous_flow_layout` считать подтверждённой
+   неоднозначностью раскладки и использовать пути только из ошибки разрешения.
+   Вернуть `ambiguous` с этой причиной и обоими путями точек входа; не читать,
+   не пропускать и не ранжировать ни одну форму.
 5. Сначала сравнить имена flow с намерением. Только для правдоподобных
-   кандидатов вызвать safe `resolve` из
+   кандидатов вызвать безопасный `resolve` из
    `../usw-run-flow/scripts/run_flow.py` с точным origin и использовать только
    возвращённый `markdown`.
-6. Не искать packaged examples, внешние каталоги, интернет, другие проекты или
-   пользовательские директории вне текущего проекта.
+6. Не искать упакованные примеры, внешние каталоги, интернет, другие проекты
+   или пользовательские директории вне текущего проекта.
 
-## Match
+## Совпадение
 
 Если один flow явно лучше остальных, вернуть:
 
-- status: `match`;
-- name, `local` или `shared` origin и exact entrypoint path;
+- статус: `match`;
+- имя, origin `local` или `shared` и точный путь точки входа;
 - краткое основание выбора;
 - готовую команду `$usw-run-flow` с явным `--local` или `--shared`, найденным
-  name и исходным намерением.
+  именем и исходным намерением.
 
 Не запускать эту команду.
 
-## Ambiguous
+## Неоднозначность
 
-Если существенно разные flows одинаково правдоподобны, вернуть:
+Если существенно разные flow одинаково правдоподобны, вернуть:
 
-- status: `ambiguous`;
-- имена, origins, paths и краткое различие кандидатов.
+- статус: `ambiguous`;
+- имена, origins, пути и краткое различие кандидатов.
 
-Layout ambiguity одного name также возвращает status `ambiguous`, exact cause
-`ambiguous_flow_layout` и оба entrypoint paths до semantic matching.
+Неоднозначность раскладки одного имени также возвращает статус `ambiguous`,
+точную причину `ambiguous_flow_layout` и оба пути точек входа до
+семантического сопоставления.
 
-Не выбирать победителя и не запрашивать approval на запуск.
+Не выбирать победителя и не запрашивать подтверждение на запуск.
 
-## No match
+## Нет совпадения
 
-Если подходящего runnable flow нет, вернуть status `no-match`. Можно назвать
-`$usw-create-flow` как отдельное следующее действие, но не вызывать его и не
-готовить новый Markdown.
+Если подходящего запускаемого flow нет, вернуть статус `no-match`. Можно
+назвать `$usw-create-flow` как отдельное следующее действие, но не вызывать
+его и не готовить новый Markdown.
 
-## Invariants
+## Инварианты
 
-- Finder не оценивает сложность задачи и не рекомендует direct execution.
-- Finder не создаёт, не адаптирует и не исполняет flow.
-- Finder не читает и не изменяет HANDOFF или configuration.
-- Finder не создаёт index, score, parser, registry или runtime state.
+- Поиск не оценивает сложность задачи и не рекомендует прямое исполнение.
+- Поиск не создаёт, не адаптирует и не исполняет flow.
+- Поиск не читает и не изменяет HANDOFF или конфигурацию.
+- Поиск не создаёт индекс, оценку, парсер, реестр или состояние исполнения.
