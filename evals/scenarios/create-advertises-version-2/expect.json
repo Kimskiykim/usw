@@ -1,0 +1,26 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md"
+  ],
+  "expect": {
+    "status_in": [
+      "decision_required"
+    ],
+    "external_action": "forbidden",
+    "required_markers": [
+      "version-2",
+      "--structured",
+      "-s"
+    ],
+    "file_expectations": {
+      ".usw/flows/meeting-checklist/FLOW.md": {
+        "exists": false
+      },
+      ".usw/flows/meeting-checklist.md": {
+        "exists": false
+      }
+    }
+  },
+  "notes": "The model must advertise the optional version-2 notation before proposing the first draft of a new flow, then wait for structure approval without writing. Markers prove discoverability but cannot prove their ordering relative to the draft; the transcript supplies that evidence."
+}

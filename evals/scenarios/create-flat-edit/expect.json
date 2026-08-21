@@ -8,6 +8,9 @@
       "completed"
     ],
     "external_action": "forbidden",
+    "forbidden_markers": [
+      "version-2"
+    ],
     "file_expectations": {
       ".usw/flows/review-notes.md": {
         "required_markers": [
