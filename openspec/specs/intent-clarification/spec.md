@@ -1,51 +1,51 @@
-# intent-clarification Specification
+# Спецификация intent-clarification
 
 ## Purpose
-Define intent clarification as an ordinary adaptable Markdown-flow rather than
-an installed backend skill.
+Определяет clarification намерения как обычный адаптируемый Markdown flow, а не
+как установленный backend skill.
 
 ## Requirements
 
-### Requirement: Intent clarification is a packaged example flow
-USW SHALL package `refine-intent.md` under `<flows.root>/examples/`. It SHALL
-clarify at most one material decision per user turn and MUST NOT start planning
-or implementation.
+### Requirement: Clarification намерения является packaged example flow
+USW SHALL поставлять `refine-intent.md` под `<flows.root>/examples/`. Он SHALL
+уточнять не более одного существенного решения за один ход пользователя и MUST
+NOT начинать planning или implementation.
 
-#### Scenario: User copies the example
-- **WHEN** the user copies `refine-intent.md` to a runnable flow path
-- **THEN** the flow can be adapted and executed through the ordinary
-  `usw-run-flow` path without a `usw-refine-intent` skill or command
+#### Scenario: Пользователь копирует example
+- **WHEN** пользователь копирует `refine-intent.md` в runnable flow path
+- **THEN** flow можно адаптировать и исполнить через обычный path `usw-run-flow`
+  без skill или command `usw-refine-intent`
 
-### Requirement: Clarification state is local and minimal
-The example SHALL use one developer-local Markdown file under
-`.usw/refinements/` for confirmed facts, assumptions, open questions,
-decisions and the current formulation. It MUST NOT treat that file as backlog,
-specification, planning state or evidence of completed implementation.
+### Requirement: Clarification state является local и minimal
+Example SHALL использовать один developer-local Markdown file под
+`.usw/refinements/` для подтверждённых фактов, предположений, открытых вопросов,
+решений и текущей формулировки. Он MUST NOT считать этот file backlog,
+specification, planning state или evidence завершённой implementation.
 
-#### Scenario: One decision is confirmed
-- **WHEN** the user unambiguously answers the current question
-- **THEN** the flow records that decision before selecting at most one next
-  material question
+#### Scenario: Одно решение подтверждено
+- **WHEN** пользователь однозначно отвечает на текущий вопрос
+- **THEN** flow записывает решение до выбора не более одного следующего
+  существенного вопроса
 
-#### Scenario: A decision is revised
-- **WHEN** the user replaces an earlier decision
-- **THEN** the prior decision remains visible as `superseded`
+#### Scenario: Решение пересмотрено
+- **WHEN** пользователь заменяет ранее принятое решение
+- **THEN** прежнее решение остаётся видимым как `superseded`
 
-### Requirement: Clarification may stop independently
-The flow SHALL allow a completed formulation, a human decision request or an
-unresolved stop without requiring another flow.
+### Requirement: Clarification может завершиться независимо
+Flow SHALL допускать завершённую формулировку, запрос human decision или
+нерешённую остановку без требования другого flow.
 
-#### Scenario: Formulation is sufficient
-- **WHEN** no material questions remain
-- **THEN** the flow records the current formulation, returns its local reference
-  and completes without choosing downstream work
+#### Scenario: Формулировка достаточна
+- **WHEN** существенных вопросов больше нет
+- **THEN** flow записывает текущую формулировку, возвращает local reference и
+  завершается без выбора последующей работы
 
-### Requirement: Removed skill state is preserved
-Installation with `--force` SHALL remove the obsolete
-`usw-refine-intent` skill and command but MUST NOT delete existing
-`.usw/refinements/` artifacts.
+### Requirement: State удалённого skill сохраняется
+Установка с `--force` SHALL удалить устаревшие skill и command
+`usw-refine-intent`, но MUST NOT удалять существующие artifacts
+`.usw/refinements/`.
 
-#### Scenario: Existing refinement notes are present
-- **WHEN** USW is upgraded after the skill is removed
-- **THEN** installed skill metadata is cleaned up and project-local notes remain
-  unchanged
+#### Scenario: Существующие refinement notes присутствуют
+- **WHEN** USW обновляется после удаления skill
+- **THEN** metadata установленного skill очищаются, а project-local notes
+  остаются неизменными

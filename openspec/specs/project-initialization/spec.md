@@ -1,8 +1,8 @@
-# project-initialization Specification
+# Спецификация project-initialization
 
 ## Purpose
-Define the create-only contract for initializing USW project artifacts while
-preserving user-owned files and repository policy.
+Определяет create-only contract инициализации project artifacts USW с сохранением
+принадлежащих пользователю files и repository policy.
 
 ## Requirements
 

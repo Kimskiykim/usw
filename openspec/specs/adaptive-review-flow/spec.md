@@ -1,8 +1,8 @@
-# adaptive-review-flow Specification
+# Спецификация adaptive-review-flow
 
 ## Purpose
-Define bounded multi-reviewer discovery, explicit candidate voting, human
-finding decisions, and a read-only review-to-fix handoff.
+Определяет bounded discovery несколькими reviewers, явное голосование по
+candidates, human decisions по findings и read-only handoff от review к fix.
 
 ## Requirements
 

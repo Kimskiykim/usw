@@ -1,52 +1,55 @@
-# flow-discovery Specification
+# Спецификация flow-discovery
 
 ## Purpose
-TBD - created by archiving change replace-flow-router-with-finder. Update Purpose after archive.
+Не заполнено — создано при архивации change `replace-flow-router-with-finder`.
+Заполнить Purpose после архивации.
 ## Requirements
-### Requirement: Explicit intent finds an existing runnable flow
-USW SHALL expose `usw-find-flow` as an explicitly invoked read-only capability
-that searches direct developer-local and configured shared Markdown flows for
-one supplied intent.
+### Requirement: Явное намерение находит существующий runnable flow
+USW SHALL предоставлять `usw-find-flow` как явно вызываемую read-only capability,
+которая ищет direct developer-local и настроенные shared Markdown flows для
+одного переданного намерения.
 
-#### Scenario: One flow is the clear match
-- **WHEN** one existing runnable flow clearly matches the supplied intent
-- **THEN** the finder returns its name, origin, path, rationale and an
-  explicit-origin `usw-run-flow` command containing the original intent
+#### Scenario: Один flow явно подходит лучше остальных
+- **WHEN** один существующий runnable flow явно соответствует переданному
+  намерению
+- **THEN** finder возвращает его имя, origin, path, обоснование и команду
+  `usw-run-flow` с явным origin и исходным намерением
 
-### Requirement: Discovery uses safe bounded resolution
-The finder MUST inspect only safe kebab-case regular `*.md` entries directly
-inside the local and shared flow roots and MUST load candidates through the
-same contained, no-symlink resolution boundary as `usw-run-flow`.
+### Requirement: Discovery использует безопасное bounded resolution
+Finder MUST проверять только safe kebab-case regular entries `*.md`
+непосредственно в local и shared flow roots и MUST загружать candidates через ту
+же contained no-symlink boundary разрешения, что и `usw-run-flow`.
 
-#### Scenario: Candidate is a symlink
-- **WHEN** a catalog entry or one of its path components is a symbolic link
-- **THEN** the finder excludes or rejects it without reading the flow
+#### Scenario: Candidate является symlink
+- **WHEN** entry каталога или один из компонентов его path является symbolic link
+- **THEN** finder исключает или отклоняет его без чтения flow
 
-### Requirement: Discovery has no side effects
-The finder MUST NOT create, adapt or execute a flow, invoke HANDOFF, change
-configuration or search packaged examples, external catalogs or other
-projects.
+### Requirement: Discovery не имеет side effects
+Finder MUST NOT создавать, адаптировать или исполнять flow, вызывать HANDOFF,
+изменять configuration или искать packaged examples, external catalogs либо
+другие проекты.
 
-#### Scenario: No flow matches
-- **WHEN** no runnable local or shared flow matches the supplied intent
-- **THEN** the finder returns `no-match` without writing state and may name
-  `usw-create-flow` as a separate next action
+#### Scenario: Ни один flow не подходит
+- **WHEN** ни один runnable local или shared flow не соответствует намерению
+- **THEN** finder возвращает `no-match` без записи state и MAY назвать
+  `usw-create-flow` как отдельное следующее действие
 
-### Requirement: Ambiguous matches stop visibly
-The finder MUST return `ambiguous` when materially tied candidates would lead
-to different processes and MUST NOT choose or execute either candidate.
+### Requirement: Неоднозначные совпадения останавливаются явно
+Finder MUST возвращать `ambiguous`, когда существенно разные, одинаково
+правдоподобные candidates ведут к разным процессам, и MUST NOT выбирать или
+исполнять ни один из них.
 
-#### Scenario: Local and shared flows are equally plausible
-- **WHEN** local and shared candidates both materially match the intent and
-  neither is clearly preferable
-- **THEN** the finder returns both candidates with their origins and stops
+#### Scenario: Local и shared flows одинаково правдоподобны
+- **WHEN** local и shared candidates существенно соответствуют намерению и ни
+  один не является явно предпочтительным
+- **THEN** finder возвращает оба candidates с их origins и останавливается
 
-### Requirement: Legacy router is absent
-USW MUST NOT package or advertise `usw-route-task`, and forced installation
-SHALL remove previously installed router skill and command files.
+### Requirement: Legacy router отсутствует
+USW MUST NOT поставлять или рекламировать `usw-route-task`, а установка с
+принудительным обновлением SHALL удалить ранее установленные skill и command
+router-а.
 
-#### Scenario: Force upgrade from a router release
-- **WHEN** a user runs `install.sh --force` over an installation containing
-  `usw-route-task`
-- **THEN** the old skill and command are removed and `usw-find-flow` is
-  installed
+#### Scenario: Принудительное обновление с версии с router
+- **WHEN** пользователь запускает `install.sh --force` поверх установки,
+  содержащей `usw-route-task`
+- **THEN** старые skill и command удаляются, а `usw-find-flow` устанавливается

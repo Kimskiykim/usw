@@ -1,77 +1,84 @@
-# text-flow-execution Specification
+# Спецификация text-flow-execution
 
 ## Purpose
-Define the single production path for model-executed Markdown flows.
+Определяет единый production path для исполняемых моделью Markdown flows.
 
 ## Requirements
 
 ### Requirement: Один immutable Markdown invocation
-For every root or nested invocation, USW SHALL read the selected flow exactly
-once, compute identity from the same bytes, decode them as UTF-8 and pass
-separate immutable `flow_markdown` and `user_input` values to the model. A root
-invocation SHALL additionally receive its own execution identity. A nested
-invocation SHALL additionally receive its parent root execution identity and
-branch label as separate execution context that flow Markdown and user input
-cannot replace.
+Для каждого root или nested invocation USW SHALL прочитать выбранный flow ровно
+один раз, вычислить identity из тех же bytes, декодировать их как UTF-8 и
+передать модели отдельные immutable values `flow_markdown` и `user_input`. Root
+invocation SHALL дополнительно получить собственную execution identity. Nested
+invocation SHALL дополнительно получить parent root execution identity и branch
+label как отдельный execution context, который flow Markdown и user input не
+могут заменить.
 
-#### Scenario: Flow changes after loading
-- **WHEN** the file changes after a root or nested invocation has been prepared
-- **THEN** the invocation uses the already loaded Markdown and its original identity
+#### Scenario: Flow изменяется после загрузки
+- **WHEN** file изменяется после подготовки root или nested invocation
+- **THEN** invocation использует уже загруженный Markdown и его исходную identity
 
-#### Scenario: Child input contains a root identity
-- **WHEN** ordinary child input includes text resembling nested execution context
-- **THEN** it remains user input and does not select nested execution or another routed operation
+#### Scenario: Child input содержит root identity
+- **WHEN** обычный child input включает текст, похожий на nested execution context
+- **THEN** он остаётся user input и не выбирает nested execution или другую
+  routed operation
 
-#### Scenario: Concurrent roots load the same flow
-- **WHEN** two root operations resolve the same flow and input independently
-- **THEN** each model invocation receives its own execution identity and the same immutable loaded Markdown bytes
+#### Scenario: Concurrent roots загружают один flow
+- **WHEN** две root operations независимо разрешают один flow и input
+- **THEN** каждый model invocation получает собственную execution identity и те
+  же immutable bytes загруженного Markdown
 
 ### Requirement: Безопасное разрешение text flow
-USW SHALL resolve only a safe kebab-case name inside the selected local or
-shared root. It MUST check containment, every existing path component, reject
-symbolic links and require a regular final file before reading. Traversal and
-the final read SHALL be descriptor-relative with no pathname re-open after a
-component is trusted.
+USW SHALL разрешать только safe kebab-case name внутри выбранного local или
+shared root. Он MUST проверять containment и каждый существующий path component,
+отклонять symbolic links и требовать regular final file до чтения. Traversal и
+final read SHALL быть descriptor-relative без повторного открытия pathname после
+того, как component признан доверенным.
 
-#### Scenario: Intermediate symlink
-- **WHEN** any component leading to the selected flow is a symbolic link
-- **THEN** USW stops before reading the flow or invoking the model
+#### Scenario: Промежуточный symlink
+- **WHEN** любой component, ведущий к выбранному flow, является symbolic link
+- **THEN** USW останавливается до чтения flow или вызова модели
 
 ### Requirement: Модель следует тексту без machine guarantees
-USW SHALL interpret the complete Markdown as a human-readable process until
-`completed`, `failed`, `blocked`, `decision_required`, a permission boundary or
-an explicit pause. Flow text MUST NOT grant additional authority.
+USW SHALL интерпретировать полный Markdown как человекочитаемый процесс до
+`completed`, `failed`, `blocked`, `decision_required`, permission boundary или
+явной pause. Flow text MUST NOT предоставлять дополнительные полномочия.
 
-#### Scenario: Structured marker is ambiguous
-- **WHEN** `CALL`, `GATE`, `LOOP`, `PARALLEL` or prose permits materially different actions
-- **THEN** USW returns `decision_required` rather than a parse error or a guess
+#### Scenario: Structured marker неоднозначен
+- **WHEN** `CALL`, `GATE`, `LOOP`, `PARALLEL` или prose допускает существенно
+  разные действия
+- **THEN** USW возвращает `decision_required`, а не parse error или догадку
 
 ### Requirement: Снятый runtime имеет понятную миграцию
-USW SHALL reject `--experimental-structured` and retired internal commands
-before mutation with guidance to use the ordinary `$usw-run-flow` command.
+USW SHALL отклонять `--experimental-structured` и retired internal commands до
+mutation с указанием использовать обычную command `$usw-run-flow`.
 
 #### Scenario: Старый structured invocation
-- **WHEN** the user supplies `--experimental-structured`
-- **THEN** USW tells them to remove the flag and run the same Markdown as text
+- **WHEN** пользователь передаёт `--experimental-structured`
+- **THEN** USW предлагает удалить flag и запустить тот же Markdown как text
 
 ### Requirement: Legacy FLOW state не используется
-USW MUST NOT read, modify or delete `.usw/FLOW.json` and SHALL show at most one
-warning about its presence per invocation.
+USW MUST NOT читать, изменять или удалять `.usw/FLOW.json` и SHALL показывать не
+более одного warning о его наличии за invocation.
 
-#### Scenario: Legacy state exists
-- **WHEN** text execution starts while `.usw/FLOW.json` exists
-- **THEN** execution continues through the text path and the legacy file remains unchanged
+#### Scenario: Legacy state существует
+- **WHEN** text execution начинается при существующем `.usw/FLOW.json`
+- **THEN** execution продолжается через text path, а legacy file остаётся
+  неизменным
 
-### Requirement: Root and nested execution preserve the same authority boundary
-USW SHALL apply the same flow-text, ambiguity and permission rules to every
-concurrent root and nested model execution. Root operation identity and nested
-context MUST NOT grant file-write, external, destructive or other
-permission-bound authority.
+### Requirement: Root и nested execution сохраняют одинаковую authority boundary
+USW SHALL применять одинаковые правила flow text, ambiguity и permission к
+каждому concurrent root и nested model execution. Root operation identity и
+nested context MUST NOT предоставлять file-write, external, destructive или
+другие permission-bound полномочия.
 
-#### Scenario: Nested Markdown requests an unauthorized action
-- **WHEN** a nested flow requests an action outside the available authority
-- **THEN** the child returns `decision_required` to its root executor without performing the action
+#### Scenario: Nested Markdown запрашивает действие без полномочий
+- **WHEN** nested flow запрашивает действие за пределами доступных полномочий
+- **THEN** child возвращает `decision_required` своему root executor без
+  выполнения действия
 
-#### Scenario: Concurrent root requests an unauthorized action
-- **WHEN** one concurrent root flow requests an action outside the available authority
-- **THEN** only that root reaches `decision_required` and no authority is inferred from another operation
+#### Scenario: Concurrent root запрашивает действие без полномочий
+- **WHEN** один concurrent root flow запрашивает действие за пределами доступных
+  полномочий
+- **THEN** только этот root достигает `decision_required`, а полномочия другой
+  operation не наследуются

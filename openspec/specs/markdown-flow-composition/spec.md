@@ -1,60 +1,62 @@
-# markdown-flow-composition Specification
+# Спецификация markdown-flow-composition
 
 ## Purpose
-Define ordinary and structured text-first Markdown authoring.
+Определяет обычный и structured text-first authoring в Markdown.
 
 ## Requirements
 
-### Requirement: Ordinary Markdown является форматом по умолчанию
-`usw-create-flow` SHALL create ordinary Markdown without a version or DSL unless
-the user explicitly selects `-s` or `--structured`. Both selectors SHALL choose
-the same `version-2` authoring style.
+### Requirement: Обычный Markdown является форматом по умолчанию
+`usw-create-flow` SHALL создавать обычный Markdown без version или DSL, если
+пользователь явно не выбрал `-s` или `--structured`. Оба selectors SHALL выбирать
+один и тот же authoring style `version-2`.
 
 #### Scenario: Structured selector отсутствует
-- **WHEN** a user creates a flow without `-s` or `--structured`
-- **THEN** the saved file is ordinary Markdown
+- **WHEN** пользователь создаёт flow без `-s` или `--structured`
+- **THEN** сохранённый file является обычным Markdown
 
 #### Scenario: Structured selector передан
-- **WHEN** a user creates a flow with either structured selector
-- **THEN** the saved file uses the same readable `version-2` convention
+- **WHEN** пользователь создаёт flow с любым structured selector
+- **THEN** сохранённый file использует ту же readable convention `version-2`
 
 ### Requirement: Составление завершается без исполнения
-`usw-create-flow` SHALL write only the selected safe Markdown file and MUST NOT
-execute the flow or any action described by it.
+`usw-create-flow` SHALL записывать только выбранный safe Markdown file и MUST NOT
+исполнять flow или любое описанное им действие.
 
 #### Scenario: Flow создан
-- **WHEN** the requested Markdown has been saved successfully
-- **THEN** the skill reports its name, origin and ordinary `$usw-run-flow` command
+- **WHEN** запрошенный Markdown успешно сохранён
+- **THEN** skill сообщает его name, origin и обычную command `$usw-run-flow`
 
 ### Requirement: Version-2 является authoring convention
-Structured authoring SHALL use `version-2` and only applicable `CALL`, `GATE`,
-`LOOP` and `PARALLEL` markers to make intent easy for a human and model to read.
-The convention MUST NOT promise parser validation, deterministic transitions,
-atomic parallelism, durable cursor, write authority or machine guarantees.
+Structured authoring SHALL использовать `version-2` и только применимые markers
+`CALL`, `GATE`, `LOOP` и `PARALLEL`, чтобы intent было легко читать человеку и
+модели. Convention MUST NOT обещать parser validation, deterministic
+transitions, atomic parallelism, durable cursor, write authority или machine
+guarantees.
 
 #### Scenario: Control marker не нужен
-- **WHEN** the described process has no decision, loop or parallel work
-- **THEN** authoring does not add the corresponding marker for uniformity
+- **WHEN** описанный процесс не содержит decision, loop или parallel work
+- **THEN** authoring не добавляет соответствующий marker ради единообразия
 
-#### Scenario: Existing version-2 is revised
-- **WHEN** a structured flow is updated
-- **THEN** its markers remain readable guidance and the flow is not passed to a validator
+#### Scenario: Существующий version-2 изменяется
+- **WHEN** structured flow обновляется
+- **THEN** его markers остаются readable guidance, а flow не передаётся validator
 
 ### Requirement: Очевидная структура может быть выведена из описания
-The author MAY make an unambiguous order, check, branch, bounded return or
-independent work explicit in Markdown. If materially different interpretations
-change behavior, actor or external effect, the author MUST request the missing
-decision rather than invent it.
+Author MAY явно отразить в Markdown однозначные order, check, branch, bounded
+return или independent work. Если существенно разные interpretation меняют
+behavior, actor или external effect, author MUST запросить недостающее решение,
+а не выдумывать его.
 
-#### Scenario: Description has two material meanings
-- **WHEN** the requested process does not determine which consequential action to take
-- **THEN** authoring asks one necessary question before saving that behavior
+#### Scenario: Описание имеет два существенных смысла
+- **WHEN** запрошенный процесс не определяет, какое consequential action выполнить
+- **THEN** authoring задаёт один необходимый вопрос до сохранения этого behavior
 
 ### Requirement: Flow text не предоставляет полномочия
-Authoring SHALL preserve the user's requested process while making clear that
-Markdown cannot authorize external, destructive or otherwise permission-bound
-actions.
+Authoring SHALL сохранять запрошенный пользователем процесс и явно показывать,
+что Markdown не может разрешать external, destructive или иные permission-bound
+действия.
 
-#### Scenario: Flow mentions deployment
-- **WHEN** a flow says to deploy a result
-- **THEN** later execution still requires the normal user and platform permission boundary
+#### Scenario: Flow упоминает deployment
+- **WHEN** flow указывает выполнить deploy результата
+- **THEN** последующее execution всё равно требует обычную user и platform
+  permission boundary

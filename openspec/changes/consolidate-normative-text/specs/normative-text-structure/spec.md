@@ -1,71 +1,74 @@
 ## ADDED Requirements
 
-### Requirement: One normative source
-USW SHALL keep exactly one normative statement of each rule. `openspec/specs/`
-is that source. README SHALL be an overview that links to it, and skill files
-SHALL be derived instructions for an executor rather than a second specification.
-A rule stated in more than one place MUST be reduced to one, with the others
-referring to it.
+### Requirement: Один нормативный источник
+USW SHALL хранить ровно одну нормативную формулировку каждого правила. Этим
+источником является `openspec/specs/`. README SHALL быть обзором со ссылками на
+него, а skill files SHALL быть производными инструкциями для executor, а не
+второй specification. Правило, сформулированное более чем в одном месте, MUST
+быть сведено к одной формулировке, а остальные места должны ссылаться на неё.
 
-#### Scenario: A rule changes
-- **WHEN** a normative rule is added or altered
-- **THEN** it is edited in exactly one file, and no other file restates it in a form that can drift
+#### Scenario: Правило изменяется
+- **WHEN** нормативное правило добавляется или меняется
+- **THEN** оно редактируется ровно в одном file, а другие files не повторяют его
+  в форме, способной разойтись
 
-#### Scenario: A reader needs the authoritative wording
-- **WHEN** documentation and a skill appear to disagree
-- **THEN** the specification is authoritative and the skill is corrected to match it
+#### Scenario: Читателю нужна authoritative формулировка
+- **WHEN** documentation и skill выглядят противоречащими друг другу
+- **THEN** specification является authoritative, а skill исправляется в
+  соответствии с ней
 
-### Requirement: Skill files lead with the imperative
-Each shipped skill SHALL state what to do first, in short imperative form.
-Rationale, edge cases, recipes and worked examples SHALL live in `references/`
-and be read on demand. A skill file MUST NOT depend on the reader having
-absorbed a preceding wall of qualifications before reaching the instruction.
+### Requirement: Skill files начинаются с imperative
+Каждый поставляемый skill SHALL сначала кратко и в imperative form указывать,
+что делать. Обоснования, edge cases, recipes и worked examples SHALL находиться
+в `references/` и читаться по необходимости. Skill file MUST NOT требовать,
+чтобы читатель усвоил предшествующую стену оговорок до основной инструкции.
 
-#### Scenario: An executor reads a skill
-- **WHEN** a model invokes a skill
-- **THEN** the actions it must take are stated before any justification for them
+#### Scenario: Executor читает skill
+- **WHEN** модель вызывает skill
+- **THEN** обязательные действия сформулированы до их обоснования
 
-#### Scenario: A rule needs a long justification
-- **WHEN** a rule requires extended explanation to be understood
-- **THEN** the explanation goes to `references/` and the skill keeps the rule itself
+#### Scenario: Правилу нужно длинное обоснование
+- **WHEN** для понимания правила требуется подробное объяснение
+- **THEN** объяснение переносится в `references/`, а в skill остаётся само правило
 
-### Requirement: Meaning is protected by measurement, not by phrase assertions
-Tests over instruction text SHALL assert only anchors that are stable by
-construction: command names, error codes, file paths and structural markers. A
-test MUST NOT assert that a particular sentence appears, because that pins the
-wording and prevents the text from being made clearer. Invariants about what a
-model must do SHALL be covered by behavior scenarios instead. A phrase assertion
-MUST NOT be removed until the invariant it stood for is covered by a scenario.
+### Requirement: Смысл защищается измерением, а не phrase assertions
+Тесты instruction text SHALL проверять только anchors, стабильные по своей
+природе: command names, error codes, file paths и structural markers. Test MUST
+NOT проверять наличие конкретного предложения, потому что это закрепляет wording
+и мешает делать текст яснее. Invariants поведения модели SHALL вместо этого
+покрываться behavior scenarios. Phrase assertion MUST NOT удаляться до появления
+scenario, покрывающего тот же invariant.
 
-#### Scenario: Wording improves without meaning changing
-- **WHEN** an instruction is rewritten more briefly with its meaning intact
-- **THEN** the deterministic suite still passes
+#### Scenario: Wording улучшается без изменения смысла
+- **WHEN** instruction переписана короче с сохранением смысла
+- **THEN** deterministic suite продолжает проходить
 
-#### Scenario: An invariant loses its phrase assertion
-- **WHEN** a phrase-level assertion is withdrawn
-- **THEN** a behavior scenario covering the same invariant exists first
+#### Scenario: Invariant теряет phrase assertion
+- **WHEN** phrase-level assertion удаляется
+- **THEN** до этого существует behavior scenario, покрывающий тот же invariant
 
-### Requirement: The normative layer uses one language
-The normative body of skills, specifications and README SHALL be Russian. A
-single file MUST NOT mix languages within its normative body. Established
-technical terms, command names, error codes and identifiers stay in their
-original form. Frontmatter `description` fields are harness metadata rather than
-normative body and are out of scope.
+### Requirement: Нормативный слой использует один язык
+Нормативные bodies skills, specifications и README SHALL быть русскими. Один
+file MUST NOT смешивать языки внутри нормативного body. Установленные technical
+terms, command names, error codes и identifiers остаются в исходной форме.
+Frontmatter fields `description` являются metadata harness, а не нормативным
+body, и не входят в scope.
 
-#### Scenario: A skill written in another language is found
-- **WHEN** a shipped skill's body is not Russian
-- **THEN** it is translated, keeping command names, error codes and identifiers unchanged
+#### Scenario: Обнаружен skill на другом языке
+- **WHEN** body поставляемого skill написано не по-русски
+- **THEN** оно переводится с сохранением command names, error codes и identifiers
 
-#### Scenario: A rule needs a technical term
-- **WHEN** a rule refers to a command, error code or identifier
-- **THEN** that token keeps its original form rather than being translated
+#### Scenario: Правилу нужен technical term
+- **WHEN** правило ссылается на command, error code или identifier
+- **THEN** token сохраняет исходную форму, а не переводится
 
-### Requirement: Restructuring does not change behavior
-This restructuring SHALL preserve every rule it moves. A behavior difference
-observed during it is a defect to be corrected, not an improvement to be kept.
-Behavior scenarios SHALL be measured before and after, and a rate that drops
-MUST be investigated before the change proceeds.
+### Requirement: Реструктуризация не меняет behavior
+Эта реструктуризация SHALL сохранять каждое переносимое правило. Различие
+behavior, наблюдаемое во время работы, является defect, который нужно исправить,
+а не improvement, который можно оставить. Behavior scenarios SHALL измеряться
+до и после, а падение rate MUST быть исследовано до продолжения change.
 
-#### Scenario: Text is restructured
-- **WHEN** a skill is rewritten under this change
-- **THEN** its observed scenario rates are measured before and after and are reported together
+#### Scenario: Text реструктурирован
+- **WHEN** skill переписывается в рамках этого change
+- **THEN** его наблюдаемые scenario rates измеряются до и после и приводятся
+  вместе

@@ -1,100 +1,153 @@
-# flow-assessment Specification
+# Спецификация flow-assessment
 
 ## Purpose
-Define explicit, read-only semantic assessment of safely resolved USW Markdown
-flows, including structured verdicts, dependency and termination analysis,
-reproducible evidence, and conservative non-execution boundaries.
+Определяет явно выбранный read-only semantic assessment безопасно разрешённых
+USW Markdown flows, включая structured verdicts, анализ dependencies и
+завершимости, воспроизводимое evidence и консервативные границы non-execution.
 
 ## Requirements
 
-### Requirement: Assessment is explicitly selected and read-only
-USW SHALL expose `$usw-assess-flow [--local|-l|--shared] <flow-name> [<scenario-input>]` only through explicit invocation. It MUST NOT create, update, execute or repair a flow, or read/change HANDOFF, execution state or product files. Only leading tokens before the safe name SHALL be origin selectors; invalid combinations SHALL yield `insufficient-data`, and trailing text SHALL remain opaque scenario input.
+### Requirement: Assessment выбирается явно и остаётся read-only
+USW SHALL предоставлять
+`$usw-assess-flow [--local|-l|--shared] <flow-name> [<scenario-input>]` только
+через явный вызов. Он MUST NOT создавать, обновлять, исполнять или исправлять
+flow, читать или изменять HANDOFF, execution state либо product files. Только
+leading tokens до safe name SHALL считаться origin selectors; недопустимые
+комбинации SHALL возвращать `insufficient-data`, а trailing text SHALL
+оставаться opaque scenario input.
 
-#### Scenario: Assessment has no origin selector
-- **WHEN** a user supplies one safe flow name and optional scenario input
-- **THEN** USW assesses local first and otherwise shared without execution
+#### Scenario: У assessment нет origin selector
+- **WHEN** пользователь передаёт одно safe flow name и optional scenario input
+- **THEN** USW оценивает сначала local, затем shared, не исполняя flow
 
-#### Scenario: Assessment has conflicting selectors
-- **WHEN** both `--local` and `--shared` precede the flow name
-- **THEN** USW returns `insufficient-data` before reading a flow
+#### Scenario: У assessment конфликтующие selectors
+- **WHEN** перед flow name одновременно указаны `--local` и `--shared`
+- **THEN** USW возвращает `insufficient-data` до чтения flow
 
-### Requirement: Assessment uses exact safely resolved Markdown
-USW SHALL provide a read-only loader applying the execution resolver's kebab-case, containment, descriptor-relative traversal, no-symlink, regular-file and UTF-8 rules. It SHALL return `name`, `origin`, `identity`, `path`, exact `markdown` and `warnings` without execution input. The assessor MUST use only returned Markdown and MUST NOT reopen `path`; inspection MUST NOT inspect legacy state, HANDOFF or `.usw/FLOW.json`. Existing `resolve` behavior MUST remain compatible.
+### Requirement: Assessment использует точно и безопасно разрешённый Markdown
+USW SHALL предоставлять read-only loader, применяющий правила execution resolver:
+kebab-case, containment, descriptor-relative traversal, запрет symlink,
+требование regular file и UTF-8. Loader SHALL возвращать `name`, `origin`,
+`identity`, `path`, точный `markdown` и `warnings` без execution input. Assessor
+MUST использовать только возвращённый Markdown и MUST NOT повторно открывать
+`path`; inspection MUST NOT проверять legacy state, HANDOFF или `.usw/FLOW.json`.
+Существующее поведение `resolve` MUST оставаться совместимым.
 
-#### Scenario: Flow changes after inspection
-- **WHEN** the file changes after exact Markdown and identity are returned
-- **THEN** assessment continues from that returned Markdown and identity
+#### Scenario: Flow изменяется после inspection
+- **WHEN** file изменяется после возврата точных Markdown и identity
+- **THEN** assessment продолжается по возвращённым Markdown и identity
 
-#### Scenario: Selected flow traverses a symlink
-- **WHEN** an origin root, intermediate component or final entry is a symlink
-- **THEN** inspection stops before semantic assessment
+#### Scenario: Выбранный flow проходит через symlink
+- **WHEN** origin root, intermediate component или final entry является symlink
+- **THEN** inspection останавливается до semantic assessment
 
-### Requirement: Assessment returns a structured semantic verdict
-USW SHALL return one verdict: `executable`, `executable-with-risks`, `not-executable` or `insufficient-data`. The report SHALL identify the flow, summarize terminal paths, list dependencies and give each material finding an invocation-local ID, `blocking|risk` severity, type, exact evidence, impact and minimal Markdown fix. A proven blocking defect SHALL yield `not-executable`; otherwise inadequate semantics SHALL yield `insufficient-data`, material risks SHALL yield `executable-with-risks`, and a coherent flow without material findings SHALL yield `executable`.
+### Requirement: Assessment возвращает structured semantic verdict
+USW SHALL возвращать один verdict: `executable`, `executable-with-risks`,
+`not-executable` или `insufficient-data`. Report SHALL идентифицировать flow,
+кратко описывать terminal paths, перечислять dependencies и давать каждому
+существенному finding локальный для вызова ID, severity `blocking|risk`, type,
+точное evidence, impact и минимальное исправление Markdown. Доказанный blocking
+defect SHALL давать `not-executable`; иначе недостаточная semantics SHALL давать
+`insufficient-data`, существенные risks — `executable-with-risks`, а связный flow
+без существенных findings — `executable`.
 
-#### Scenario: Coherent finite flow
-- **WHEN** required steps and dependencies reach declared outcomes without material risk
-- **THEN** the report returns `executable` with no findings
+#### Scenario: Связный конечный flow
+- **WHEN** обязательные steps и dependencies достигают объявленных outcomes без
+  существенного риска
+- **THEN** report возвращает `executable` без findings
 
-#### Scenario: Prose cannot support a path
-- **WHEN** no coherent next action or terminal interpretation is supported
-- **THEN** the report returns `insufficient-data` and identifies missing semantics
+#### Scenario: Проза не позволяет построить path
+- **WHEN** текст не поддерживает связное следующее действие или terminal
+  interpretation
+- **THEN** report возвращает `insufficient-data` и указывает недостающую semantics
 
-### Requirement: Assessment detects logical and termination defects
-USW SHALL examine reachability, branch/error outcomes, required data, contradictory actions, explicit `LOOP` markers and implicit returns. For each reachable cycle it SHALL assess exit, finite bound or escalation, observable progress and repeated irreversible side effects. An unconditional cycle without exit and an unsafe irreversible repeat SHALL be blocking; uncertain eventual exit SHALL be a risk; a bounded cycle with terminal fallback SHALL not be blocking. A one-time approval outside a loop SHALL NOT make an irreversible action inside that loop safe. Unless the action has an idempotency guarantee, both the action and its approval SHALL remain outside the loop.
+### Requirement: Assessment обнаруживает логические дефекты и дефекты завершимости
+USW SHALL проверять reachability, outcomes веток и ошибок, необходимые данные,
+противоречащие действия, явные markers `LOOP` и неявные возвраты. Для каждого
+достижимого цикла он SHALL оценивать exit, конечный bound или escalation,
+наблюдаемый progress и повторяемые необратимые side effects. Безусловный цикл
+без выхода и небезопасный необратимый repeat SHALL быть blocking; неопределённый
+eventual exit SHALL быть risk; bounded cycle с terminal fallback SHALL NOT быть
+blocking. Однократный approval вне loop SHALL NOT делать безопасным необратимое
+действие внутри loop. Без idempotency guarantee и действие, и его approval SHALL
+оставаться вне loop.
 
-#### Scenario: Two sections return forever
-- **WHEN** A reaches B and B unconditionally returns to A with no exit
-- **THEN** the report returns `not-executable` with a blocking cycle finding
+#### Scenario: Два раздела возвращаются друг к другу бесконечно
+- **WHEN** A достигает B, а B безусловно возвращается к A без выхода
+- **THEN** report возвращает `not-executable` с blocking finding о цикле
 
-#### Scenario: Retry has a finite fallback
-- **WHEN** attempts are limited and exhaustion returns `failed` or `decision_required`
-- **THEN** the loop creates no blocking non-termination finding
+#### Scenario: Retry имеет конечный fallback
+- **WHEN** число попыток ограничено, а исчерпание возвращает `failed` или
+  `decision_required`
+- **THEN** loop не создаёт blocking finding о незавершимости
 
-#### Scenario: Exit depends on eventual success
-- **WHEN** a flow repeats until successful without bound or escalation
-- **THEN** the report records a risk, not a definite infinite loop
+#### Scenario: Exit зависит от eventual success
+- **WHEN** flow повторяет действие до успеха без bound или escalation
+- **THEN** report записывает risk, а не утверждает бесконечный цикл
 
-#### Scenario: Irreversible action is repeated
-- **WHEN** a reachable cycle can repeat an irreversible action without an idempotency guarantee
-- **THEN** the report returns a blocking `unsafe-repeat` finding
+#### Scenario: Необратимое действие повторяется
+- **WHEN** достижимый цикл может повторить необратимое действие без idempotency
+  guarantee
+- **THEN** report возвращает blocking finding `unsafe-repeat`
 
-#### Scenario: Approval precedes an unsafe repeat
-- **WHEN** one approval occurs before a loop that can repeat an irreversible action
-- **THEN** the report still returns a blocking `unsafe-repeat` finding
+#### Scenario: Approval предшествует небезопасному repeat
+- **WHEN** один approval находится перед loop, способным повторить необратимое
+  действие
+- **THEN** report всё равно возвращает blocking finding `unsafe-repeat`
 
-### Requirement: Dependency results preserve uncertainty
-USW SHALL inspect declared dependencies and named skill, command or flow calls without executing them. Each SHALL be `confirmed`, `missing` or `unverified`; the first two require authoritative evidence. Available contracts SHALL be checked for required inputs and retired selectors, but child flows MUST NOT be recursively assessed. A missing mandatory dependency without handling SHALL be blocking; explicit terminal handling SHALL prevent absence alone from blocking. A proven contract-invalid mandatory invocation, including a missing required input or retired selector, without handled terminal fallback SHALL be blocking as a reachable dead end even when the dependency itself is confirmed.
+### Requirement: Результаты dependency analysis сохраняют неопределённость
+USW SHALL проверять объявленные dependencies и именованные вызовы skill, command
+или flow без их исполнения. Каждая dependency SHALL иметь status `confirmed`,
+`missing` или `unverified`; первые два требуют authoritative evidence. Доступные
+contracts SHALL проверяться на обязательные inputs и retired selectors, но child
+flows MUST NOT проходить recursive assessment. Отсутствующая mandatory dependency
+без handling SHALL быть blocking; явное terminal handling SHALL не позволять
+одному отсутствию стать blocking. Доказанный contract-invalid mandatory
+invocation, включая отсутствующий required input или retired selector, без
+обработанного terminal fallback SHALL быть blocking reachable dead end, даже
+если сама dependency подтверждена.
 
-#### Scenario: Mandatory dependency is absent without handling
-- **WHEN** authoritative lookup proves it absent and no fallback/terminal response exists
-- **THEN** the report returns a blocking dependency finding
+#### Scenario: Mandatory dependency отсутствует без handling
+- **WHEN** authoritative lookup доказывает отсутствие, а fallback или terminal
+  response не предусмотрены
+- **THEN** report возвращает blocking dependency finding
 
-#### Scenario: Missing dependency leads to a decision
-- **WHEN** unavailability explicitly returns `decision_required`
-- **THEN** absence is reported but is not itself blocking
+#### Scenario: Отсутствующая dependency ведёт к решению
+- **WHEN** недоступность явно возвращает `decision_required`
+- **THEN** отсутствие отражается в report, но само по себе не является blocking
 
-#### Scenario: Mandatory invocation violates a confirmed contract
-- **WHEN** a mandatory call uses a proven retired selector and has no terminal fallback
-- **THEN** the report returns `not-executable` with a blocking reachable-dead-end finding
+#### Scenario: Mandatory invocation нарушает подтверждённый contract
+- **WHEN** обязательный call использует доказанный retired selector и не имеет
+  terminal fallback
+- **THEN** report возвращает `not-executable` с blocking finding о reachable dead end
 
-### Requirement: Semantic acceptance evidence is reproducible
-USW SHALL keep the fixture Markdown and raw reports used for semantic acceptance checks inside the change. Acceptance summaries SHALL distinguish expected mappings from actually observed reports and identify the invocation boundary. If the assessment skill was not executed, the summary MUST label the mappings expected-only and MUST NOT claim observed semantic behavior.
+### Requirement: Semantic acceptance evidence воспроизводимо
+USW SHALL хранить fixture Markdown и raw reports, использованные для semantic
+acceptance checks, внутри change. Acceptance summaries SHALL различать expected
+mappings и фактически наблюдавшиеся reports и указывать invocation boundary.
+Если assessment skill не исполнялся, summary MUST помечать mappings как
+expected-only и MUST NOT заявлять наблюдавшееся semantic behavior.
 
-#### Scenario: Semantic smoke is reported as observed
-- **WHEN** acceptance evidence labels a verdict as observed
-- **THEN** the corresponding checked-in fixture and raw assessment report identify how that verdict was produced
+#### Scenario: Semantic smoke указан как observed
+- **WHEN** acceptance evidence помечает verdict как observed
+- **THEN** соответствующие checked-in fixture и raw assessment report указывают,
+  как был получен verdict
 
-### Requirement: Optional scenario produces a subordinate trace
-When scenario input exists, USW SHALL keep it separate from immutable Markdown and trace likely steps, gates and stop/ambiguity. The trace MUST NOT weaken findings on other declared paths.
+### Requirement: Optional scenario создаёт subordinate trace
+При наличии scenario input USW SHALL хранить его отдельно от immutable Markdown
+и трассировать вероятные steps, gates и stop или ambiguity. Trace MUST NOT
+ослаблять findings на других объявленных paths.
 
-#### Scenario: Scenario selects one healthy branch
-- **WHEN** the scenario terminates but another declared branch is blocking
-- **THEN** the trace terminates while the overall verdict retains the finding
+#### Scenario: Scenario выбирает одну здоровую ветку
+- **WHEN** scenario завершается, но другая объявленная ветка является blocking
+- **THEN** trace завершается, а общий verdict сохраняет finding
 
-### Requirement: Assessment makes no machine guarantee
-USW SHALL describe the result as semantic model analysis and MUST NOT claim a parser-backed proof, deterministic transition graph, persistent cursor, recursive validation or execution authority.
+### Requirement: Assessment не даёт machine guarantee
+USW SHALL описывать результат как semantic model analysis и MUST NOT заявлять
+parser-backed proof, deterministic transition graph, persistent cursor,
+recursive validation или execution authority.
 
-#### Scenario: Report is presented
-- **WHEN** assessment returns any verdict
-- **THEN** it states that the result is evidence-backed semantic analysis, not a machine guarantee
+#### Scenario: Report представлен
+- **WHEN** assessment возвращает любой verdict
+- **THEN** он указывает, что результат является evidence-backed semantic
+  analysis, а не machine guarantee

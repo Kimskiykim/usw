@@ -1,7 +1,7 @@
-# workspace-configuration Specification
+# Спецификация workspace-configuration
 
 ## Purpose
-Define the safe, versioned project roots used by USW.
+Определяет безопасные версионированные project roots, используемые USW.
 ## Requirements
 ### Requirement: Версионированная общая конфигурация
 USW SHALL выбирать shared artifact behavior из project-root `usw.yaml`, где
@@ -96,7 +96,7 @@ USW SHALL хранить enabled `.usw/HANDOFF.md` и clarification notes под
 `usw.yaml` SHALL принимать необязательное top-level поле `handoff` только как
 boolean. Отсутствующее поле SHALL означать `true`; schema version остаётся `1`.
 
-#### Scenario: Backwards-compatible configuration
+#### Scenario: Обратно совместимая configuration
 - **WHEN** существующий `usw.yaml` не содержит `handoff`
 - **THEN** USW включает handoff
 

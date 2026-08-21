@@ -109,10 +109,11 @@ keeps a text change from silently becoming a behavior change.
 Nothing to migrate: no format, path, command or behavior changes. Users see
 clearer instructions. Rollback is reverting the text.
 
-## Open Questions
+## Resolved Questions
 
-- Whether every invariant currently pinned by a phrase can be expressed as a
-  scenario is unknown until each is attempted; the answer decides how many
-  assertions actually go away.
-- Whether Russian README plus English skills is the right split for this
-  project's audience is the author's call, not a technical one.
+- Не каждый invariant, закреплённый phrase assertion, допускает честный
+  behavior scenario. Два исключения и причины их сохранения записаны в tasks
+  1.4; остальные behavior invariants получили scenarios.
+- Автор выбрал единый русский нормативный слой. Все main specs и обе delta
+  specs этого change переведены 2026-08-21; parser markers OpenSpec и technical
+  tokens сохранены.
