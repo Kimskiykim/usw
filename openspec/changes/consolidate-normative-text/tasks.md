@@ -35,7 +35,7 @@
 ## 5. Acceptance
 
 - [x] 5.1 Report every scenario's rate before and after the whole change, on the same runner, and account for any drop. Recorded in the Whole-change behavior report below.
-- [ ] 5.2 Run the complete suite on the supported Python floor and latest, `openspec validate --all --strict`, `openspec status --change consolidate-normative-text --json` and `git diff --check`, recording each result.
+- [x] 5.2 Run the complete suite on the supported Python floor and latest, `openspec validate --all --strict`, `openspec status --change consolidate-normative-text --json` and `git diff --check`, recording each result. Done 2026-08-21: Python 3.10.19 (supported floor) `250/250 OK`; Python 3.13.12 (CI latest) `250/250 OK`; strict OpenSpec validation `18 passed, 0 failed`; status JSON reported `schemaName: spec-driven`, `isComplete: true` and all four planning artifacts `done`; `git diff --check` exited 0 with no output.
 - [ ] 5.3 Confirm the deterministic suite contains no assertion that a particular sentence appears, except those recorded in 1.4.
 
 ## Agreed order (recorded 2026-08-21)
