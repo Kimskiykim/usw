@@ -71,6 +71,27 @@ def render_default_config() -> str:
     return read_template("usw.yaml")
 
 
+def _strip_inline_comment(value: str) -> str:
+    """Remove YAML comments, retaining hashes inside a quoted or plain scalar."""
+    quote = value[0] if value.startswith(("'", '"')) else None
+    index = 1 if quote else 0
+    while index < len(value):
+        char = value[index]
+        if quote:
+            if quote == '"' and char == "\\":
+                index += 2
+                continue
+            if char == quote:
+                if quote == "'" and value[index:index + 2] == "''":
+                    index += 2
+                    continue
+                quote = None
+        elif char == "#" and (index == 0 or value[index - 1].isspace()):
+            return value[:index].rstrip()
+        index += 1
+    return value
+
+
 def _parse_yaml_mapping(content: str) -> dict[str, object]:
     """Parse the small mapping-only YAML subset used by usw.yaml v1."""
     root: dict[str, object] = {}
@@ -93,7 +114,7 @@ def _parse_yaml_mapping(content: str) -> dict[str, object]:
         parent = stack[-1][1]
         if key in parent:
             raise ConfigError("invalid_config", f"duplicate key {key!r} at line {line_number}")
-        value = raw_value.strip()
+        value = _strip_inline_comment(raw_value.strip())
         if not value:
             child: dict[str, object] = {}
             parent[key] = child
@@ -225,7 +246,11 @@ def validate_config(project_root: Path, config: WorkspaceConfig) -> WorkspaceCon
                 "conflicting_roots",
                 f"artifacts.root overlaps {specialized_name}.root",
             )
-    return config
+    return config._replace(
+        artifact_root="/".join(parsed["artifacts"]),
+        flow_root="/".join(parsed["flows"]),
+        review_root="/".join(parsed["reviews"]),
+    )
 
 
 def load_config(project_root: Path) -> WorkspaceConfig:

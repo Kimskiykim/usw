@@ -196,6 +196,20 @@ class PathnameBackendTests(unittest.TestCase):
     def directory(self, path: Path) -> "HANDOFF._PathnameDirectory":
         return HANDOFF._PathnameDirectory(path)
 
+    def test_remove_directory_never_recurses(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            directory = self.directory(root)
+            directory.make_directory("empty", 0o755)
+            directory.remove_directory("empty")
+            self.assertFalse((root / "empty").exists())
+            directory.make_directory("occupied", 0o755)
+            child = root / "occupied/keep.md"
+            child.write_text("Keep.\n", encoding="utf-8")
+            with self.assertRaises(OSError):
+                directory.remove_directory("occupied")
+            self.assertEqual("Keep.\n", child.read_text(encoding="utf-8"))
+
     def test_reads_and_writes_a_regular_file(self):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

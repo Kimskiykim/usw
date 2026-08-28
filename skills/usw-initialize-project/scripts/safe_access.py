@@ -134,12 +134,18 @@ class DescriptorDirectory(SafeDirectory):
     def make_directory(self, name: str, mode: int) -> None:
         os.mkdir(require_simple_name(name), mode, dir_fd=self.descriptor)
 
-    def write_exclusive(self, name: str, content: str, mode: int) -> None:
+    def remove_directory(self, name: str) -> None:
+        os.rmdir(require_simple_name(name), dir_fd=self.descriptor)
+
+    def write_exclusive(self, name: str, content: str, mode: int | None) -> None:
+        # None uses ordinary creation permissions; explicit modes are preserved.
         descriptor = os.open(
-            require_simple_name(name), self.EXCLUSIVE_FLAGS, mode, dir_fd=self.descriptor
+            require_simple_name(name), self.EXCLUSIVE_FLAGS,
+            0o644 if mode is None else mode, dir_fd=self.descriptor,
         )
-        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
@@ -187,10 +193,18 @@ class PathnameDirectory(SafeDirectory):
     def make_directory(self, name: str, mode: int) -> None:
         os.mkdir(self.path / require_simple_name(name), mode)
 
-    def write_exclusive(self, name: str, content: str, mode: int) -> None:
+    def remove_directory(self, name: str) -> None:
+        os.rmdir(self.path / require_simple_name(name))
+
+    def write_exclusive(self, name: str, content: str, mode: int | None) -> None:
         path = self.path / require_simple_name(name)
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+        descriptor = os.open(
+            path, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o644 if mode is None else mode,
+        )
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            if mode is not None and hasattr(os, "fchmod"):
+                os.fchmod(handle.fileno(), mode)
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())

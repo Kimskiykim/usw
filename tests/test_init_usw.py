@@ -24,6 +24,29 @@ SPEC.loader.exec_module(INIT_USW)
 
 
 class InitializeUswTests(unittest.TestCase):
+    def test_inline_comments_and_normalized_roots_drive_initialization(self):
+        for value, expected in (
+            ("x # comment", "x"),
+            (r"usw\flows", "usw/flows"),
+            ("'x # literal' # comment", "x # literal"),
+            ('"x # literal" # comment', "x # literal"),
+            ("x#literal", "x#literal"),
+        ):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as raw:
+                project = Path(raw).resolve()
+                content = f"schema_version: 1 # version\nhandoff: false # disabled\nflows: # roots\n  root: {value}\n"
+                config_path = project / "usw.yaml"
+                config_path.write_text(content, encoding="utf-8")
+                config = INIT_USW.load_config(project)
+                self.assertEqual(expected, config.flow_root)
+                self.assertEqual(content, config.raw_content)
+                INIT_USW.initialize_usw(project)
+                self.assertTrue((project / expected / "examples/chat-review.md").is_file())
+                self.assertEqual(content, config_path.read_text(encoding="utf-8"))
+                self.assertFalse((project / ".usw/HANDOFF.md").exists())
+                if Path(value).parts != Path(expected).parts:
+                    self.assertFalse((project / value).exists())
+
     def test_v1_defaults_include_project_owned_roots(self):
         config = INIT_USW.default_config()
 
