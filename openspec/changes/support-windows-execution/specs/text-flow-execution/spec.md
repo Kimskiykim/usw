@@ -1,25 +1,25 @@
 ## MODIFIED Requirements
 
 ### Requirement: Безопасное разрешение text flow
-USW SHALL resolve only a safe kebab-case name inside the selected local or
-shared root. It MUST check containment, every existing path component, reject
-symbolic links and require a regular final file before reading. Traversal and
-the final read SHALL go through the shared safe-access boundary, which is
-descriptor-relative with no pathname re-open after a component is trusted on
-platforms that support `dir_fd`, and pathname-based with per-component reparse
-point rejection and re-verified containment on platforms that do not. Both flow
-layouts and packaged resources SHALL resolve on every supported platform;
-`unsupported_safe_flow_platform` MUST NOT be the ordinary outcome of resolving a
-packaged flow on a supported platform.
+USW SHALL разрешать только safe kebab-case name внутри выбранного local или
+shared root. Он MUST проверять containment и каждый существующий path component,
+отклонять symbolic links и требовать regular final file до чтения. Traversal и
+final read SHALL проходить через общую safe-access boundary: descriptor-relative
+без повторного открытия pathname после признания component доверенным на
+платформах с `dir_fd`, либо pathname-based с отклонением reparse point для
+каждого component и повторной проверкой containment на остальных платформах.
+Оба flow layout и packaged resources SHALL разрешаться на каждой поддерживаемой
+платформе; `unsupported_safe_flow_platform` MUST NOT быть обычным результатом
+разрешения packaged flow на поддерживаемой платформе.
 
-#### Scenario: Intermediate symlink
-- **WHEN** any component leading to the selected flow is a symbolic link
-- **THEN** USW stops before reading the flow or invoking the model
+#### Scenario: Промежуточный symlink
+- **WHEN** любой component, ведущий к выбранному flow, является symbolic link
+- **THEN** USW останавливается до чтения flow или вызова модели
 
-#### Scenario: Packaged flow on a platform without descriptor-relative access
-- **WHEN** a packaged `<name>/FLOW.md` is resolved on a supported platform that lacks `dir_fd`
-- **THEN** USW resolves it through the pathname-based backend and returns the same name, origin, identity, path, flow directory and exact Markdown as it would elsewhere
+#### Scenario: Packaged flow без descriptor-relative access
+- **WHEN** packaged `<name>/FLOW.md` разрешается на поддерживаемой платформе без `dir_fd`
+- **THEN** USW использует pathname-based backend и возвращает те же name, origin, identity, path, flow directory и точный Markdown, что и на остальных платформах
 
-#### Scenario: Packaged resource on a platform without descriptor-relative access
-- **WHEN** packaged Markdown names a sibling resource on such a platform
-- **THEN** the resource is read through the same boundary, bound to the original flow identity and entrypoint, and rejected on any link, escape or unexpected filesystem type
+#### Scenario: Packaged resource без descriptor-relative access
+- **WHEN** packaged Markdown называет sibling resource на такой платформе
+- **THEN** resource читается через ту же boundary, привязывается к исходным flow identity и entrypoint и отклоняется при link, escape или неожиданном filesystem type

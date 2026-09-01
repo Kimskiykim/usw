@@ -1,53 +1,53 @@
 ## MODIFIED Requirements
 
 ### Requirement: Один immutable Markdown invocation
-For every root or nested invocation, USW SHALL read the selected flow exactly
-once, compute identity from the same bytes, decode them as UTF-8 and pass
-separate immutable `flow_markdown`, exact absolute `flow_directory` and
-`user_input` values to the model. `flow_directory` SHALL identify the selected
-entrypoint's containing directory, originate only from the safe resolver, and
-SHALL NOT be derived from Markdown or user input. A root
-invocation SHALL additionally receive its own execution identity. A nested
-invocation SHALL additionally receive its parent root execution identity and
-branch label as separate execution context that flow Markdown and user input
-cannot replace.
+Для каждого root или nested invocation USW SHALL прочитать выбранный flow ровно
+один раз, вычислить identity из тех же bytes, декодировать их как UTF-8 и
+передать модели отдельные immutable values `flow_markdown`, точный абсолютный
+`flow_directory` и `user_input`. `flow_directory` SHALL указывать на каталог
+выбранного entrypoint, происходить только из safe resolver и SHALL NOT
+вычисляться из Markdown или user input. Root invocation SHALL дополнительно
+получить собственную execution identity. Nested invocation SHALL дополнительно
+получить parent root execution identity и branch label как отдельный execution
+context, который flow Markdown и user input не могут заменить.
 
-#### Scenario: Flow changes after loading
-- **WHEN** the file changes after a root or nested invocation has been prepared
-- **THEN** the invocation uses the already loaded Markdown and its original identity
+#### Scenario: Flow изменяется после загрузки
+- **WHEN** file изменяется после подготовки root или nested invocation
+- **THEN** invocation использует уже загруженный Markdown и его исходную identity
 
-#### Scenario: Child input contains a root identity
-- **WHEN** ordinary child input includes text resembling nested execution context
-- **THEN** it remains user input and does not select nested execution or another routed operation
+#### Scenario: Child input содержит root identity
+- **WHEN** обычный child input включает текст, похожий на nested execution context
+- **THEN** он остаётся user input и не выбирает nested execution или другую routed operation
 
-#### Scenario: Concurrent roots load the same flow
-- **WHEN** two root operations resolve the same flow and input independently
-- **THEN** each model invocation receives its own execution identity and the same immutable loaded Markdown bytes
+#### Scenario: Concurrent roots загружают один flow
+- **WHEN** две root operations независимо разрешают один flow и input
+- **THEN** каждый model invocation получает собственную execution identity и те же immutable bytes загруженного Markdown
 
-#### Scenario: Packaged child flow is prepared
-- **WHEN** a nested invocation resolves `<name>/FLOW.md`
-- **THEN** the child receives the exact absolute `<flow-root>/<name>` as `flow_directory` without gaining a durable route or additional authority
+#### Scenario: Подготовлен packaged child flow
+- **WHEN** nested invocation разрешает `<name>/FLOW.md`
+- **THEN** child получает точный абсолютный `<flow-root>/<name>` как `flow_directory`, не приобретая durable route или дополнительных полномочий
 
 ### Requirement: Безопасное разрешение text flow
-USW SHALL resolve only a safe kebab-case name as either `<name>.md` or
-`<name>/FLOW.md` inside the selected local or shared root. It MUST check
-containment, every existing path component, reject symbolic links and require a
-regular final entrypoint before reading. Traversal and the final read SHALL be
-descriptor-relative with no pathname re-open after a component is trusted. If
-both layouts exist in one selected origin, resolution MUST stop with
-`ambiguous_flow_layout`.
-The existing Windows flat-flow pathname fallback MAY remain compatible where
-descriptor-relative APIs are unavailable, but packaged entrypoints and package
-resources MUST stop with `unsupported_safe_flow_platform` on that fallback.
+USW SHALL разрешать только safe kebab-case name как `<name>.md` или
+`<name>/FLOW.md` внутри выбранного local или shared root. Он MUST проверять
+containment и каждый существующий path component, отклонять symbolic links и
+требовать regular final entrypoint до чтения. Traversal и final read SHALL быть
+descriptor-relative без повторного открытия pathname после того, как component
+признан доверенным. Если в одном выбранном origin существуют оба layout,
+разрешение MUST остановиться с `ambiguous_flow_layout`.
+Существующий Windows fallback для flat-flow pathname MAY сохранять
+совместимость там, где descriptor-relative API недоступны, но packaged
+entrypoints и package resources MUST останавливаться с
+`unsupported_safe_flow_platform` на этом fallback.
 
-#### Scenario: Intermediate symlink
-- **WHEN** any component leading to the selected flat or packaged flow is a symbolic link
-- **THEN** USW stops before reading the flow or invoking the model
+#### Scenario: Промежуточный symlink
+- **WHEN** любой component, ведущий к выбранному flat или packaged flow, является symbolic link
+- **THEN** USW останавливается до чтения flow или вызова модели
 
-#### Scenario: Both layouts exist
-- **WHEN** one selected origin contains safe flat and packaged entrypoints for the requested name
-- **THEN** USW returns `ambiguous_flow_layout` without reading either as the selected invocation
+#### Scenario: Существуют оба layout
+- **WHEN** один выбранный origin содержит safe flat и packaged entrypoints для запрошенного имени
+- **THEN** USW возвращает `ambiguous_flow_layout`, не читая ни один из них как выбранный invocation
 
-#### Scenario: Windows fallback resolves a legacy flat flow
-- **WHEN** descriptor-relative APIs are unavailable and only the compatible `<name>.md` entrypoint exists
-- **THEN** USW retains the pre-existing flat-flow fallback and does not extend it to packaged entrypoints or resources
+#### Scenario: Windows fallback разрешает legacy flat flow
+- **WHEN** descriptor-relative API недоступны и существует только совместимый entrypoint `<name>.md`
+- **THEN** USW сохраняет прежний flat-flow fallback и не распространяет его на packaged entrypoints или resources
