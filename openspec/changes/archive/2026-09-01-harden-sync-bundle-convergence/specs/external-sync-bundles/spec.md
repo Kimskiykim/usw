@@ -1,3 +1,8 @@
+## Purpose
+
+Определить проверяемые гарантии LF-only, байт-точного Git staging,
+disposable preflight, диагностики и отката для самодостаточных `.sync`-бандлов.
+
 ## ADDED Requirements
 
 ### Requirement: Текстовый контракт допускает только LF

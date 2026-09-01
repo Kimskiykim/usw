@@ -30,10 +30,9 @@
 ## 6. Приёмка
 
 - [x] 6.1 Прогнать оба тестовых модуля скилла и зафиксировать ноль падений; убедиться, что LF-only, binary `-text`, CRLF-policy target, cached-only, отказ rollback и BOM/UTF-16 покрыты по одному тесту каждый.
-- [ ] 6.2 `openspec validate --all --strict`; проверить неизменность идентификатора/версии/контейнера и чтение legacy-бандлов.
-  Текущий change проходит strict-валидацию; общий прогон блокируют несвязанные
-  `support-packaged-flows` и `support-windows-execution`. Legacy patch/snapshot
-  и неизменные `repo-sync-*-v1` покрыты тестами.
+- [x] 6.2 `openspec validate --all --strict`; проверить неизменность идентификатора/версии/контейнера и чтение legacy-бандлов.
+  Все 21 OpenSpec items проходят strict-валидацию. Legacy patch/snapshot и
+  неизменные `repo-sync-*-v1` покрыты тестами.
 
 ## 7. Замечания внешнего критического ревью
 
