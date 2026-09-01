@@ -14,6 +14,7 @@ import gzip
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -25,10 +26,24 @@ FORMAT = "repo-sync-text-v1"
 VERSION = 1
 DEFAULT_STATE_FILE = ".repo_sync_state.json"
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+PREFLIGHT_CONFIG_KEYS = (
+    "core.autocrlf",
+    "core.eol",
+    "core.safecrlf",
+    "core.symlinks",
+    "core.ignorecase",
+    "core.filemode",
+)
 
 
 class RepoSyncError(Exception):
     """Expected user-facing error."""
+
+
+class TextEolError(RepoSyncError):
+    def __init__(self, paths: list[str]):
+        self.paths = sorted(paths)
+        super().__init__(f"Text files must use LF without CR: {', '.join(self.paths)}")
 
 
 def run_git(repo: Path, args: list[str], *, input_data: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
@@ -52,6 +67,262 @@ def require_git_repo(repo: Path) -> Path:
     if not repo.exists():
         raise RepoSyncError(f"Repository path does not exist: {repo}")
     return Path(git_output(repo, ["rev-parse", "--show-toplevel"])).resolve()
+
+
+def git_path(repo: Path, name: str) -> Path:
+    path = Path(git_output(repo, ["rev-parse", "--git-path", name]))
+    return path if path.is_absolute() else repo / path
+
+
+def copy_checkout_environment(source: Path, destination: Path) -> None:
+    for key in PREFLIGHT_CONFIG_KEYS:
+        configured = run_git(source, ["config", "--get", key])
+        if configured.returncode == 1:
+            continue
+        if configured.returncode:
+            message = configured.stderr.decode("utf-8", "replace").strip()
+            raise RepoSyncError(message or f"Cannot read target config {key}")
+        copied = run_git(
+            destination,
+            ["config", "--local", key, configured.stdout.decode("utf-8", "replace").strip()],
+        )
+        if copied.returncode:
+            message = copied.stderr.decode("utf-8", "replace").strip()
+            raise RepoSyncError(message or f"Cannot copy target config {key}")
+    source_attributes = git_path(source, "info/attributes")
+    if source_attributes.is_file():
+        destination_attributes = git_path(destination, "info/attributes")
+        destination_attributes.parent.mkdir(parents=True, exist_ok=True)
+        destination_attributes.write_bytes(source_attributes.read_bytes())
+
+
+def text_attributes(repo: Path, revision: str, paths: list[str]) -> dict[str, str]:
+    if not paths:
+        return {}
+    result = run_git(
+        repo,
+        ["check-attr", f"--source={revision}", "-z", "--stdin", "text"],
+        input_data=b"".join(path.encode("utf-8") + b"\0" for path in paths),
+    )
+    if result.returncode:
+        raise RepoSyncError(result.stderr.decode("utf-8", "replace").strip() or "git check-attr failed")
+    fields = result.stdout.rstrip(b"\0").split(b"\0") if result.stdout else []
+    if len(fields) != len(paths) * 3:
+        raise RepoSyncError("Invalid git check-attr response")
+    values: dict[str, str] = {}
+    for index in range(0, len(fields), 3):
+        try:
+            path = fields[index].decode("utf-8")
+            attribute = fields[index + 1].decode("ascii")
+            value = fields[index + 2].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise RepoSyncError("Git attributes must be valid UTF-8") from exc
+        if attribute != "text":
+            raise RepoSyncError("Unexpected git check-attr response")
+        values[path] = value
+    return values
+
+
+def classify_text(mode: str, attribute: str, content: bytes) -> bool:
+    if mode == "120000" or attribute == "unset":
+        return False
+    if attribute == "set":
+        return True
+    return b"\0" not in content
+
+
+def classify_tree_text(
+    repo: Path,
+    revision: str,
+    entries: list[tuple[str, str, bytes]],
+) -> dict[str, bool]:
+    attributes = text_attributes(repo, revision, [path for path, _, _ in entries])
+    classified = {
+        path: classify_text(mode, attributes[path], content)
+        for path, mode, content in entries
+    }
+    violations = [
+        path for path, _, content in entries if classified[path] and b"\r" in content
+    ]
+    if violations:
+        raise TextEolError(violations)
+    return classified
+
+
+def index_attributes(repo: Path, paths: list[str], names: list[str]) -> dict[str, dict[str, str]]:
+    if not paths:
+        return {}
+    result = run_git(
+        repo,
+        ["check-attr", "--cached", "-z", "--stdin", *names],
+        input_data=b"".join(path.encode("utf-8") + b"\0" for path in paths),
+    )
+    if result.returncode:
+        raise RepoSyncError(result.stderr.decode("utf-8", "replace").strip() or "git check-attr failed")
+    fields = result.stdout.rstrip(b"\0").split(b"\0") if result.stdout else []
+    if len(fields) != len(paths) * len(names) * 3:
+        raise RepoSyncError("Invalid git check-attr response")
+    values = {path: {} for path in paths}
+    for index in range(0, len(fields), 3):
+        path = fields[index].decode("utf-8")
+        name = fields[index + 1].decode("ascii")
+        values[path][name] = fields[index + 2].decode("utf-8")
+    return values
+
+
+def config_value(repo: Path, key: str) -> str | None:
+    result = run_git(repo, ["config", "--get", key])
+    if result.returncode == 1:
+        return None
+    if result.returncode:
+        raise RepoSyncError(result.stderr.decode("utf-8", "replace").strip() or f"Cannot read {key}")
+    return result.stdout.decode("utf-8", "replace").strip().lower()
+
+
+def lf_worktree_violations(repo: Path, files: list[dict[str, Any]]) -> list[str]:
+    paths = [item["path"] for item in files if item.get("text") is True]
+    attributes = index_attributes(repo, paths, ["text", "eol"])
+    autocrlf = config_value(repo, "core.autocrlf")
+    core_eol = config_value(repo, "core.eol")
+    violations: list[str] = []
+    for path in paths:
+        path_text = attributes[path]["text"]
+        if path_text == "unset":
+            continue
+        path_eol = attributes[path]["eol"]
+        if path_eol == "crlf":
+            violations.append(path)
+        elif path_eol != "lf":
+            if autocrlf == "true":
+                violations.append(path)
+            elif path_text in {"set", "auto"} and autocrlf != "input" and (
+                core_eol == "crlf"
+                or (core_eol in {None, "native"} and os.name == "nt")
+            ):
+                violations.append(path)
+    return sorted(violations)
+
+
+def cat_blobs(repo: Path, oids: list[str]) -> dict[str, bytes]:
+    unique_oids = list(dict.fromkeys(oids))
+    if not unique_oids:
+        return {}
+    process = subprocess.Popen(
+        ["git", "-C", str(repo), "cat-file", "--batch"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    output, error = process.communicate(
+        b"".join(oid.encode("ascii") + b"\n" for oid in unique_oids)
+    )
+    if process.returncode:
+        raise RepoSyncError(error.decode("utf-8", "replace").strip() or "git cat-file --batch failed")
+    stream = io.BytesIO(output)
+    blobs: dict[str, bytes] = {}
+    for expected_oid in unique_oids:
+        try:
+            actual_oid, object_type, raw_size = stream.readline().rstrip(b"\n").split()
+            size = int(raw_size)
+        except (TypeError, ValueError) as exc:
+            raise RepoSyncError(f"Invalid git cat-file response for {expected_oid}") from exc
+        if actual_oid.decode("ascii") != expected_oid or object_type != b"blob":
+            raise RepoSyncError(f"Unexpected git object for {expected_oid}")
+        content = stream.read(size)
+        if len(content) != size or stream.read(1) != b"\n":
+            raise RepoSyncError(f"Truncated git blob response for {expected_oid}")
+        blobs[expected_oid] = content
+    if stream.read():
+        raise RepoSyncError("Unexpected trailing data from git cat-file --batch")
+    return blobs
+
+
+def index_inventory(
+    repo: Path,
+    *,
+    enforce_lf: bool = True,
+) -> tuple[list[dict[str, Any]], dict[str, bytes]]:
+    listed = run_git(repo, ["ls-files", "-s", "-z"])
+    if listed.returncode:
+        raise RepoSyncError(listed.stderr.decode("utf-8", "replace").strip() or "git ls-files failed")
+    entries: list[tuple[str, str, str]] = []
+    for record in listed.stdout.rstrip(b"\0").split(b"\0") if listed.stdout else []:
+        header, separator, raw_path = record.partition(b"\t")
+        if not separator:
+            raise RepoSyncError("Invalid git index record")
+        try:
+            mode, oid, stage = header.decode("ascii").split()
+            path = raw_path.decode("utf-8")
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise RepoSyncError("Git index paths must be valid UTF-8") from exc
+        if stage != "0" or mode not in {"100644", "100755", "120000"}:
+            raise RepoSyncError(f"Unsupported git index entry at {path}")
+        entries.append((path, mode, oid))
+    attributes = index_attributes(repo, [path for path, _, _ in entries], ["text"])
+    blobs = cat_blobs(repo, [oid for _, _, oid in entries])
+    files: list[dict[str, Any]] = []
+    contents: dict[str, bytes] = {}
+    violations: list[str] = []
+    for path, mode, oid in entries:
+        content = blobs[oid]
+        text = classify_text(mode, attributes[path]["text"], content)
+        if enforce_lf and text and b"\r" in content:
+            violations.append(path)
+        contents[path] = content
+        files.append(
+            {
+                "path": path,
+                "mode": mode,
+                "oid": oid,
+                "bytes": len(content),
+                "sha256": hashlib.sha256(content).hexdigest(),
+                "text": text,
+            }
+        )
+    if violations:
+        raise TextEolError(violations)
+    return files, contents
+
+
+def tracked_worktree_mismatches(repo: Path) -> list[str]:
+    refreshed = run_git(repo, ["update-index", "--really-refresh"])
+    if refreshed.returncode not in {0, 1}:
+        raise RepoSyncError(refreshed.stderr.decode("utf-8", "replace").strip() or "Failed to refresh index")
+    status = run_git(repo, ["status", "--porcelain=v2", "-z", "--untracked-files=no"])
+    if status.returncode:
+        raise RepoSyncError(status.stderr.decode("utf-8", "replace").strip() or "Failed to inspect worktree")
+    mismatches: list[str] = []
+    records = status.stdout.rstrip(b"\0").split(b"\0") if status.stdout else []
+    index = 0
+    while index < len(records):
+        record = records[index]
+        kind = record[:1]
+        if kind == b"1":
+            fields = record.split(b" ", 8)
+            if len(fields) != 9:
+                raise RepoSyncError("Invalid git status record")
+            xy, raw_path = fields[1], fields[8]
+        elif kind == b"2":
+            fields = record.split(b" ", 9)
+            if len(fields) != 10:
+                raise RepoSyncError("Invalid git status rename record")
+            xy, raw_path = fields[1], fields[9]
+            index += 1
+        elif kind == b"u":
+            fields = record.split(b" ", 10)
+            xy, raw_path = b"UU", fields[-1]
+        else:
+            index += 1
+            continue
+        if len(xy) != 2:
+            raise RepoSyncError("Invalid git status XY state")
+        if xy[1:2] != b".":
+            try:
+                mismatches.append(raw_path.decode("utf-8"))
+            except UnicodeDecodeError as exc:
+                raise RepoSyncError("Git worktree paths must be valid UTF-8") from exc
+        index += 1
+    return sorted(mismatches)
 
 
 def is_dirty(repo: Path) -> bool:
@@ -152,12 +423,16 @@ def blob_descriptor(repo: Path, revision: str, path: str, *, include_content: bo
     if content_result.returncode:
         raise RepoSyncError(content_result.stderr.decode("utf-8", "replace").strip() or "git cat-file failed")
     content = content_result.stdout
+    attribute = text_attributes(repo, revision, [path])[path]
+    text = classify_text(mode, attribute, content)
     descriptor: dict[str, Any] = {
         "path": path,
         "mode": mode,
         "oid": oid,
         "bytes": len(content),
         "sha256": hashlib.sha256(content).hexdigest(),
+        "text": text,
+        "text_attribute": attribute,
     }
     if include_content:
         descriptor["content_b85"] = base64.b85encode(content).decode("ascii")
@@ -171,7 +446,13 @@ def describe_changes(repo: Path, base: str, head: str, paths: list[str]) -> list
         old_path = names[0]
         new_path = names[-1]
         old = None if kind == "A" else blob_descriptor(repo, base, old_path)
-        new = None if kind == "D" else blob_descriptor(repo, head, new_path, include_content=kind == "R")
+        new = None if kind == "D" else blob_descriptor(repo, head, new_path, include_content=True)
+        if isinstance(new, dict) and kind != "R" and new.get("text") is not True:
+            new.pop("content_b85", None)
+        if isinstance(new, dict) and new.get("text") is True:
+            content = base64.b85decode(new["content_b85"].encode("ascii"))
+            if b"\r" in content:
+                raise TextEolError([new["path"]])
         changes.append({"status": status, "old": old, "new": new})
     return changes
 
@@ -283,6 +564,31 @@ def parse_payload(payload: bytes) -> tuple[dict[str, Any], bytes]:
         raise RepoSyncError("Unsupported sync payload format")
     if manifest.get("patch_sha256") != hashlib.sha256(patch).hexdigest():
         raise RepoSyncError("Patch checksum does not match manifest")
+    violations: list[str] = []
+    for change in manifest.get("changes", []):
+        new = change.get("new") if isinstance(change, dict) else None
+        if not isinstance(new, dict):
+            continue
+        text = new.get("text")
+        if text is not None and not isinstance(text, bool):
+            raise RepoSyncError(f"Invalid text classification at {new.get('path')}")
+        text_attribute = new.get("text_attribute")
+        if text_attribute is not None and text_attribute not in {"set", "unset", "auto", "unspecified"}:
+            raise RepoSyncError(f"Invalid text attribute at {new.get('path')}")
+        run_content = new.get("content_b85")
+        if text is True and not isinstance(run_content, str):
+            raise RepoSyncError(f"Text postimage content is absent for {new.get('path')}")
+        if isinstance(run_content, str):
+            try:
+                decoded = base64.b85decode(run_content.encode("ascii"))
+            except (UnicodeEncodeError, ValueError) as exc:
+                raise RepoSyncError(f"Invalid embedded blob for {new.get('path')}") from exc
+            if len(decoded) != new.get("bytes") or hashlib.sha256(decoded).hexdigest() != new.get("sha256"):
+                raise RepoSyncError(f"Embedded blob checksum mismatch for {new.get('path')}")
+            if text is not False and new.get("mode") != "120000" and b"\0" not in decoded and b"\r" in decoded:
+                violations.append(str(new.get("path")))
+    if violations:
+        raise TextEolError(violations)
     return manifest, patch
 
 
@@ -301,8 +607,19 @@ def decode_payload(text: str) -> bytes:
         raise RepoSyncError("Sync text is not valid encoded text") from exc
 
 
+def decode_transport_text(data: bytes, *, label: str = "Sync") -> str:
+    if data.startswith(b"\xff\xfe") or data.startswith(b"\xfe\xff") or b"\0" in data[:16]:
+        raise RepoSyncError(f"{label} transport is UTF-16; re-save it as UTF-8/ASCII")
+    if data.startswith(b"\xef\xbb\xbf"):
+        data = data[3:]
+    try:
+        return data.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise RepoSyncError(f"{label} transport must be UTF-8/ASCII base85 text") from exc
+
+
 def read_bundle(path: Path) -> tuple[dict[str, Any], bytes]:
-    return parse_payload(decode_payload(path.read_text(encoding="utf-8")))
+    return parse_payload(decode_payload(decode_transport_text(path.read_bytes())))
 
 
 def export_command(args: argparse.Namespace) -> int:

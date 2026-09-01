@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -8,11 +9,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 import repo_sync  # noqa: E402
+import sync_workflow  # noqa: E402
 
 REPO_SYNC = SCRIPTS / "repo_sync.py"
 VALIDATE = SCRIPTS / "validate_sync_bundle.py"
@@ -102,6 +105,187 @@ def clone_at(repo: Path, destination: Path, revision: str) -> None:
 
 
 class SyncToolsTest(unittest.TestCase):
+    def test_whitespace_tool_failure_is_blocking(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            with self.assertRaisesRegex(repo_sync.RepoSyncError, "repository"):
+                sync_workflow.whitespace_findings(Path(temp), [])
+
+    def test_whitespace_warning_with_findings_is_nonblocking(self) -> None:
+        result = subprocess.CompletedProcess(
+            args=["git", "diff", "--check"],
+            returncode=2,
+            stdout=b"f.txt:1: trailing whitespace.\n",
+            stderr=b"warning: advisory message\n",
+        )
+        with mock.patch.object(repo_sync, "run_git", return_value=result):
+            findings = sync_workflow.whitespace_findings(Path("."), [])
+        self.assertEqual(findings, ["f.txt:1: trailing whitespace."])
+
+    def test_index_inventory_batch_reads_blobs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            repo = Path(temp) / "repo"
+            repo.mkdir()
+            run("git", "init", "-q", str(repo))
+            for index in range(75):
+                (repo / f"file-{index:03}.txt").write_bytes(b"shared\n")
+            run("git", "add", ".", cwd=repo)
+            real_popen = subprocess.Popen
+            commands: list[list[str]] = []
+            batch_inputs: list[bytes] = []
+
+            class RecordingProcess:
+                def __init__(self, *args, **kwargs):
+                    self.command = args[0]
+                    commands.append(self.command)
+                    self.process = real_popen(*args, **kwargs)
+
+                def __getattr__(self, name):
+                    return getattr(self.process, name)
+
+                def communicate(self, input=None, timeout=None):
+                    if "--batch" in self.command:
+                        batch_inputs.append(input)
+                    return self.process.communicate(input=input, timeout=timeout)
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    return self.process.__exit__(*args)
+
+            with mock.patch.object(repo_sync.subprocess, "Popen", RecordingProcess):
+                files, blobs = repo_sync.index_inventory(repo)
+
+            cat_commands = [command for command in commands if "cat-file" in command]
+            self.assertEqual(len(files), 75)
+            self.assertEqual(len(blobs), 75)
+            self.assertEqual(len(cat_commands), 1)
+            self.assertIn("--batch", cat_commands[0])
+            self.assertEqual(batch_inputs[0].count(b"\n"), 1)
+
+    def test_patch_export_rejects_text_crlf_postimage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            source.mkdir()
+            run("git", "init", "-q", str(source))
+            run("git", "config", "user.email", "test@example.invalid", cwd=source)
+            run("git", "config", "user.name", "Sync Test", cwd=source)
+            (source / ".gitattributes").write_text("*.txt text\n", encoding="utf-8")
+            run("git", "add", ".gitattributes", cwd=source)
+            run("git", "commit", "-qm", "base", cwd=source)
+            base = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            (source / "bad.txt").write_bytes(b"bad\r\n")
+            oid = run("git", "hash-object", "-w", "--no-filters", "bad.txt", cwd=source).stdout.strip()
+            run("git", "update-index", "--add", "--cacheinfo", f"100644,{oid},bad.txt", cwd=source)
+            run("git", "commit", "-qm", "raw CRLF postimage", cwd=source)
+            head = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            (source / ".gitattributes").write_text("bad.txt -text\n", encoding="utf-8")
+            run("git", "add", ".gitattributes", cwd=source)
+            run("git", "commit", "-qm", "make checkout clean", cwd=source)
+            run("git", "reset", "--hard", "-q", "HEAD", cwd=source)
+            target = root / "target"
+            clone_at(source, target, base)
+            report = root / "export.json"
+
+            result = run(
+                sys.executable,
+                str(WORKFLOW),
+                "export",
+                str(source),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                "bad.txt",
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--output",
+                str(root / "bad.sync"),
+                "--report",
+                str(report),
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            data = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(data["classification"], "TEXT_EOL_NOT_LF")
+            self.assertEqual(data["paths"], ["bad.txt"])
+            self.assertFalse((root / "bad.sync").exists())
+
+    def test_patch_transport_accepts_utf8_bom_and_explains_utf16(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source, base, head = make_repo(root)
+            target = root / "target"
+            clone_at(source, target, base)
+            original = root / "original.sync"
+            run(
+                sys.executable,
+                str(REPO_SYNC),
+                "export",
+                str(source),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                "service.txt",
+                "--path",
+                "new.txt",
+                "--no-update-state",
+                "--output",
+                str(original),
+            )
+            raw = original.read_bytes()
+            bundle = root / "bom.sync"
+            bundle.write_bytes(b"\xef\xbb\xbf" + raw)
+
+            inspected = run(sys.executable, str(REPO_SYNC), "inspect", str(bundle), check=False)
+            self.assertEqual(inspected.returncode, 0, inspected.stderr)
+            report = root / "validation.json"
+            validated = run(
+                sys.executable,
+                str(VALIDATE),
+                "--bundle",
+                str(bundle),
+                "--source-repo",
+                str(source),
+                "--internal-target",
+                "pd-internal",
+                "--internal-baseline",
+                "baseline",
+                "--validation-repo",
+                str(target),
+                "--validation-baseline",
+                base,
+                "--base",
+                base,
+                "--head",
+                head,
+                "--mode",
+                "check",
+                "--excluded",
+                "none",
+                "--report",
+                str(report),
+                check=False,
+            )
+            self.assertEqual(validated.returncode, 0, validated.stderr)
+            self.assertEqual(
+                json.loads(report.read_text(encoding="utf-8"))["bundle_sha256"],
+                hashlib.sha256(bundle.read_bytes()).hexdigest(),
+            )
+
+            bundle.write_bytes(raw.decode("ascii").encode("utf-16"))
+            refused = run(sys.executable, str(REPO_SYNC), "inspect", str(bundle), check=False)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn("UTF-16", refused.stderr)
+            self.assertIn("UTF-8/ASCII", refused.stderr)
+
     def test_workflow_export_normal_text_is_ready_and_captures_target_head(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -144,9 +328,16 @@ class SyncToolsTest(unittest.TestCase):
             self.assertFalse(data["real_target_modified"])
             self.assertEqual(run("git", "rev-parse", "HEAD", cwd=target).stdout.strip(), target_head)
             self.assertEqual(run("git", "status", "--porcelain", cwd=target).stdout, "")
-            manifest, _ = repo_sync.read_bundle(bundle)
+            manifest, patch = repo_sync.read_bundle(bundle)
             self.assertEqual(manifest["target"], {"id": "pd-internal", "expected_head": target_head})
             self.assertEqual(len(manifest["changes"]), 2)
+            text_postimages = [
+                change["new"]
+                for change in manifest["changes"]
+                if isinstance(change.get("new"), dict) and change["new"].get("text") is True
+            ]
+            self.assertTrue(text_postimages)
+            self.assertTrue(all("content_b85" in item for item in text_postimages))
             contract = manifest["handoff"]
             self.assertEqual(contract["contract_version"], 1)
             self.assertEqual(contract["direction"], "external-to-company")
@@ -165,6 +356,514 @@ class SyncToolsTest(unittest.TestCase):
             self.assertEqual(receipt["real_target_modified"], False)
             for field in ("apply_summary", "post_apply_diff_sha256", "tests", "commit"):
                 self.assertIn(field, receipt)
+
+            mismatched = json.loads(json.dumps(manifest))
+            embedded = next(
+                change["new"]
+                for change in mismatched["changes"]
+                if isinstance(change.get("new"), dict) and change["new"].get("text") is True
+            )
+            embedded["content_b85"] = base64.b85encode(b"safe but mismatched\n").decode("ascii")
+            bundle.write_text(
+                repo_sync.encode_payload(repo_sync.build_payload(mismatched, patch)),
+                encoding="ascii",
+            )
+            inspected = run(sys.executable, str(REPO_SYNC), "inspect", str(bundle), check=False)
+            self.assertNotEqual(inspected.returncode, 0)
+            self.assertIn("checksum mismatch", inspected.stderr)
+
+            tampered = json.loads(json.dumps(manifest))
+            postimage = next(
+                change["new"]
+                for change in tampered["changes"]
+                if isinstance(change.get("new"), dict) and change["new"].get("text") is True
+            )
+            crlf = b"tampered\r\n"
+            postimage.update(
+                {
+                    "bytes": len(crlf),
+                    "sha256": hashlib.sha256(crlf).hexdigest(),
+                    "content_b85": base64.b85encode(crlf).decode("ascii"),
+                }
+            )
+            bundle.write_text(
+                repo_sync.encode_payload(repo_sync.build_payload(tampered, patch)),
+                encoding="ascii",
+            )
+            inspected = run(sys.executable, str(REPO_SYNC), "inspect", str(bundle), check=False)
+            self.assertNotEqual(inspected.returncode, 0)
+            self.assertIn("Text files must use LF", inspected.stderr)
+
+    def test_whitespace_findings_are_reported_without_blocking(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            repo = root / "source"
+            repo.mkdir()
+            run("git", "init", "-q", str(repo))
+            run("git", "config", "user.email", "test@example.invalid", cwd=repo)
+            run("git", "config", "user.name", "Sync Test", cwd=repo)
+            (repo / "service.txt").write_text("before\n", encoding="utf-8")
+            run("git", "add", "service.txt", cwd=repo)
+            run("git", "commit", "-qm", "baseline", cwd=repo)
+            base = run("git", "rev-parse", "HEAD", cwd=repo).stdout.strip()
+            (repo / "service.txt").write_text(
+                "<<<<<<< HEAD\nafter \n=======\nother\n>>>>>>> branch\n",
+                encoding="utf-8",
+            )
+            run("git", "add", "service.txt", cwd=repo)
+            run("git", "commit", "-qm", "trailing whitespace change", cwd=repo)
+            head = run("git", "rev-parse", "HEAD", cwd=repo).stdout.strip()
+            target = root / "target"
+            clone_at(repo, target, base)
+
+            export_report = root / "export-report.json"
+            result = run(
+                sys.executable,
+                str(WORKFLOW),
+                "export",
+                str(repo),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                "service.txt",
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--output",
+                    str(root / "exported.sync"),
+                "--report",
+                str(export_report),
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            data = json.loads(export_report.read_text(encoding="utf-8"))
+            self.assertEqual(data["classification"], "CLEAN_APPLY")
+            self.assertTrue(any("trailing whitespace" in item for item in data["whitespace_findings"]))
+            self.assertTrue(any("conflict marker" in item for item in data["whitespace_findings"]))
+
+            bundle = root / "whitespace.sync"
+            run(
+                sys.executable,
+                str(REPO_SYNC),
+                "export",
+                str(repo),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                "service.txt",
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--no-update-state",
+                "--output",
+                str(bundle),
+            )
+            receive_report = root / "receive-report.json"
+            result = run(
+                sys.executable,
+                str(WORKFLOW),
+                "receive",
+                str(bundle),
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--report",
+                str(receive_report),
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            data = json.loads(receive_report.read_text(encoding="utf-8"))
+            self.assertEqual(data["classification"], "CLEAN_APPLY")
+            self.assertTrue(any("trailing whitespace" in item for item in data["whitespace_findings"]))
+            self.assertTrue(any("conflict marker" in item for item in data["whitespace_findings"]))
+            self.assertEqual(run("git", "status", "--porcelain", cwd=target).stdout, "")
+
+            validator_report = root / "validator.json"
+            validated = run(
+                sys.executable,
+                str(VALIDATE),
+                "--bundle",
+                str(bundle),
+                "--source-repo",
+                str(repo),
+                "--internal-target",
+                "pd-internal",
+                "--internal-baseline",
+                "baseline",
+                "--validation-repo",
+                str(target),
+                "--validation-baseline",
+                base,
+                "--base",
+                base,
+                "--head",
+                head,
+                "--mode",
+                "full",
+                "--excluded",
+                "none",
+                "--report",
+                str(validator_report),
+                check=False,
+            )
+            self.assertEqual(validated.returncode, 0, validated.stderr)
+            validated_data = json.loads(validator_report.read_text(encoding="utf-8"))
+            self.assertTrue(any("trailing whitespace" in item for item in validated_data["whitespace_findings"]))
+            self.assertTrue(any("conflict marker" in item for item in validated_data["whitespace_findings"]))
+
+    def test_cached_patch_contract_is_not_reported_as_worktree_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            source.mkdir()
+            run("git", "init", "-q", str(source))
+            run("git", "config", "user.email", "test@example.invalid", cwd=source)
+            run("git", "config", "user.name", "Sync Test", cwd=source)
+            run("git", "commit", "-qm", "base", "--allow-empty", cwd=source)
+            base = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            (source / "new.txt").write_bytes(b"canonical\n")
+            run("git", "add", "new.txt", cwd=source)
+            run("git", "commit", "-qm", "add LF file", cwd=source)
+            head = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            target = root / "target"
+            clone_at(source, target, base)
+            info_attributes = Path(run("git", "rev-parse", "--git-path", "info/attributes", cwd=target).stdout.strip())
+            if not info_attributes.is_absolute():
+                info_attributes = target / info_attributes
+            info_attributes.parent.mkdir(parents=True, exist_ok=True)
+            info_attributes.write_text("new.txt text eol=crlf\n", encoding="utf-8")
+            bundle = root / "change.sync"
+            run(
+                sys.executable,
+                str(REPO_SYNC),
+                "export",
+                str(source),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                "new.txt",
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--no-update-state",
+                "--output",
+                str(bundle),
+            )
+            report = root / "receive.json"
+
+            result = run(
+                sys.executable,
+                str(WORKFLOW),
+                "receive",
+                str(bundle),
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--report",
+                str(report),
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            data = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual((data["outcome"], data["classification"]), ("UNSAFE_STOP", "INDEX_CONTRACT_ONLY"))
+            self.assertEqual(data["validation"]["index_contract"], "passed")
+            self.assertEqual(data["validation"]["worktree_applicability"], "failed")
+            self.assertFalse((target / "new.txt").exists())
+            self.assertEqual(run("git", "status", "--porcelain", cwd=target).stdout, "")
+
+    def test_patch_attributes_change_checks_unchanged_tracked_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            source.mkdir()
+            run("git", "init", "-q", str(source))
+            run("git", "config", "user.email", "test@example.invalid", cwd=source)
+            run("git", "config", "user.name", "Sync Test", cwd=source)
+            (source / ".gitattributes").write_text("* -text\n", encoding="utf-8")
+            (source / "unchanged.txt").write_bytes(b"same\n")
+            run("git", "add", ".", cwd=source)
+            run("git", "commit", "-qm", "base", cwd=source)
+            base = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            (source / ".gitattributes").write_text("*.txt text eol=crlf\n", encoding="utf-8")
+            run("git", "add", ".gitattributes", cwd=source)
+            run("git", "commit", "-qm", "force CRLF checkout", cwd=source)
+            head = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            target = root / "target"
+            clone_at(source, target, base)
+            # clone_at first checks out source HEAD, whose attributes request
+            # CRLF, before detaching at base. Recreate the base checkout under
+            # its own attributes so receive tests only the candidate change.
+            (target / "unchanged.txt").unlink()
+            run("git", "reset", "--hard", "-q", "HEAD", cwd=target)
+            self.assertEqual(run("git", "status", "--porcelain", cwd=target).stdout, "")
+            bundle = root / "attributes.sync"
+            run(
+                sys.executable,
+                str(REPO_SYNC),
+                "export",
+                str(source),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                ".gitattributes",
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--no-update-state",
+                "--output",
+                str(bundle),
+            )
+            report = root / "receive.json"
+
+            result = run(
+                sys.executable,
+                str(WORKFLOW),
+                "receive",
+                str(bundle),
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--report",
+                str(report),
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            data = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(data["classification"], "INDEX_CONTRACT_ONLY")
+            self.assertIn("unchanged.txt", data["validation"]["worktree_mismatches"])
+            self.assertEqual((target / ".gitattributes").read_text(), "* -text\n")
+
+    def test_index_inventory_rejects_cr_in_text_blob(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            repo = Path(temp) / "repo"
+            repo.mkdir()
+            run("git", "init", "-q", str(repo))
+            (repo / ".gitattributes").write_text("*.txt text\n", encoding="utf-8")
+            run("git", "add", ".gitattributes", cwd=repo)
+            stored = subprocess.run(
+                ["git", "-C", str(repo), "hash-object", "-w", "--no-filters", "--stdin"],
+                input=b"legacy\r\n",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+            ).stdout.decode().strip()
+            run("git", "update-index", "--add", "--cacheinfo", f"100644,{stored},legacy.txt", cwd=repo)
+
+            with self.assertRaises(repo_sync.TextEolError) as raised:
+                repo_sync.index_inventory(repo)
+
+            self.assertEqual(raised.exception.paths, ["legacy.txt"])
+
+    def test_target_binary_attribute_cannot_override_canonical_text(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            source.mkdir()
+            run("git", "init", "-q", str(source))
+            run("git", "config", "user.email", "test@example.invalid", cwd=source)
+            run("git", "config", "user.name", "Sync Test", cwd=source)
+            (source / ".gitattributes").write_text("*.txt text\n", encoding="utf-8")
+            run("git", "add", ".gitattributes", cwd=source)
+            run("git", "commit", "-qm", "base", cwd=source)
+            base = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            stored = subprocess.run(
+                ["git", "-C", str(source), "hash-object", "-w", "--no-filters", "--stdin"],
+                input=b"bad\r\n",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+            ).stdout.decode().strip()
+            run("git", "update-index", "--add", "--cacheinfo", f"100644,{stored},bad.txt", cwd=source)
+            run("git", "commit", "-qm", "raw CRLF text", cwd=source)
+            head = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            target = root / "target"
+            run("git", "clone", "--quiet", "--no-hardlinks", "--no-checkout", str(source), str(target))
+            run("git", "checkout", "--quiet", "--detach", base, cwd=target)
+            info_attributes = Path(run("git", "rev-parse", "--git-path", "info/attributes", cwd=target).stdout.strip())
+            if not info_attributes.is_absolute():
+                info_attributes = target / info_attributes
+            info_attributes.parent.mkdir(parents=True, exist_ok=True)
+            info_attributes.write_text("bad.txt -text\n", encoding="utf-8")
+            patch = repo_sync.make_patch(source, base, head, ["bad.txt"])
+            new = repo_sync.blob_descriptor(source, head, "bad.txt")
+            self.assertTrue(new["text"])
+            new.pop("text")
+            manifest = {
+                "format": repo_sync.FORMAT,
+                "version": repo_sync.VERSION,
+                "base": base,
+                "head": head,
+                "patch_sha256": hashlib.sha256(patch).hexdigest(),
+                "changes": [{"status": "A", "old": None, "new": new}],
+                "target": {"id": "pd-internal", "expected_head": base},
+            }
+            bundle = root / "crlf.sync"
+            bundle.write_text(
+                repo_sync.encode_payload(repo_sync.build_payload(manifest, patch)),
+                encoding="ascii",
+            )
+            report = root / "receive.json"
+
+            received = run(
+                sys.executable,
+                str(WORKFLOW),
+                "receive",
+                str(bundle),
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--report",
+                str(report),
+                check=False,
+            )
+
+            self.assertNotEqual(received.returncode, 0)
+            data = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(data["classification"], "TEXT_EOL_NOT_LF")
+            self.assertEqual(data["paths"], ["bad.txt"])
+
+    def test_patch_preflight_uses_actual_unchanged_filtered_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            source.mkdir()
+            run("git", "init", "-q", str(source))
+            run("git", "config", "user.email", "test@example.invalid", cwd=source)
+            run("git", "config", "user.name", "Sync Test", cwd=source)
+            (source / "f.txt").write_text("clean\n", encoding="utf-8")
+            run("git", "add", "f.txt", cwd=source)
+            run("git", "commit", "-qm", "base", cwd=source)
+            base = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            (source / "new.txt").write_text("new\n", encoding="utf-8")
+            run("git", "add", "new.txt", cwd=source)
+            run("git", "commit", "-qm", "change", cwd=source)
+            head = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            target = root / "target"
+            clone_at(source, target, base)
+            run("git", "config", "filter.demo.clean", "sed 's/^SMUDGED://'", cwd=target)
+            run("git", "config", "filter.demo.smudge", "sed 's/^/SMUDGED:/'", cwd=target)
+            info_attributes = Path(run("git", "rev-parse", "--git-path", "info/attributes", cwd=target).stdout.strip())
+            if not info_attributes.is_absolute():
+                info_attributes = target / info_attributes
+            info_attributes.parent.mkdir(parents=True, exist_ok=True)
+            info_attributes.write_text("f.txt filter=demo\n", encoding="utf-8")
+            (target / "f.txt").unlink()
+            run("git", "checkout", "--", "f.txt", cwd=target)
+            self.assertEqual((target / "f.txt").read_text(), "SMUDGED:clean\n")
+            self.assertEqual(run("git", "status", "--porcelain", cwd=target).stdout, "")
+            bundle = root / "filtered.sync"
+            run(
+                sys.executable,
+                str(REPO_SYNC),
+                "export",
+                str(source),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                "new.txt",
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--no-update-state",
+                "--output",
+                str(bundle),
+            )
+            report = root / "receive.json"
+
+            received = run(
+                sys.executable,
+                str(WORKFLOW),
+                "receive",
+                str(bundle),
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--report",
+                str(report),
+                check=False,
+            )
+
+            self.assertNotEqual(received.returncode, 0)
+            data = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(data["classification"], "INDEX_CONTRACT_ONLY")
+            self.assertIn("f.txt", data["validation"]["worktree_mismatches"])
+
+    def test_core_eol_does_not_affect_unspecified_paths_when_autocrlf_is_false(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            repo = Path(temp) / "repo"
+            repo.mkdir()
+            run("git", "init", "-q", str(repo))
+            (repo / "f.txt").write_text("lf\n", encoding="utf-8")
+            run("git", "add", "f.txt", cwd=repo)
+            run("git", "config", "core.autocrlf", "false", cwd=repo)
+            run("git", "config", "core.eol", "crlf", cwd=repo)
+            files, _ = repo_sync.index_inventory(repo)
+
+            self.assertEqual(repo_sync.lf_worktree_violations(repo, files), [])
+
+    def test_patch_preflight_uses_actual_changed_filtered_preimage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            source.mkdir()
+            run("git", "init", "-q", str(source))
+            run("git", "config", "user.email", "test@example.invalid", cwd=source)
+            run("git", "config", "user.name", "Sync Test", cwd=source)
+            (source / "f.txt").write_text("clean\n", encoding="utf-8")
+            run("git", "add", "f.txt", cwd=source)
+            run("git", "commit", "-qm", "base", cwd=source)
+            base = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            (source / "f.txt").write_text("changed\n", encoding="utf-8")
+            run("git", "add", "f.txt", cwd=source)
+            run("git", "commit", "-qm", "change", cwd=source)
+            head = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            target = root / "target"
+            clone_at(source, target, base)
+            run("git", "config", "filter.demo.clean", "sed 's/^SMUDGED://'", cwd=target)
+            run("git", "config", "filter.demo.smudge", "sed 's/^/SMUDGED:/'", cwd=target)
+            info_attributes = Path(run("git", "rev-parse", "--git-path", "info/attributes", cwd=target).stdout.strip())
+            if not info_attributes.is_absolute():
+                info_attributes = target / info_attributes
+            info_attributes.parent.mkdir(parents=True, exist_ok=True)
+            info_attributes.write_text("f.txt filter=demo\n", encoding="utf-8")
+            (target / "f.txt").unlink()
+            run("git", "checkout", "--", "f.txt", cwd=target)
+            self.assertEqual((target / "f.txt").read_text(), "SMUDGED:clean\n")
+            self.assertEqual(run("git", "status", "--porcelain", cwd=target).stdout, "")
+
+            validation, error = sync_workflow.validate_patch_in_disposable_clone(
+                target,
+                base,
+                repo_sync.make_patch(source, base, head, ["f.txt"]),
+                repo_sync.describe_changes(source, base, head, ["f.txt"]),
+            )
+
+            self.assertIsNotNone(error)
+            self.assertEqual(validation["index_contract"], "passed")
+            self.assertEqual(validation["worktree_applicability"], "failed")
+            self.assertEqual(validation["failed_stage"], "worktree-apply-check")
 
     def test_workflow_generates_validated_replacement_for_missing_pure_rename_preimage(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -843,6 +1542,300 @@ class SyncToolsTest(unittest.TestCase):
                 "--report",
                 str(root / "report.json"),
             )
+
+    def test_receive_accepts_legacy_patch_without_text_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source, base, head = make_repo(root)
+            target = root / "target"
+            clone_at(source, target, base)
+            bundle = root / "legacy.sync"
+            run(
+                sys.executable,
+                str(REPO_SYNC),
+                "export",
+                str(source),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                "service.txt",
+                "--path",
+                "new.txt",
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--no-update-state",
+                "--output",
+                str(bundle),
+            )
+            manifest, patch = repo_sync.read_bundle(bundle)
+            for change in manifest["changes"]:
+                for side in ("old", "new"):
+                    descriptor = change.get(side)
+                    if isinstance(descriptor, dict):
+                        descriptor.pop("text", None)
+            bundle.write_text(
+                repo_sync.encode_payload(repo_sync.build_payload(manifest, patch)),
+                encoding="ascii",
+            )
+            report = root / "receive.json"
+
+            received = run(
+                sys.executable,
+                str(WORKFLOW),
+                "receive",
+                str(bundle),
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--report",
+                str(report),
+                check=False,
+            )
+
+            self.assertEqual(received.returncode, 0, received.stderr)
+            data = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual((data["outcome"], data["classification"]), ("READY", "CLEAN_APPLY"))
+            self.assertEqual(manifest["format"], "repo-sync-text-v1")
+            self.assertEqual(manifest["version"], 1)
+
+    def test_unrelated_legacy_crlf_target_file_does_not_block_lf_patch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            source.mkdir()
+            run("git", "init", "-q", str(source))
+            run("git", "config", "user.email", "test@example.invalid", cwd=source)
+            run("git", "config", "user.name", "Sync Test", cwd=source)
+            run("git", "config", "core.autocrlf", "false", cwd=source)
+            (source / "tool.bat").write_bytes(b"echo legacy\r\n")
+            (source / "service.txt").write_bytes(b"before\n")
+            run("git", "add", ".", cwd=source)
+            run("git", "commit", "-qm", "base", cwd=source)
+            base = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            (source / "service.txt").write_bytes(b"after\n")
+            run("git", "add", "service.txt", cwd=source)
+            run("git", "commit", "-qm", "change", cwd=source)
+            head = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            target = root / "target"
+            clone_at(source, target, base)
+            run("git", "config", "core.autocrlf", "false", cwd=target)
+            bundle = root / "change.sync"
+            export_report = root / "export.json"
+            exported = run(
+                sys.executable,
+                str(WORKFLOW),
+                "export",
+                str(source),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                "service.txt",
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--output",
+                str(bundle),
+                "--report",
+                str(export_report),
+                check=False,
+            )
+            self.assertEqual(exported.returncode, 0, exported.stderr)
+            self.assertEqual(json.loads(export_report.read_text())["classification"], "CLEAN_APPLY")
+            report = root / "receive.json"
+
+            received = run(
+                sys.executable,
+                str(WORKFLOW),
+                "receive",
+                str(bundle),
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--report",
+                str(report),
+                check=False,
+            )
+
+            self.assertEqual(received.returncode, 0, received.stderr)
+            data = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(data["classification"], "CLEAN_APPLY")
+            self.assertNotIn("tool.bat", data.get("paths", []))
+
+    def test_binary_crlf_requires_explicit_target_attribute_in_patch_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            source.mkdir()
+            run("git", "init", "-q", str(source))
+            run("git", "config", "user.email", "test@example.invalid", cwd=source)
+            run("git", "config", "user.name", "Sync Test", cwd=source)
+            run("git", "commit", "-qm", "base", "--allow-empty", cwd=source)
+            base = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            (source / ".gitattributes").write_text("data.bin -text\n", encoding="utf-8")
+            (source / "data.bin").write_bytes(b"opaque\r\nbytes")
+            run("git", "add", ".gitattributes", "data.bin", cwd=source)
+            run("git", "commit", "-qm", "binary", cwd=source)
+            head = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            target = root / "target"
+            clone_at(source, target, base)
+            bundle = root / "binary.sync"
+            run(
+                sys.executable,
+                str(REPO_SYNC),
+                "export",
+                str(source),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                "data.bin",
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--no-update-state",
+                "--output",
+                str(bundle),
+            )
+            report = root / "receive.json"
+
+            received = run(
+                sys.executable,
+                str(WORKFLOW),
+                "receive",
+                str(bundle),
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--report",
+                str(report),
+                check=False,
+            )
+
+            self.assertNotEqual(received.returncode, 0)
+            data = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(data["classification"], "ATTRIBUTE_SCOPE_MISMATCH")
+            self.assertEqual(data["paths"], ["data.bin"])
+
+            complete_bundle = root / "binary-with-attributes.sync"
+            run(
+                sys.executable,
+                str(REPO_SYNC),
+                "export",
+                str(source),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                ".gitattributes",
+                "--path",
+                "data.bin",
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--no-update-state",
+                "--output",
+                str(complete_bundle),
+            )
+            complete_report = root / "complete-receive.json"
+            accepted = run(
+                sys.executable,
+                str(WORKFLOW),
+                "receive",
+                str(complete_bundle),
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--report",
+                str(complete_report),
+                check=False,
+            )
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            self.assertEqual(json.loads(complete_report.read_text())["classification"], "CLEAN_APPLY")
+
+    def test_legacy_patch_can_normalize_crlf_preimage_to_lf(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            source.mkdir()
+            run("git", "init", "-q", str(source))
+            run("git", "config", "user.email", "test@example.invalid", cwd=source)
+            run("git", "config", "user.name", "Sync Test", cwd=source)
+            run("git", "config", "core.autocrlf", "false", cwd=source)
+            (source / "notes.txt").write_bytes(b"line1\r\n")
+            run("git", "add", "notes.txt", cwd=source)
+            run("git", "commit", "-qm", "CRLF base", cwd=source)
+            base = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            (source / "notes.txt").write_bytes(b"line1\n")
+            run("git", "add", "notes.txt", cwd=source)
+            run("git", "commit", "-qm", "normalize", cwd=source)
+            head = run("git", "rev-parse", "HEAD", cwd=source).stdout.strip()
+            target = root / "target"
+            clone_at(source, target, base)
+            run("git", "config", "core.autocrlf", "false", cwd=target)
+            bundle = root / "legacy-normalize.sync"
+            run(
+                sys.executable,
+                str(REPO_SYNC),
+                "export",
+                str(source),
+                "--base",
+                base,
+                "--head",
+                head,
+                "--path",
+                "notes.txt",
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--no-update-state",
+                "--output",
+                str(bundle),
+            )
+            manifest, patch = repo_sync.read_bundle(bundle)
+            for change in manifest["changes"]:
+                for side in ("old", "new"):
+                    item = change.get(side)
+                    if isinstance(item, dict):
+                        item.pop("text", None)
+                        item.pop("content_b85", None)
+            bundle.write_text(
+                repo_sync.encode_payload(repo_sync.build_payload(manifest, patch)),
+                encoding="ascii",
+            )
+            report = root / "receive.json"
+
+            received = run(
+                sys.executable,
+                str(WORKFLOW),
+                "receive",
+                str(bundle),
+                "--target-repo",
+                str(target),
+                "--target-id",
+                "pd-internal",
+                "--report",
+                str(report),
+                check=False,
+            )
+
+            self.assertEqual(received.returncode, 0, received.stderr)
+            self.assertEqual(json.loads(report.read_text())["classification"], "CLEAN_APPLY")
 
     def test_validator_stops_on_unknown_validation_baseline(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
