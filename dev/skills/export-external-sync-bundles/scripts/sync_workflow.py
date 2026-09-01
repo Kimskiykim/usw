@@ -14,6 +14,7 @@ import hashlib
 import json
 from pathlib import Path
 import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -70,18 +71,54 @@ def add_bundle_receipt(report: dict[str, Any], input_bundle: Path) -> None:
         report["candidate_bundle_sha256"] = hashlib.sha256(candidate.read_bytes()).hexdigest()
 
 
-def clone_at(repo: Path, revision: str, destination: Path) -> None:
+def copy_worktree_bytes(source: Path, destination: Path, paths: list[str]) -> None:
+    for path in paths:
+        source_path = source / path
+        destination_path = destination / path
+        if destination_path.is_symlink() or destination_path.exists():
+            destination_path.unlink()
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        if source_path.is_symlink():
+            destination_path.symlink_to(source_path.readlink())
+        elif source_path.is_file():
+            destination_path.write_bytes(source_path.read_bytes())
+            destination_path.chmod(stat.S_IMODE(source_path.stat().st_mode))
+        else:
+            raise repo_sync.RepoSyncError(f"Tracked target path is absent from worktree: {path}")
+
+
+def tracked_paths(repo: Path) -> list[str]:
+    listed = repo_sync.run_git(repo, ["ls-files", "-z"])
+    if listed.returncode:
+        raise repo_sync.RepoSyncError(error_output(listed) or "Cannot list tracked target paths")
+    try:
+        return [raw.decode("utf-8") for raw in listed.stdout.rstrip(b"\0").split(b"\0") if raw]
+    except UnicodeDecodeError as exc:
+        raise repo_sync.RepoSyncError("Tracked target paths must be valid UTF-8") from exc
+
+
+def clone_at(
+    repo: Path,
+    revision: str,
+    destination: Path,
+    *,
+    worktree_source: Path | None = None,
+    unchanged_paths: list[str] | None = None,
+) -> None:
     result = subprocess.run(
-        ["git", "clone", "--quiet", "--no-hardlinks", str(repo), str(destination)],
+        ["git", "clone", "--quiet", "--no-hardlinks", "--no-checkout", str(repo), str(destination)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
     )
     if result.returncode:
         raise repo_sync.RepoSyncError(error_output(result) or "temporary clone failed")
+    repo_sync.copy_checkout_environment(repo, destination)
     checkout = repo_sync.run_git(destination, ["checkout", "--quiet", "--detach", revision])
     if checkout.returncode:
         raise repo_sync.RepoSyncError(error_output(checkout) or "temporary checkout failed")
+    if worktree_source is not None and unchanged_paths:
+        copy_worktree_bytes(worktree_source, destination, unchanged_paths)
 
 
 def descriptor_content(descriptor: dict[str, Any]) -> bytes | None:
@@ -149,48 +186,218 @@ def expected_post(changes: list[dict[str, Any]]) -> dict[str, dict[str, Any] | N
     return post
 
 
+def stage_failure(
+    details: dict[str, Any],
+    stage: str,
+    result: subprocess.CompletedProcess[bytes],
+    fallback: str,
+) -> tuple[dict[str, Any], str]:
+    details.update(
+        {
+            "failed_stage": stage,
+            "failed_stdout": text_output(result),
+            "failed_stderr": error_output(result),
+        }
+    )
+    return details, error_output(result) or text_output(result) or fallback
+
+
+def whitespace_findings(repo: Path, args: list[str]) -> list[str]:
+    checked = repo_sync.run_git(
+        repo,
+        ["-c", "core.whitespace=trailing-space,space-before-tab", "diff", "--check", *args],
+    )
+    stdout = text_output(checked)
+    stderr = error_output(checked)
+    if checked.returncode not in {0, 2} or (checked.returncode == 2 and not stdout):
+        raise repo_sync.RepoSyncError(stderr or "git diff --check failed")
+    return stdout.splitlines() if stdout else []
+
+
 def validate_patch_in_disposable_clone(
     target_repo: Path,
     target_head: str,
     patch: bytes,
     changes: list[dict[str, Any]],
+    *,
+    use_actual_worktree: bool = True,
 ) -> tuple[dict[str, Any], str | None]:
     with tempfile.TemporaryDirectory(prefix="sync-receive-") as temp:
-        clone = Path(temp) / "target"
-        clone_at(target_repo, target_head, clone)
-        summary = repo_sync.run_git(clone, ["apply", "--summary"], input_data=patch)
-        checked = repo_sync.run_git(
-            clone,
-            ["apply", "--binary", "--whitespace=nowarn", "--check"],
+        index_clone = Path(temp) / "index-target"
+        clone_at(target_repo, target_head, index_clone)
+        summary = repo_sync.run_git(index_clone, ["apply", "--summary"], input_data=patch)
+        cached_check = repo_sync.run_git(
+            index_clone,
+            ["apply", "--cached", "--binary", "--whitespace=nowarn", "--check"],
             input_data=patch,
         )
         details = {
             "summary": text_output(summary),
-            "check_returncode": checked.returncode,
-            "check_stderr": error_output(checked),
+            "check_returncode": cached_check.returncode,
+            "check_stderr": error_output(cached_check),
+            "index_contract": "not-run",
+            "worktree_applicability": "not-run",
             "disposable_apply": "not-run",
             "postimage_content": "not-run",
         }
-        if checked.returncode:
-            return details, error_output(checked) or "git apply --check failed"
-        applied = repo_sync.run_git(
-            clone,
+        if cached_check.returncode:
+            return stage_failure(details, "cached-apply-check", cached_check, "git apply --cached --check failed")
+        cached_apply = repo_sync.run_git(
+            index_clone,
+            ["apply", "--cached", "--binary", "--whitespace=nowarn"],
+            input_data=patch,
+        )
+        if cached_apply.returncode:
+            return stage_failure(details, "cached-apply", cached_apply, "git apply --cached failed")
+        for path, expected in expected_post(changes).items():
+            if not same_blob(index_descriptor(index_clone, path), expected):
+                details["failed_stage"] = "postimage-blob"
+                return details, f"post-apply blob mismatch at {path}"
+        try:
+            final_files, final_contents = repo_sync.index_inventory(index_clone, enforce_lf=False)
+        except repo_sync.TextEolError as exc:
+            details.update(
+                {
+                    "failed_stage": "cached-text-eol",
+                    "text_eol_paths": exc.paths,
+                }
+            )
+            return details, str(exc)
+        canonical_text_violations = sorted(
+            path
+            for path, expected in expected_post(changes).items()
+            if isinstance(expected, dict)
+            and expected.get("mode") != "120000"
+            and (
+                expected.get("text") is True
+                or (expected.get("text") is None and b"\0" not in final_contents[path])
+            )
+            and b"\r" in final_contents[path]
+        )
+        if canonical_text_violations:
+            details.update(
+                {
+                    "failed_stage": "cached-text-eol",
+                    "text_eol_paths": canonical_text_violations,
+                }
+            )
+            return details, str(repo_sync.TextEolError(canonical_text_violations))
+        postimages = {
+            path: expected
+            for path, expected in expected_post(changes).items()
+            if isinstance(expected, dict)
+        }
+        final_attributes = repo_sync.index_attributes(index_clone, list(postimages), ["text"])
+        attribute_mismatches = sorted(
+            path
+            for path, expected in postimages.items()
+            if expected.get("text") is False
+            and expected.get("text_attribute") == "unset"
+            and b"\r" in final_contents[path]
+            and final_attributes[path]["text"] != "unset"
+        )
+        details.update(
+            {
+                "index_contract": "passed",
+                "postimage_content": "passed",
+                "whitespace_findings": whitespace_findings(index_clone, ["--cached"]),
+            }
+        )
+        if attribute_mismatches:
+            details.update(
+                {
+                    "failed_stage": "binary-attribute-scope",
+                    "worktree_applicability": "failed",
+                    "attribute_mismatch_paths": attribute_mismatches,
+                }
+            )
+            return (
+                details,
+                "Canonical binary attributes are absent from target scope: "
+                + ", ".join(attribute_mismatches),
+            )
+        lf_violations = repo_sync.lf_worktree_violations(index_clone, final_files)
+        if lf_violations:
+            details.update(
+                {
+                    "failed_stage": "lf-worktree-policy",
+                    "worktree_applicability": "failed",
+                    "worktree_mismatches": lf_violations,
+                }
+            )
+            return details, f"Target cannot keep canonical text as LF: {', '.join(lf_violations)}"
+
+        worktree_clone = Path(temp) / "worktree-target"
+        if use_actual_worktree:
+            clone_at(
+                target_repo,
+                target_head,
+                worktree_clone,
+                worktree_source=target_repo,
+                unchanged_paths=tracked_paths(target_repo),
+            )
+        else:
+            clone_at(target_repo, target_head, worktree_clone)
+        worktree_check = repo_sync.run_git(
+            worktree_clone,
+            ["apply", "--binary", "--whitespace=nowarn", "--check"],
+            input_data=patch,
+        )
+        if worktree_check.returncode:
+            details["worktree_applicability"] = "failed"
+            return stage_failure(details, "worktree-apply-check", worktree_check, "git apply --check failed")
+        worktree_apply = repo_sync.run_git(
+            worktree_clone,
             ["apply", "--binary", "--whitespace=nowarn"],
             input_data=patch,
         )
-        if applied.returncode:
-            return details, error_output(applied) or "git apply failed"
+        if worktree_apply.returncode:
+            details["worktree_applicability"] = "failed"
+            return stage_failure(details, "worktree-apply", worktree_apply, "git apply failed")
         paths = paths_for_changes(changes)
-        staged = repo_sync.run_git(clone, ["add", "-A", "--", *paths])
+        staged = repo_sync.run_git(worktree_clone, ["add", "-A", "--", *paths])
         if staged.returncode:
-            return details, error_output(staged) or "staging validation diff failed"
-        diff_check = repo_sync.run_git(clone, ["diff", "--cached", "--check"])
-        if diff_check.returncode:
-            return details, error_output(diff_check) or "post-apply diff check failed"
+            details["worktree_applicability"] = "failed"
+            return stage_failure(details, "worktree-stage", staged, "staging validation diff failed")
         for path, expected in expected_post(changes).items():
-            if not same_blob(index_descriptor(clone, path), expected):
-                return details, f"post-apply blob mismatch at {path}"
-        details.update({"disposable_apply": "passed", "postimage_content": "passed"})
+            if not same_blob(index_descriptor(worktree_clone, path), expected):
+                details.update({"failed_stage": "worktree-postimage-blob", "worktree_applicability": "failed"})
+                return details, f"worktree post-apply blob mismatch at {path}"
+        try:
+            worktree_files, _ = repo_sync.index_inventory(worktree_clone, enforce_lf=False)
+        except repo_sync.TextEolError as exc:
+            details.update(
+                {
+                    "failed_stage": "worktree-text-eol",
+                    "worktree_applicability": "failed",
+                    "text_eol_paths": exc.paths,
+                }
+            )
+            return details, str(exc)
+        worktree_policy = set(repo_sync.lf_worktree_violations(worktree_clone, worktree_files))
+        physical_mismatches = {
+            item["path"]
+            for item in final_files
+            if item["text"] is True
+            and (
+                not (worktree_clone / item["path"]).is_file()
+                or (worktree_clone / item["path"]).read_bytes() != final_contents[item["path"]]
+            )
+        }
+        worktree_mismatches = set(repo_sync.tracked_worktree_mismatches(worktree_clone))
+        worktree_mismatches.update(worktree_policy)
+        worktree_mismatches.update(physical_mismatches)
+        if worktree_mismatches:
+            paths = sorted(worktree_mismatches)
+            details.update(
+                {
+                    "failed_stage": "worktree-postimage",
+                    "worktree_applicability": "failed",
+                    "worktree_mismatches": paths,
+                }
+            )
+            return details, f"Target cannot keep canonical text as LF: {', '.join(paths)}"
+        details.update({"worktree_applicability": "passed", "disposable_apply": "passed"})
         return details, None
 
 
@@ -401,6 +608,15 @@ def analyze_bundle(
         return result_report(UNSAFE, "DIRTY_WORKTREE", bundle=str(bundle.resolve()), target=target_info)
     try:
         manifest, patch = repo_sync.read_bundle(bundle.resolve())
+    except repo_sync.TextEolError as exc:
+        return result_report(
+            UNSAFE,
+            "TEXT_EOL_NOT_LF",
+            bundle=str(bundle.resolve()),
+            target=target_info,
+            error=str(exc),
+            paths=exc.paths,
+        )
     except (OSError, repo_sync.RepoSyncError) as exc:
         return result_report(UNSAFE, "INVALID_BUNDLE", bundle=str(bundle.resolve()), target=target_info, error=str(exc))
     bound_target = manifest.get("target")
@@ -555,6 +771,41 @@ def analyze_bundle(
         )
     validation, error = validate_patch_in_disposable_clone(target_repo, target_head, patch, changes)
     if error:
+        if validation.get("attribute_mismatch_paths"):
+            return result_report(
+                UNSAFE,
+                "ATTRIBUTE_SCOPE_MISMATCH",
+                bundle=str(bundle.resolve()),
+                target=target_info,
+                patch=patch_info,
+                validation=validation,
+                paths=validation["attribute_mismatch_paths"],
+                whitespace_findings=validation.get("whitespace_findings", []),
+                error=error,
+            )
+        if validation.get("text_eol_paths"):
+            return result_report(
+                UNSAFE,
+                "TEXT_EOL_NOT_LF",
+                bundle=str(bundle.resolve()),
+                target=target_info,
+                patch=patch_info,
+                validation=validation,
+                paths=validation["text_eol_paths"],
+                whitespace_findings=validation.get("whitespace_findings", []),
+                error=error,
+            )
+        if validation.get("index_contract") == "passed":
+            return result_report(
+                UNSAFE,
+                "INDEX_CONTRACT_ONLY",
+                bundle=str(bundle.resolve()),
+                target=target_info,
+                patch=patch_info,
+                validation=validation,
+                whitespace_findings=validation.get("whitespace_findings", []),
+                error=error,
+            )
         return result_report(
             CONFLICT,
             "NORMAL_CONFLICT",
@@ -562,6 +813,7 @@ def analyze_bundle(
             target=target_info,
             patch=patch_info,
             validation=validation,
+            whitespace_findings=validation.get("whitespace_findings", []),
             error=error,
         )
     return result_report(
@@ -571,6 +823,7 @@ def analyze_bundle(
         target=target_info,
         patch=patch_info,
         validation=validation,
+        whitespace_findings=validation.get("whitespace_findings", []),
     )
 
 
@@ -600,11 +853,19 @@ def export_command(args: argparse.Namespace) -> dict[str, Any]:
         return report
     base = repo_sync.git_output(source, ["rev-parse", f"{args.base}^{{commit}}"])
     head = repo_sync.git_output(source, ["rev-parse", f"{args.head}^{{commit}}"])
-    diff_check = repo_sync.run_git(source, ["diff", "--check", base, head, "--", *args.path])
-    if diff_check.returncode:
-        report = result_report(UNSAFE, "SOURCE_DIFF_CHECK_FAILED", source_repo=str(source), error=error_output(diff_check))
+    try:
+        repo_sync.describe_changes(source, base, head, args.path)
+    except repo_sync.TextEolError as exc:
+        report = result_report(
+            UNSAFE,
+            "TEXT_EOL_NOT_LF",
+            source_repo=str(source),
+            error=str(exc),
+            paths=exc.paths,
+        )
         write_report(args.report.resolve(), report)
         return report
+    source_whitespace = whitespace_findings(source, [base, head, "--", *args.path])
     command = [
         sys.executable,
         str(Path(repo_sync.__file__).resolve()),
@@ -645,12 +906,15 @@ def export_command(args: argparse.Namespace) -> dict[str, Any]:
         check_threeway=args.check_3way,
     )
     add_bundle_receipt(report, args.output.resolve())
+    report["whitespace_findings"] = sorted(
+        set(source_whitespace) | set(report.get("whitespace_findings", []))
+    )
     report["source_preflight"] = {
         "repo": str(source),
         "base": base,
         "head": head,
         "paths": args.path,
-        "diff_check": "passed",
+        "diff_check": "completed",
         "export_stdout": text_output(exported),
         "state_updated": False,
     }
