@@ -30,6 +30,10 @@ class InstallTests(unittest.TestCase):
         "usw-reviewer-llm-critic.md",
         "usw-find-flow.md",
         "usw-assess-flow.md",
+        "usw-scout.md",
+        "usw-hypothesis-checker.md",
+        "usw-bounded-implementer.md",
+        "usw-coverage-checker.md",
     )
 
     def run_install(self, home: Path, *args: str) -> subprocess.CompletedProcess[str]:
