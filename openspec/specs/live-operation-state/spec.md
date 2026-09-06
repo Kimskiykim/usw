@@ -133,10 +133,11 @@ operation read MUST проверять, что decoded exact input соотве�
 
 ### Requirement: Handoff transitions сериализованы
 Begin, Outcome, Save, Finish и Cleanup SHALL сериализовать полный transition
-read-check-write под project-local handoff lock. Begin SHALL записать и
-проверить operation document до его регистрации и MUST NOT начинать model
-execution до подтверждения обеих записей. Outcome SHALL обновлять только
-выбранный authoritative operation document, а затем обновлять
+read-check-write под project-local handoff lock на каждой поддерживаемой
+платформе и без зависимости от locking primitive, отсутствующего на одной из
+них. Begin SHALL записать и проверить operation document до его регистрации и
+MUST NOT начинать model execution до подтверждения обеих записей. Outcome SHALL
+обновлять только выбранный authoritative operation document, а затем обновлять
 человекочитаемый status snapshot в router.
 
 Save MUST использовать operation-scoped candidate и MUST NOT заменять legacy
@@ -172,6 +173,12 @@ exact operation document и candidate. Cleanup SHALL сначала отмени
 - **WHEN** candidate прежней operation сохраняется после удаления её route
 - **THEN** все зарегистрированные operations остаются неизменными, а candidate
   отклоняется
+
+#### Scenario: Handoff transition на платформе без POSIX locking
+- **WHEN** любой handoff transition выполняется на поддерживаемой платформе,
+  где нет `fcntl`
+- **THEN** transition сериализуется locking primitive этой платформы, а его
+  state files читаются и записываются через общую safe-access boundary
 
 ### Requirement: Legacy handoff доступен только для recovery
 Role-based HANDOFF SHALL оставаться доступным для чтения через Show и Resume без
