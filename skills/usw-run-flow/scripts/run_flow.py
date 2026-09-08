@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import errno
 import hashlib
 import importlib.util
 import json
@@ -13,7 +14,7 @@ import re
 import secrets
 import stat
 import sys
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Callable, NamedTuple
 
@@ -36,10 +37,11 @@ MIGRATION_DETAIL = (
 class FlowError(ValueError):
     """A stable loader or migration error."""
 
-    def __init__(self, code: str, detail: str) -> None:
+    def __init__(self, code: str, detail: str, *, written: bool = False) -> None:
         super().__init__(f"{code}: {detail}")
         self.code = code
         self.detail = detail
+        self.written = written
 
 
 class MarkdownFlow(NamedTuple):
@@ -62,6 +64,22 @@ class FlowResource(NamedTuple):
     path: Path
     identity: str
     content: bytes
+
+
+class FlowWritePlan(NamedTuple):
+    name: str
+    origin: str
+    layout: str
+    path: Path
+    flow_directory: Path
+    project_root: Path
+    flow_root: Path
+    root_exists: bool
+    exists: bool
+    package_exists: bool
+    markdown: str
+    identity: str | None
+    write_token: str
 
 
 class ExecutionContext(NamedTuple):
@@ -121,7 +139,23 @@ def _load_safe_access(skills_root: Path):
     return module
 
 
+def _load_initialize_project(skills_root: Path):
+    """Load the canonical workspace config parser without duplicating YAML."""
+
+    name = "usw_initialize_project"
+    cached = sys.modules.get(name)
+    if cached is not None:
+        return cached
+    path = skills_root / "usw-initialize-project" / "scripts" / "init_usw.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 SAFE_ACCESS = _load_safe_access(SKILLS_ROOT)
+INITIALIZE_PROJECT = _load_initialize_project(SKILLS_ROOT)
 
 
 def _symlink_component(path: Path) -> Path | None:
@@ -322,6 +356,500 @@ def load_markdown_flow(
         origin=origin,
         identity=f"usw-markdown:{origin}:{digest}",
     )
+
+
+def _authoring_root(
+    project_root: Path, origin: str | None
+) -> tuple[Path, Path, str]:
+    selected_origin = "shared" if origin is None else origin
+    if selected_origin not in ORIGINS:
+        raise FlowError(
+            "invalid_flow_origin", f"unsupported flow origin: {selected_origin!r}"
+        )
+    try:
+        project = INITIALIZE_PROJECT.find_project_root(_absolute(project_root))
+    except OSError as error:
+        raise FlowError("unsafe_project_root", str(error)) from error
+    if selected_origin == "local":
+        try:
+            with _open_directory(project, project / ".usw", "local workspace"):
+                pass
+        except FlowError as error:
+            if error.code == "missing_flow_root":
+                raise FlowError(
+                    "workspace_not_initialized", "local workspace is missing; run usw-init"
+                ) from error
+            raise
+        return project, project / ".usw" / "flows", selected_origin
+    try:
+        flow_root = project / INITIALIZE_PROJECT.load_config(project).flow_root
+    except INITIALIZE_PROJECT.ConfigError as error:
+        raise FlowError(error.code, str(error).partition(": ")[2] or str(error)) from error
+    except UnicodeError as error:
+        raise FlowError("invalid_config", "usw.yaml is not valid UTF-8") from error
+    except OSError as error:
+        raise FlowError("unsafe_project_config", str(error)) from error
+    return project, flow_root, selected_origin
+
+
+def _write_token(
+    *,
+    origin: str,
+    flow_root: Path,
+    name: str,
+    layout: str,
+    path: Path,
+    exists: bool,
+    package_exists: bool,
+    identity: str | None,
+    root_exists: bool = True,
+) -> str:
+    state = json.dumps(
+        {
+            "version": 1,
+            "origin": origin,
+            "flow_root": str(flow_root),
+            "root_exists": root_exists,
+            "name": name,
+            "layout": layout,
+            "path": str(path),
+            "exists": exists,
+            "package_exists": package_exists,
+            "identity": identity,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "usw-write:" + hashlib.sha256(state).hexdigest()
+
+
+def _inspect_flow_write(
+    project_root: Path,
+    flow_root: Path,
+    name: str,
+    origin: str,
+) -> FlowWritePlan:
+    if not FLOW_NAME.fullmatch(name):
+        raise FlowError("invalid_flow_name", f"unsafe flow name: {name!r}")
+
+    with _open_directory(
+        project_root, flow_root, f"{origin} flow root"
+    ) as (root, directory):
+        flat_path = root / f"{name}.md"
+        flat_mode = _entry_mode(
+            directory,
+            flat_path.name,
+            flat_path,
+            error_code="unsafe_flow_file",
+        )
+        if flat_mode is not None and not stat.S_ISREG(flat_mode):
+            raise FlowError(
+                "unsafe_flow_file",
+                f"Markdown flow is not a regular file: {flat_path}",
+            )
+
+        package_path = root / name
+        package_mode = _entry_mode(
+            directory,
+            name,
+            package_path,
+            error_code="unsafe_flow_root",
+        )
+        if package_mode is not None and not stat.S_ISDIR(package_mode):
+            raise FlowError(
+                "unsafe_flow_root",
+                f"flow package is not a real directory: {package_path}",
+            )
+
+        packaged_mode = None
+        content = b""
+        if package_mode is not None:
+            with _open_child_directory(
+                directory,
+                name,
+                package_path,
+                f"{origin} flow package",
+            ) as (package_root, package_directory):
+                packaged_path = package_root / "FLOW.md"
+                packaged_mode = _entry_mode(
+                    package_directory,
+                    "FLOW.md",
+                    packaged_path,
+                    error_code="unsafe_flow_file",
+                )
+                if packaged_mode is not None and not stat.S_ISREG(packaged_mode):
+                    raise FlowError(
+                        "unsafe_flow_file",
+                        f"Markdown flow is not a regular file: {packaged_path}",
+                    )
+                if packaged_mode is not None:
+                    content = _read_regular_file(
+                        package_directory, "FLOW.md", packaged_path
+                    )
+        else:
+            packaged_path = package_path / "FLOW.md"
+
+        if flat_mode is not None and packaged_mode is not None:
+            raise FlowError(
+                "ambiguous_flow_layout",
+                f"both flow layouts exist: {flat_path}, {packaged_path}",
+            )
+        if flat_mode is not None:
+            layout = "flat"
+            path = flat_path
+            flow_directory = root
+            content = _read_regular_file(directory, flat_path.name, flat_path)
+            exists = True
+        else:
+            layout = "package"
+            path = packaged_path
+            flow_directory = package_path
+            exists = packaged_mode is not None
+
+    try:
+        markdown = content.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise FlowError("invalid_flow_encoding", f"flow is not UTF-8: {path}") from error
+    identity = None
+    if exists:
+        identity = f"usw-markdown:{origin}:{hashlib.sha256(content).hexdigest()}"
+    token = _write_token(
+        origin=origin,
+        flow_root=root,
+        name=name,
+        layout=layout,
+        path=path,
+        exists=exists,
+        package_exists=package_mode is not None,
+        identity=identity,
+    )
+    return FlowWritePlan(
+        name=name,
+        origin=origin,
+        layout=layout,
+        path=path,
+        flow_directory=flow_directory,
+        project_root=Path(os.path.realpath(_absolute(project_root))),
+        flow_root=root,
+        root_exists=True,
+        exists=exists,
+        package_exists=package_mode is not None,
+        markdown=markdown,
+        identity=identity,
+        write_token=token,
+    )
+
+
+def prepare_flow_write(
+    project_root: Path,
+    name: str,
+    *,
+    origin: str | None = None,
+) -> FlowWritePlan:
+    """Resolve one safe authoring target from project config without writing."""
+
+    if not FLOW_NAME.fullmatch(name):
+        raise FlowError("invalid_flow_name", f"unsafe flow name: {name!r}")
+    project, flow_root, selected_origin = _authoring_root(project_root, origin)
+    try:
+        return _inspect_flow_write(project, flow_root, name, selected_origin)
+    except FlowError as error:
+        if error.code != "missing_flow_root":
+            raise
+    path = flow_root / name / "FLOW.md"
+    return FlowWritePlan(
+        name=name, origin=selected_origin, layout="package", path=path,
+        flow_directory=path.parent, project_root=project, flow_root=flow_root,
+        root_exists=False, exists=False, package_exists=False, markdown="", identity=None,
+        write_token=_write_token(
+            origin=selected_origin, flow_root=flow_root, name=name, layout="package",
+            path=path, exists=False, package_exists=False, identity=None, root_exists=False,
+        ),
+    )
+
+
+@contextmanager
+def _open_authoring_directory(
+    parent, name: str, path: Path, *, create: bool, project_root: Path
+):
+    created = False
+    try:
+        if create:
+            parent.make_directory(name, 0o755)
+            created = True
+            parent.sync()
+        with _open_child_directory(parent, name, path, "authoring directory") as opened:
+            yield opened
+    except BaseException as error:
+        if created and not getattr(error, "written", False):
+            try:
+                with _open_directory(project_root, path.parent, "cleanup parent"):
+                    parent.remove_directory(name)
+            except FlowError:
+                # The original parent is no longer safely reachable; never clean a redirect.
+                pass
+            except OSError as cleanup_error:
+                if (
+                    cleanup_error.errno not in {errno.ENOTEMPTY, errno.EEXIST, errno.ENOENT}
+                    and isinstance(error, FlowError)
+                ):
+                    raise FlowError(
+                        error.code,
+                        f"{error.detail}; cannot remove created directory: {path}: {cleanup_error}",
+                    ) from error
+        if isinstance(error, FileExistsError) and not created:
+            raise FlowError("stale_flow_target", f"directory appeared: {path}") from error
+        if isinstance(error, OSError):
+            raise FlowError("unsafe_flow_root", f"cannot access authoring directory: {path}: {error}") from error
+        raise
+
+
+@contextmanager
+def _open_write_root(plan: FlowWritePlan):
+    with ExitStack() as stack:
+        current, directory = stack.enter_context(
+            _open_directory(plan.project_root, plan.project_root, "project root")
+        )
+        created = False
+        for part in plan.flow_root.relative_to(plan.project_root).parts:
+            current /= part
+            missing = _entry_mode(
+                directory, part, current, error_code="unsafe_flow_root"
+            ) is None
+            if missing:
+                if plan.origin == "local" and current == plan.project_root / ".usw":
+                    raise FlowError(
+                        "workspace_not_initialized", "local workspace is missing; run usw-init"
+                    )
+                if plan.root_exists:
+                    raise FlowError("stale_flow_target", "flow root disappeared")
+                created = True
+            elif current == plan.flow_root and not plan.root_exists and not created:
+                raise FlowError("stale_flow_target", "flow root appeared")
+            _, directory = stack.enter_context(
+                _open_authoring_directory(
+                    directory, part, current, create=missing, project_root=plan.project_root
+                )
+            )
+        yield plan.flow_root, directory
+
+
+def _target_identity(directory, name: str, path: Path, origin: str) -> str:
+    content = _read_regular_file(directory, name, path)
+    return f"usw-markdown:{origin}:{hashlib.sha256(content).hexdigest()}"
+
+
+def _assert_write_target(
+    plan: FlowWritePlan,
+    root_directory,
+    *,
+    package_directory=None,
+    package_created: bool = False,
+) -> None:
+    parent = plan.flow_directory if package_directory is not None else plan.flow_root
+    with _open_directory(plan.project_root, parent, "authoring target parent"):
+        pass
+    flat_path = plan.flow_root / f"{plan.name}.md"
+    flat_mode = _entry_mode(
+        root_directory,
+        flat_path.name,
+        flat_path,
+        error_code="unsafe_flow_file",
+    )
+    if flat_mode is not None and not stat.S_ISREG(flat_mode):
+        raise FlowError(
+            "unsafe_flow_file", f"Markdown flow is not a regular file: {flat_path}"
+        )
+    package_path = plan.flow_root / plan.name
+    package_mode = _entry_mode(
+        root_directory,
+        plan.name,
+        package_path,
+        error_code="unsafe_flow_root",
+    )
+    if package_mode is not None and not stat.S_ISDIR(package_mode):
+        raise FlowError(
+            "unsafe_flow_root", f"flow package is not a real directory: {package_path}"
+        )
+
+    expected_package = plan.package_exists or package_created
+    if (package_mode is not None) != expected_package:
+        raise FlowError("stale_flow_target", "flow package changed after preparation")
+
+    if plan.layout == "flat":
+        if flat_mode is None or plan.identity is None:
+            raise FlowError("stale_flow_target", "flat flow changed after preparation")
+        if _target_identity(
+            root_directory, flat_path.name, flat_path, plan.origin
+        ) != plan.identity:
+            raise FlowError("stale_flow_target", "flat flow changed after preparation")
+        if package_mode is not None:
+            with _open_child_directory(
+                root_directory,
+                plan.name,
+                package_path,
+                f"{plan.origin} flow package",
+            ) as (_, current_package):
+                packaged_mode = _entry_mode(
+                    current_package,
+                    "FLOW.md",
+                    package_path / "FLOW.md",
+                    error_code="unsafe_flow_file",
+                )
+                if packaged_mode is not None:
+                    if not stat.S_ISREG(packaged_mode):
+                        raise FlowError(
+                            "unsafe_flow_file",
+                            f"Markdown flow is not a regular file: {package_path / 'FLOW.md'}",
+                        )
+                    raise FlowError(
+                        "stale_flow_target", "alternate flow layout appeared"
+                    )
+        return
+
+    if flat_mode is not None:
+        raise FlowError("stale_flow_target", "alternate flow layout appeared")
+    if package_directory is None:
+        if package_mode is not None:
+            raise FlowError("stale_flow_target", "flow package changed after preparation")
+        return
+    packaged_path = package_path / "FLOW.md"
+    packaged_mode = _entry_mode(
+        package_directory,
+        "FLOW.md",
+        packaged_path,
+        error_code="unsafe_flow_file",
+    )
+    if packaged_mode is not None and not stat.S_ISREG(packaged_mode):
+        raise FlowError(
+            "unsafe_flow_file",
+            f"Markdown flow is not a regular file: {packaged_path}",
+        )
+    if plan.exists:
+        if packaged_mode is None or plan.identity is None:
+            raise FlowError("stale_flow_target", "packaged flow changed after preparation")
+        if _target_identity(
+            package_directory, "FLOW.md", packaged_path, plan.origin
+        ) != plan.identity:
+            raise FlowError("stale_flow_target", "packaged flow changed after preparation")
+    elif packaged_mode is not None:
+        raise FlowError("stale_flow_target", "packaged flow appeared after preparation")
+
+
+def _atomic_replace(
+    directory,
+    target: str,
+    content: str,
+    plan: FlowWritePlan,
+    recheck: Callable[[], None],
+) -> None:
+    temporary = f".{target}.{secrets.token_hex(12)}.tmp"
+    replaced = False
+    staged = False
+    try:
+        mode = directory.entry_mode(target) if plan.exists else None
+        directory.write_exclusive(
+            temporary, content, stat.S_IMODE(mode) if mode is not None else None
+        )
+        staged = True
+        recheck()
+        directory.replace(temporary, target)
+        replaced = True
+        directory.sync()
+    except BaseException as error:
+        if replaced:
+            raise FlowError(
+                "write_unverified", f"entrypoint was replaced: {plan.path}; {error}", written=True
+            ) from error
+        if staged or not isinstance(error, FileExistsError):
+            try:
+                with _open_directory(plan.project_root, plan.flow_directory, "cleanup parent"):
+                    directory.unlink(temporary)
+            except (FlowError, OSError):
+                pass
+        if isinstance(error, FlowError):
+            raise
+        if not isinstance(error, OSError):
+            raise
+        raise FlowError(
+            "unsafe_flow_file", f"cannot atomically write Markdown flow: {plan.path}"
+        ) from error
+
+
+def write_prepared_flow(
+    project_root: Path,
+    name: str,
+    expected_token: str,
+    markdown: str,
+    *,
+    origin: str | None = None,
+) -> FlowWritePlan:
+    """Revalidate and atomically write only the prepared entrypoint."""
+
+    if not isinstance(markdown, str):
+        raise FlowError("invalid_flow_encoding", "flow content must be UTF-8 text")
+    if not markdown.strip():
+        raise FlowError("empty_flow_content", "flow content must not be empty or whitespace-only")
+    plan = prepare_flow_write(project_root, name, origin=origin)
+    if plan.write_token != expected_token:
+        raise FlowError("stale_flow_target", "flow target changed after preparation")
+
+    replaced = False
+    try:
+        with _open_write_root(plan) as (_, root_directory):
+            if plan.layout == "flat":
+                _assert_write_target(plan, root_directory)
+                _atomic_replace(
+                    root_directory,
+                    plan.path.name,
+                    markdown,
+                    plan,
+                    lambda: _assert_write_target(plan, root_directory),
+                )
+                replaced = True
+            else:
+                package_created = not plan.package_exists
+                if package_created:
+                    _assert_write_target(plan, root_directory)
+                with _open_authoring_directory(
+                    root_directory,
+                    plan.name,
+                    plan.flow_directory,
+                    create=package_created,
+                    project_root=plan.project_root,
+                ) as (_, package_directory):
+                    _assert_write_target(
+                        plan,
+                        root_directory,
+                        package_directory=package_directory,
+                        package_created=package_created,
+                    )
+                    _atomic_replace(
+                        package_directory,
+                        "FLOW.md",
+                        markdown,
+                        plan,
+                        lambda: _assert_write_target(
+                            plan,
+                            root_directory,
+                            package_directory=package_directory,
+                            package_created=package_created,
+                        ),
+                    )
+                    replaced = True
+        written = prepare_flow_write(project_root, name, origin=origin)
+        if (written.path, written.origin, written.layout, written.markdown) != (
+            plan.path, plan.origin, plan.layout, markdown
+        ):
+            raise FlowError("write_unverified", "saved flow changed before read-back")
+    except BaseException as error:
+        if not replaced or getattr(error, "written", False):
+            raise
+        raise FlowError(
+            "write_unverified", f"entrypoint was replaced: {plan.path}; {error}", written=True
+        ) from error
+    return written
 
 
 def resolve_flow_resource(flow: MarkdownFlow, relative_path: str) -> FlowResource:
@@ -639,6 +1167,20 @@ def _print_json(value: object, *, stream: object = sys.stdout) -> None:
     print(json.dumps(value, ensure_ascii=False, sort_keys=True), file=stream)
 
 
+def _flow_write_report(plan: FlowWritePlan) -> dict[str, object]:
+    return {
+        "name": plan.name,
+        "origin": plan.origin,
+        "layout": plan.layout,
+        "path": str(plan.path),
+        "flow_directory": str(plan.flow_directory),
+        "exists": plan.exists,
+        "markdown": plan.markdown,
+        "identity": plan.identity,
+        "write_token": plan.write_token,
+    }
+
+
 def _migration_error() -> int:
     _print_json(
         {"error": "structured_runtime_removed", "detail": MIGRATION_DETAIL},
@@ -698,6 +1240,21 @@ def main(argv: list[str] | None = None) -> int:
     resource.add_argument(
         "--origin", choices=sorted(ORIGINS), default=argparse.SUPPRESS
     )
+
+    prepare_write = commands.add_parser("prepare-write")
+    prepare_write.add_argument("project_root", type=Path)
+    prepare_write.add_argument("name")
+    prepare_write.add_argument(
+        "--origin", choices=sorted(ORIGINS), default=argparse.SUPPRESS
+    )
+
+    write = commands.add_parser("write")
+    write.add_argument("project_root", type=Path)
+    write.add_argument("name")
+    write.add_argument("expected_token")
+    write.add_argument(
+        "--origin", choices=sorted(ORIGINS), default=argparse.SUPPRESS
+    )
     args = parser.parse_args(arguments)
 
     try:
@@ -706,7 +1263,33 @@ def main(argv: list[str] | None = None) -> int:
                 "missing_flow_origin",
                 "resource lookup requires the exact resolved flow origin",
             )
-        if args.command in {"inspect", "resource"}:
+        if args.command == "prepare-write":
+            write_plan = prepare_flow_write(
+                args.project_root,
+                args.name,
+                origin=args.origin,
+            )
+        elif args.command == "write":
+            source = getattr(sys.stdin, "buffer", sys.stdin)
+            supplied = source.read()
+            try:
+                markdown = (
+                    supplied.decode("utf-8")
+                    if isinstance(supplied, bytes)
+                    else supplied
+                )
+            except UnicodeDecodeError as error:
+                raise FlowError(
+                    "invalid_flow_encoding", "flow content on stdin is not UTF-8"
+                ) from error
+            write_plan = write_prepared_flow(
+                args.project_root,
+                args.name,
+                args.expected_token,
+                markdown,
+                origin=args.origin,
+            )
+        elif args.command in {"inspect", "resource"}:
             flow = resolve_markdown_flow(
                 args.project_root,
                 args.shared_root,
@@ -735,12 +1318,14 @@ def main(argv: list[str] | None = None) -> int:
             )
     except FlowError as error:
         _print_json(
-            {"error": error.code, "detail": error.detail},
+            {"error": error.code, "detail": error.detail, **({"written": True} if error.written else {})},
             stream=sys.stderr,
         )
         return 2
 
-    if args.command == "inspect":
+    if args.command in {"prepare-write", "write"}:
+        _print_json(_flow_write_report(write_plan))
+    elif args.command == "inspect":
         _print_json(
             {
                 "name": flow.name,

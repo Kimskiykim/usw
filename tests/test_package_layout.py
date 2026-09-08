@@ -147,17 +147,19 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertNotIn(removed, skill)
 
-    def test_create_flow_prompt_contract_describes_safe_packaged_layout(self):
+    def test_create_flow_prompt_contract_delegates_packaged_layout(self):
         skill = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
             encoding="utf-8"
         )
 
         for fragment in (
-            "`<flow-root>/<name>/FLOW.md`",
-            "`ambiguous_flow_layout`",
-            "`flows.root`",
+            "`../usw-run-flow/scripts/run_flow.py prepare-write`",
+            "`../usw-run-flow/scripts/run_flow.py write`",
+            "`layout`",
+            "`write_token`",
         ):
             self.assertIn(fragment, skill)
+        self.assertNotIn("`<flow-root>/<name>/FLOW.md`", skill)
         self.assertNotIn("Разрешить ровно один origin selector", skill)
 
     def test_find_flow_prompt_contract_describes_bounded_discovery(self):
@@ -189,11 +191,8 @@ class PackageLayoutTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
         for fragment in (
-            "review/FLOW.md",
-            "review/scripts/check.py",
-            "`<name>.md`",
+            "FLOW.md",
             "`ambiguous_flow_layout`",
-            "`flow_directory`",
         ):
             self.assertIn(fragment, readme)
 
@@ -421,7 +420,7 @@ class PackageLayoutTests(unittest.TestCase):
         )
 
         for fragment in (
-            "$usw-assess-flow [--local|-l|--shared] <flow-name>",
+            "$usw-assess-flow",
             "`executable-with-risks`",
             "`not-executable`",
         ):

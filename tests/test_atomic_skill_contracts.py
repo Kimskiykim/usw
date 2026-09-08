@@ -126,6 +126,42 @@ class AtomicSkillContractTests(unittest.TestCase):
 
         self.assertIn("отклонённые блоки не встраивать", create)
 
+    def test_create_flow_delegates_target_selection_and_write_safety(self):
+        create = (ROOT / "skills/usw-create-flow/SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        for fragment in (
+            "текущую открытую папку как `<project>`",
+            "`../usw-run-flow/scripts/run_flow.py prepare-write`",
+            "`../usw-run-flow/scripts/run_flow.py write`",
+            "`write_token`",
+            "через stdin",
+            "`markdown`",
+            "`path`",
+            "`origin`",
+            "`layout`",
+            "`workspace_not_initialized`",
+            "`usw-init`",
+            "`write_unverified`",
+            "`written: true`",
+            "записано, но проверка не подтверждена",
+        ):
+            self.assertIn(fragment, create)
+        for model_owned_rule in (
+            "<project>/<flows.root>",
+            "<flow-root>/<name>.md",
+            "<flow-root>/<name>/FLOW.md",
+            "symlink",
+            "проверить два кандидата",
+            "flows.root",
+            "<project>/.usw/flows",
+            "другие файлы не изменились",
+            "selector",
+            "entrypoint",
+        ):
+            self.assertNotIn(model_owned_rule.casefold(), create.casefold())
+
     def test_writer_writes_only_authorized_planning_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
