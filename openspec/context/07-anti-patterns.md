@@ -16,7 +16,7 @@ updated: 2026-09-01
 
 - Не выдумывать capabilities: `CALL SKILL` только для skill, явно
   названного и присутствующего в текущем списке available skills.
-- Не переводить contract tokens (`применить`, `approve`, `blocked`…) —
+- Не переводить contract tokens (`approve`, `change`, `blocked`…) —
   человек вводит их дословно.
 - Не использовать маркеры `CALL`/`GATE`/`LOOP`/`PARALLEL` в обычном
   Markdown flow — только в `version-2`.
