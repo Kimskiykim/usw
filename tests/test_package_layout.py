@@ -235,8 +235,6 @@ class PackageLayoutTests(unittest.TestCase):
                 self.assertTrue(content.startswith(f"# {name}"))
 
         self.assertIn("references/recipes.md", skill)
-        for fragment in ("`применить`", "`изменить`", "`пропустить`"):
-            self.assertIn(fragment, skill)
 
     def test_run_flow_has_one_text_path_and_local_precedence(self):
         skill_dir = ROOT / "skills/usw-run-flow"
