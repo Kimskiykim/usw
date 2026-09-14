@@ -7,6 +7,13 @@
 
 Both use a documented Base85-encoded deterministic gzip/tar transport. Encoding is not encryption, concealment, DLP approval, or permission to transfer.
 
+Text content is LF-only. Export classifies paths from the canonical `text`
+attribute; explicit `-text` is binary, while `text=auto` or unspecified blobs
+without NUL are conservatively treated as text. Any CR in a text postimage
+stops export. Mark opaque data explicitly `-text` when it legitimately contains
+CR bytes. UTF-8 BOM on the transport envelope is accepted; UTF-16 is rejected
+with instructions to re-save as UTF-8/ASCII.
+
 ## Repository boundary
 
 - One `.sync` file represents one source range and one target context; transfer changes, never Git history.
@@ -23,8 +30,10 @@ Patch-mode `repo-sync-text-v1` is base85 text containing a deterministic gzip/ta
 - format/version/direction and source base/head;
 - expected target identifier and checkpoint when known;
 - selected path and change inventory;
-- patch SHA-256 and per-path pre/post blob SHA-256, size, mode, and Git object id;
-- embedded destination bytes for pure rename recovery, protected by the recorded hash;
+- patch SHA-256 and per-path pre/post blob SHA-256, size, mode, Git object id,
+  text classification, and the source text attribute used for that classification;
+- embedded destination bytes for every text postimage (LF inspection) and for
+  pure rename recovery, protected by the recorded hash;
 - rename preimage/destination requirements;
 - dependency/manifest policy;
 - allowed automatic operations, required validation sequence, explicit stop conditions, and receiver receipt template.

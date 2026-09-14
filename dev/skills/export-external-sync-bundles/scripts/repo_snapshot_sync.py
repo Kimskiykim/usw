@@ -44,6 +44,40 @@ class SnapshotError(Exception):
     """Expected snapshot workflow failure."""
 
 
+class WorktreeIncompatible(SnapshotError):
+    def __init__(self, paths: list[str]):
+        self.paths = paths
+        super().__init__(f"Canonical index leaves tracked worktree changes: {', '.join(paths)}")
+
+
+class LfWorktreeUnsupported(SnapshotError):
+    def __init__(self, paths: list[str]):
+        self.paths = sorted(paths)
+        super().__init__(f"Target cannot keep canonical text as LF: {', '.join(self.paths)}")
+
+
+class RollbackIncomplete(SnapshotError):
+    def __init__(self, original: Exception, rollback: Exception, original_commit: str, affected: list[str]):
+        self.original = original
+        self.rollback = rollback
+        self.original_commit = original_commit
+        self.affected = affected
+        super().__init__(f"{original}; automatic rollback failed: {rollback}")
+
+    def to_report(self) -> dict[str, Any]:
+        return report(
+            UNSAFE,
+            "ROLLBACK_INCOMPLETE",
+            real_target_modified=True,
+            error=str(self),
+            transaction={
+                "rollback_completed": False,
+                "original_commit": self.original_commit,
+                "affected_paths": self.affected,
+            },
+        )
+
+
 def output_text(result: subprocess.CompletedProcess[bytes]) -> str:
     return result.stdout.decode("utf-8", "replace").strip()
 
@@ -164,21 +198,26 @@ def cat_blobs(repo: Path, oids: list[str]) -> dict[str, bytes]:
     return blobs
 
 
-def descriptor(path: str, mode: str, oid: str, content: bytes) -> dict[str, Any]:
+def descriptor(path: str, mode: str, oid: str, content: bytes, *, text: bool | None = None) -> dict[str, Any]:
+    if text is None:
+        text = repo_sync.classify_text(mode, "unspecified", content)
     return {
         "path": safe_path(path),
         "mode": mode,
         "oid": oid,
         "bytes": len(content),
         "sha256": hashlib.sha256(content).hexdigest(),
+        "text": text,
     }
 
 
 def tree_hash(files: list[dict[str, Any]]) -> str:
-    inventory = [
-        {key: item[key] for key in ("path", "mode", "bytes", "sha256")}
-        for item in files
-    ]
+    inventory = []
+    for item in files:
+        entry = {key: item[key] for key in ("path", "mode", "bytes", "sha256")}
+        if "text" in item:
+            entry["text"] = item["text"]
+        inventory.append(entry)
     encoded = json.dumps(inventory, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -206,21 +245,26 @@ def canonical_files(
         except (UnicodeDecodeError, ValueError) as exc:
             raise SnapshotError("Snapshot requires UTF-8 Git paths") from exc
         safe_path(path)
-        selected = (not allow or any(path_matches(path, item) for item in allow)) and not any(
+        keep = (not allow or any(path_matches(path, item) for item in allow)) and not any(
             path_matches(path, item) for item in deny
         )
-        if not selected:
+        if not keep:
             excluded.append(path)
             continue
         if object_type != "blob" or mode not in {"100644", "100755", "120000"}:
             raise SnapshotError(f"Unsupported tracked object {object_type}/{mode} at {path}; gitlinks are not snapshot files")
         selected.append((path, mode, oid))
     contents = cat_blobs(repo, [oid for _, _, oid in selected])
+    text_by_path = repo_sync.classify_tree_text(
+        repo,
+        revision,
+        [(path, mode, contents[oid]) for path, mode, oid in selected],
+    )
     for path, mode, oid in selected:
         content = contents[oid]
         if mode == "120000":
             safe_symlink_target(path, content)
-        item = descriptor(path, mode, oid, content)
+        item = descriptor(path, mode, oid, content, text=text_by_path[path])
         files.append(item)
         blobs.setdefault(item["sha256"], content)
     files.sort(key=lambda item: item["path"])
@@ -241,6 +285,64 @@ def build_payload(manifest: dict[str, Any], blobs: dict[str, bytes]) -> bytes:
             member.uname = member.gname = ""
             archive.addfile(member, io.BytesIO(content))
     return gzip.compress(buffer.getvalue(), compresslevel=9, mtime=0)
+
+
+def snapshot_text_classification(
+    files: list[dict[str, Any]],
+    blobs: dict[str, bytes],
+) -> dict[str, bool]:
+    paths = [item["path"] for item in files]
+    attribute_items = [
+        item
+        for item in files
+        if PurePosixPath(item["path"]).name == ".gitattributes" and item["mode"] != "120000"
+    ]
+    if not attribute_items:
+        attributes = {path: "unspecified" for path in paths}
+    else:
+        with tempfile.TemporaryDirectory(prefix="sync-snapshot-attributes-") as temp:
+            repo = Path(temp)
+            initialized = subprocess.run(
+                ["git", "init", "--quiet", str(repo)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if initialized.returncode:
+                raise SnapshotError(error_text(initialized) or "Cannot initialize snapshot attribute check")
+            for item in attribute_items:
+                target = repo / item["path"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(blobs[item["sha256"]])
+            checked = repo_sync.run_git(
+                repo,
+                ["check-attr", "-z", "--stdin", "text"],
+                input_data=b"".join(path.encode("utf-8") + b"\0" for path in paths),
+            )
+            if checked.returncode:
+                raise SnapshotError(error_text(checked) or "Cannot classify snapshot text paths")
+            fields = checked.stdout.rstrip(b"\0").split(b"\0") if checked.stdout else []
+            if len(fields) != len(paths) * 3:
+                raise SnapshotError("Invalid snapshot attribute response")
+            attributes = {}
+            for index in range(0, len(fields), 3):
+                try:
+                    path = fields[index].decode("utf-8")
+                    name = fields[index + 1].decode("ascii")
+                    value = fields[index + 2].decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise SnapshotError("Snapshot attributes must use UTF-8 paths") from exc
+                if name != "text":
+                    raise SnapshotError("Unexpected snapshot attribute response")
+                attributes[path] = value
+    return {
+        item["path"]: repo_sync.classify_text(
+            item["mode"],
+            attributes[item["path"]],
+            blobs[item["sha256"]],
+        )
+        for item in files
+    }
 
 
 def parse_payload(payload: bytes) -> tuple[dict[str, Any], dict[str, bytes]]:
@@ -289,12 +391,36 @@ def parse_payload(payload: bytes) -> tuple[dict[str, Any], dict[str, bytes]]:
                     blobs[digest] = content
                 if len(blobs[digest]) != item["bytes"] or item["mode"] not in {"100644", "100755", "120000"}:
                     raise SnapshotError(f"Snapshot descriptor mismatch at {path}")
+                text = item.get("text")
+                if text is not None and not isinstance(text, bool):
+                    raise SnapshotError(f"Snapshot text classification is invalid at {path}")
                 if item["mode"] == "120000":
                     safe_symlink_target(path, blobs[digest])
             if set(names) != expected_names:
                 raise SnapshotError("Snapshot payload contains unreferenced members")
             if manifest.get("tree_sha256") != tree_hash(files):
                 raise SnapshotError("Snapshot tracked-tree checksum mismatch")
+            classified = snapshot_text_classification(files, blobs)
+            inferred_text = False
+            violations: list[str] = []
+            for item in files:
+                path = item["path"]
+                actual_text = classified[path]
+                declared_text = item.get("text")
+                if declared_text is not None and declared_text != actual_text:
+                    if actual_text and b"\r" in blobs[item["sha256"]]:
+                        violations.append(path)
+                    else:
+                        raise SnapshotError(f"Snapshot text classification mismatch at {path}")
+                if actual_text and b"\r" in blobs[item["sha256"]]:
+                    violations.append(path)
+                if declared_text is None:
+                    item["text"] = actual_text
+                    inferred_text = True
+            if violations:
+                raise repo_sync.TextEolError(sorted(set(violations)))
+            if inferred_text:
+                manifest["tree_sha256"] = tree_hash(files)
             return manifest, blobs
     except (OSError, tarfile.TarError, KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         if isinstance(exc, SnapshotError):
@@ -308,9 +434,9 @@ def encode_snapshot(manifest: dict[str, Any], blobs: dict[str, bytes]) -> bytes:
 
 def decode_snapshot(data: bytes) -> tuple[dict[str, Any], dict[str, bytes]]:
     try:
-        text = data.decode("ascii")
-    except UnicodeDecodeError as exc:
-        raise SnapshotError("Snapshot transport must be base85 text") from exc
+        text = repo_sync.decode_transport_text(data, label="Snapshot")
+    except repo_sync.RepoSyncError as exc:
+        raise SnapshotError(str(exc)) from exc
     return parse_payload(repo_sync.decode_payload(text))
 
 
@@ -332,7 +458,7 @@ def index_files(repo: Path) -> dict[str, dict[str, Any]]:
     result = repo_sync.run_git(repo, ["ls-files", "-s", "-z"])
     if result.returncode:
         raise SnapshotError(error_text(result) or "git ls-files failed")
-    files: dict[str, dict[str, Any]] = {}
+    entries: list[tuple[str, str, str]] = []
     for record in result.stdout.rstrip(b"\0").split(b"\0") if result.stdout else []:
         header, separator, raw_path = record.partition(b"\t")
         if not separator:
@@ -344,9 +470,12 @@ def index_files(repo: Path) -> dict[str, dict[str, Any]]:
             raise SnapshotError("Snapshot requires UTF-8 target paths") from exc
         if stage != "0" or mode not in {"100644", "100755", "120000"}:
             raise SnapshotError(f"Unsupported target index entry at {path}")
-        content = cat_blob(repo, oid)
-        files[path] = descriptor(path, mode, oid, content)
-    return files
+        entries.append((path, mode, oid))
+    contents = cat_blobs(repo, [oid for _, _, oid in entries])
+    return {
+        path: descriptor(path, mode, oid, contents[oid])
+        for path, mode, oid in entries
+    }
 
 
 def local_untracked(repo: Path) -> list[str]:
@@ -459,8 +588,8 @@ def worktree_backup(repo: Path, paths: list[str]) -> dict[str, tuple[str, bytes]
     return backup
 
 
-def restore_backup(repo: Path, backup: dict[str, tuple[str, bytes] | None]) -> None:
-    reset = repo_sync.run_git(repo, ["reset", "--quiet", "HEAD"])
+def restore_backup(repo: Path, backup: dict[str, tuple[str, bytes] | None], original_commit: str) -> None:
+    reset = repo_sync.run_git(repo, ["reset", "--quiet", original_commit])
     for path in sorted(backup, key=lambda value: (value.count("/"), value), reverse=True):
         remove_path(repo, path)
     for path, saved in sorted(backup.items()):
@@ -483,6 +612,70 @@ def verify_index(repo: Path, canonical: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def verify_worktree(repo: Path) -> dict[str, Any]:
+    try:
+        mismatches = repo_sync.tracked_worktree_mismatches(repo)
+    except repo_sync.RepoSyncError as exc:
+        raise SnapshotError(str(exc)) from exc
+    return {"worktree_clean": not mismatches, "worktree_mismatches": sorted(mismatches)}
+
+
+def lf_worktree_mismatches(
+    repo: Path,
+    canonical: list[dict[str, Any]],
+    blobs: dict[str, bytes],
+) -> tuple[list[str], list[str]]:
+    """Split EOL-policy violations from plain physical worktree mismatches.
+
+    A path whose EOL policy already explains the failure is reported only as a
+    policy violation; anything else that cannot be materialized byte-exactly
+    (case collisions, unwritable paths, filesystem normalization) is a plain
+    worktree incompatibility and must not be labelled an EOL problem.
+    """
+    policy = sorted(repo_sync.lf_worktree_violations(repo, canonical))
+    explained = set(policy)
+    physical = sorted(
+        item["path"]
+        for item in canonical
+        if item.get("text") is True
+        and item["path"] not in explained
+        and (
+            not (repo / item["path"]).is_file()
+            or (repo / item["path"]).read_bytes() != blobs[item["sha256"]]
+        )
+    )
+    return policy, physical
+
+
+def stage_index(
+    repo: Path,
+    canonical: list[dict[str, Any]],
+    blobs: dict[str, bytes],
+    plan: dict[str, list[str]],
+) -> None:
+    expected = {item["path"]: item for item in canonical}
+    for path in plan["delete"]:
+        removed = repo_sync.run_git(repo, ["update-index", "--force-remove", "--", path])
+        if removed.returncode:
+            raise SnapshotError(error_text(removed) or f"Failed to remove {path} from index")
+    for path in sorted(plan["add"] + plan["replace"]):
+        item = expected[path]
+        stored = repo_sync.run_git(
+            repo,
+            ["hash-object", "-w", "--no-filters", "--stdin"],
+            input_data=blobs[item["sha256"]],
+        )
+        if stored.returncode:
+            raise SnapshotError(error_text(stored) or f"Failed to store canonical blob for {path}")
+        oid = output_text(stored)
+        indexed = repo_sync.run_git(
+            repo,
+            ["update-index", "--add", "--cacheinfo", f'{item["mode"]},{oid},{path}'],
+        )
+        if indexed.returncode:
+            raise SnapshotError(error_text(indexed) or f"Failed to index canonical blob for {path}")
+
+
 def apply_to_repo(
     repo: Path,
     canonical: list[dict[str, Any]],
@@ -498,6 +691,7 @@ def apply_to_repo(
         raise SnapshotError(f"Late untracked path collision: {', '.join(collisions)}")
     affected = sorted(plan["add"] + plan["replace"] + plan["delete"])
     expected = {item["path"]: item for item in canonical}
+    original_commit = repo_sync.git_output(repo, ["rev-parse", "HEAD^{commit}"])
     backup = worktree_backup(repo, affected)
     try:
         for path in sorted(plan["delete"] + plan["replace"], reverse=True):
@@ -506,33 +700,55 @@ def apply_to_repo(
             item = expected[path]
             write_file(repo, item, blobs[item["sha256"]])
         if affected:
-            staged = repo_sync.run_git(repo, ["add", "-A", "--", *affected])
-            if staged.returncode:
-                raise SnapshotError(error_text(staged) or "Failed to stage converged tracked paths")
+            stage_index(repo, canonical, blobs, plan)
         verification = verify_index(repo, canonical)
         if not verification["tracked_tree_match"]:
             raise SnapshotError("Final tracked tree does not match canonical snapshot")
+        policy_violations, physical_mismatches = lf_worktree_mismatches(repo, canonical, blobs)
+        if policy_violations:
+            raise LfWorktreeUnsupported(policy_violations)
+        if physical_mismatches:
+            raise WorktreeIncompatible(physical_mismatches)
+        verification.update(verify_worktree(repo))
+        if not verification["worktree_clean"]:
+            raise WorktreeIncompatible(verification["worktree_mismatches"])
         return verification
     except Exception as original:
         try:
-            restore_backup(repo, backup)
+            restore_backup(repo, backup, original_commit)
         except Exception as rollback:
-            raise SnapshotError(f"{original}; automatic rollback failed: {rollback}") from rollback
+            raise RollbackIncomplete(original, rollback, original_commit, affected) from rollback
         raise
 
 
-def clone_at(repo: Path, revision: str, destination: Path) -> None:
+def clone_at(
+    repo: Path,
+    revision: str,
+    destination: Path,
+    *,
+    environment_source: Path | None = None,
+    unchanged_paths: list[str] | None = None,
+) -> None:
     result = subprocess.run(
-        ["git", "clone", "--quiet", "--no-hardlinks", str(repo), str(destination)],
+        ["git", "clone", "--quiet", "--no-hardlinks", "--no-checkout", str(repo), str(destination)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
     )
     if result.returncode:
         raise SnapshotError(error_text(result) or "Disposable target clone failed")
+    if environment_source is not None:
+        repo_sync.copy_checkout_environment(environment_source, destination)
     checkout = repo_sync.run_git(destination, ["checkout", "--quiet", "--detach", revision])
     if checkout.returncode:
         raise SnapshotError(error_text(checkout) or "Disposable target checkout failed")
+    if environment_source is not None and unchanged_paths:
+        for path, saved in worktree_backup(environment_source, unchanged_paths).items():
+            if saved is None:
+                remove_path(destination, path)
+            else:
+                mode, content = saved
+                write_file(destination, {"path": path, "mode": mode}, content)
 
 
 def analyze(
@@ -565,6 +781,27 @@ def analyze(
             target,
         )
     changed = bool(plan["add"] or plan["replace"] or plan["delete"])
+    if not changed:
+        policy_violations, physical_mismatches = lf_worktree_mismatches(target, manifest["files"], blobs)
+        failure: SnapshotError | None = None
+        if policy_violations:
+            failure = LfWorktreeUnsupported(policy_violations)
+        elif physical_mismatches:
+            failure = WorktreeIncompatible(physical_mismatches)
+        if failure is not None:
+            return (
+                report(
+                    UNSAFE,
+                    "LF_WORKTREE_UNSUPPORTED" if policy_violations else "WORKTREE_INCOMPATIBLE",
+                    **common,
+                    plan=plan,
+                    worktree_mismatches=failure.paths,
+                    error=str(failure),
+                ),
+                manifest,
+                blobs,
+                target,
+            )
     result = report(
         READY if changed else ALREADY,
         "CANONICAL_CHANGES_REQUIRED" if changed else "IN_SYNC",
@@ -577,9 +814,38 @@ def analyze(
         if changed:
             with tempfile.TemporaryDirectory(prefix="sync-snapshot-check-") as temp:
                 clone = Path(temp) / "target"
-                clone_at(target, target_head, clone)
+                clone_at(
+                    target,
+                    target_head,
+                    clone,
+                    environment_source=target,
+                    unchanged_paths=plan["unchanged"],
+                )
                 clone_plan = make_plan(manifest["files"], index_files(clone))
-                validation = apply_to_repo(clone, manifest["files"], blobs, clone_plan)
+                try:
+                    validation = apply_to_repo(clone, manifest["files"], blobs, clone_plan)
+                except RollbackIncomplete as exc:
+                    raise SnapshotError(f"Disposable validation failed: {exc.original}") from exc
+                except LfWorktreeUnsupported as exc:
+                    result.update(
+                        {
+                            "outcome": UNSAFE,
+                            "classification": "LF_WORKTREE_UNSUPPORTED",
+                            "worktree_mismatches": exc.paths,
+                            "error": str(exc),
+                        }
+                    )
+                    return result, manifest, blobs, target
+                except WorktreeIncompatible as exc:
+                    result.update(
+                        {
+                            "outcome": UNSAFE,
+                            "classification": "WORKTREE_INCOMPATIBLE",
+                            "worktree_mismatches": exc.paths,
+                            "error": str(exc),
+                        }
+                    )
+                    return result, manifest, blobs, target
         else:
             validation = verify_index(target, manifest["files"])
         result["disposable_validation"] = validation
@@ -677,7 +943,10 @@ def export_command(args: argparse.Namespace) -> dict[str, Any]:
     deny = normalize_filters(args.deny_path)
     commit = repo_sync.git_output(source, ["rev-parse", f"{args.head}^{{commit}}"])
     tree = repo_sync.git_output(source, ["rev-parse", f"{commit}^{{tree}}"])
-    files, blobs, excluded = canonical_files(source, commit, allow, deny)
+    try:
+        files, blobs, excluded = canonical_files(source, commit, allow, deny)
+    except repo_sync.TextEolError as exc:
+        return report(UNSAFE, "TEXT_EOL_NOT_LF", error=str(exc), paths=exc.paths)
     if not files:
         return report(UNSAFE, "EMPTY_SCOPE", error="Snapshot scope contains no tracked files")
     manifest = snapshot_manifest(source, args.direction, commit, tree, files, excluded, allow, deny)
@@ -741,10 +1010,24 @@ def apply_command(args: argparse.Namespace) -> dict[str, Any]:
     if value["classification"] == "IN_SYNC":
         return value
     plan = value["plan"]
-    verification = apply_to_repo(target, manifest["files"], blobs, plan)
+    try:
+        verification = apply_to_repo(target, manifest["files"], blobs, plan)
+    except RollbackIncomplete as exc:
+        failure = exc.to_report()
+        failure.update(
+            {
+                "bundle": value.get("bundle"),
+                "bundle_sha256": value.get("bundle_sha256"),
+                "target": value.get("target"),
+                "canonical": value.get("canonical"),
+                "plan": plan,
+            }
+        )
+        return failure
     affected = sorted(plan["add"] + plan["replace"] + plan["delete"])
+    original_commit = value["target"]["head"]
     rollback = shlex.join(
-        ["git", "restore", "--source=HEAD", "--staged", "--worktree", "--", *affected]
+        ["git", "restore", f"--source={original_commit}", "--staged", "--worktree", "--", *affected]
     )
     value.update(
         {
@@ -757,6 +1040,7 @@ def apply_command(args: argparse.Namespace) -> dict[str, Any]:
                 "rollback_command": rollback,
                 "rollback_cwd": str(target),
                 "failure_rollback": "automatic",
+                "original_commit": original_commit,
                 "commit_performed": False,
             },
         }
@@ -802,6 +1086,10 @@ def main() -> int:
     args = build_parser().parse_args()
     try:
         value = args.func(args)
+    except RollbackIncomplete as exc:
+        value = exc.to_report()
+    except repo_sync.TextEolError as exc:
+        value = report(UNSAFE, "TEXT_EOL_NOT_LF", error=str(exc), paths=exc.paths)
     except (OSError, SnapshotError, repo_sync.RepoSyncError) as exc:
         value = report(UNSAFE, "UNSAFE_ERROR", error=str(exc))
     if hasattr(args, "report"):

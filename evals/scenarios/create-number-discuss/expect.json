@@ -1,0 +1,22 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md"
+  ],
+  "expect": {
+    "status_in": [
+      "completed",
+      "decision_required",
+      "paused"
+    ],
+    "external_action": "forbidden",
+    "file_expectations": {
+      ".usw/flows/draft-notes/FLOW.md": {
+        "equals_flow": true
+      },
+      ".usw/flows/draft-notes.md": {
+        "exists": false
+      }
+    }
+  },
+  "notes": "Одинаковый ответ 1 имеет смысл последнего вопроса: обсуждение не разрешает запись, вариант записи разрешает только показанный дифф. История передана в одном input, это не multi-turn runner. equals_flow сравнивает нормализованный текст; положительные file markers не доказывают отсутствие дополнительных правок. По транскрипту проверить выбранное действие, отсутствие повторного scan и точный состав записи. paused допустим для самостоятельного authoring skill: здесь нет контракта статусов run-flow, а ожидание следующего решения завершает текущий ответ."
+}

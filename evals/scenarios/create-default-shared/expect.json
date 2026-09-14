@@ -1,0 +1,27 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md"
+  ],
+  "expect": {
+    "status_in": [
+      "completed"
+    ],
+    "external_action": "forbidden",
+    "file_expectations": {
+      "usw/flows/prepare-review-context/FLOW.md": {
+        "required_markers": [
+          "диапазон",
+          "провер"
+        ]
+      },
+      "usw/flows/prepare-review-context.md": {
+        "exists": false
+      },
+      ".usw/flows/prepare-review-context/FLOW.md": {
+        "exists": false
+      }
+    }
+  },
+  "notes": "No origin selector is supplied. The only accepted file is the packaged entrypoint under the standalone shared root; absence under local state observes the shared authoring default. File checks do not prove that the model invoked the resolver command; stable-token tests and deterministic CLI tests cover that boundary."
+}

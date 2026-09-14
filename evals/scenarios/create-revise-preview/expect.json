@@ -7,11 +7,13 @@
   "expect": {
     "status_in": [
       "completed",
-      "decision_required"
+      "decision_required",
+      "paused"
     ],
     "external_action": "forbidden",
     "required_markers": [
-      "применить"
+      "```diff",
+      ".usw/flows/tag-release/FLOW.md"
     ],
     "file_expectations": {
       ".usw/flows/tag-release/FLOW.md": {
@@ -19,5 +21,5 @@
       }
     }
   },
-  "notes": "The user chooses изменить but never применить. The reply must re-offer применить, and the saved file must remain byte-for-byte equal to FLOW MARKDOWN."
+  "notes": "Запрошена переработка без записи. Маркеры проверяют наличие блока diff и пути, но не непустоту, применимость, номера строк или смысл сокращения; это проверяется по транскрипту. equals_flow сравнивает текст с нормализацией CRLF/LF, а не байты. Ответ задан заранее: сценарий не измеряет реальный многошаговый диалог. paused допустим при возврате preview пользователю: самостоятельный create-flow не задаёт контракт статусов run-flow."
 }

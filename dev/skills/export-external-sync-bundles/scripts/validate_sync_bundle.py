@@ -12,6 +12,7 @@ import sys
 import tempfile
 
 import repo_sync
+import sync_workflow
 
 
 def git(repo: Path, *args: str, input_data: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
@@ -27,7 +28,10 @@ def git(repo: Path, *args: str, input_data: bytes | None = None) -> subprocess.C
 def git_text(repo: Path, *args: str, label: str = "git command") -> str:
     result = git(repo, *args)
     if result.returncode:
-        message = result.stderr.decode("utf-8", "replace").strip()
+        message = (
+            result.stderr.decode("utf-8", "replace").strip()
+            or result.stdout.decode("utf-8", "replace").strip()
+        )
         raise repo_sync.RepoSyncError(f"{label} failed: {message}")
     return result.stdout.decode("utf-8", "replace").strip()
 
@@ -41,13 +45,14 @@ def resolve_commit(repo: Path, ref: str, label: str) -> str:
 
 def clone_at(repo: Path, baseline: str, destination: Path) -> None:
     result = subprocess.run(
-        ["git", "clone", "--quiet", "--no-hardlinks", str(repo), str(destination)],
+        ["git", "clone", "--quiet", "--no-hardlinks", "--no-checkout", str(repo), str(destination)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
     )
     if result.returncode:
         raise repo_sync.RepoSyncError(result.stderr.decode("utf-8", "replace").strip() or "temp clone failed")
+    repo_sync.copy_checkout_environment(repo, destination)
     git_text(destination, "checkout", "--quiet", "--detach", baseline, label="validation baseline checkout")
 
 
@@ -73,29 +78,35 @@ def validate(args: argparse.Namespace) -> dict[str, object]:
 
     checks = ["payload-inspection", "source-patch-match", "import-check"]
     details = {name: "passed" for name in checks}
-    with tempfile.TemporaryDirectory(prefix="sync-validation-") as temp:
-        target = Path(temp) / "target"
-        clone_at(validation_repo, validation_baseline, target)
-        repo_sync.apply_patch(target, patch, check=True)
-        if args.mode == "full":
-            repo_sync.apply_patch(target, patch, check=False)
-            git_text(target, "add", "-A", "--", *paths, label="stage validation diff")
-            git_text(target, "diff", "--cached", "--check", label="diff check")
-            applied_patch = git(
-                target,
-                "diff",
-                "--cached",
-                "--binary",
-                "--full-index",
-                "--find-renames",
-                "HEAD",
-                "--",
-                *paths,
-            ).stdout
-            if applied_patch != patch:
-                raise repo_sync.RepoSyncError("Applied temp-clone diff does not match the embedded patch")
-            checks.extend(["temp-clone-apply", "diff-check"])
-            details.update({"temp-clone-apply": "passed", "diff-check": "passed"})
+    whitespace: list[str] = []
+    if args.mode == "full":
+        changes = manifest.get("changes")
+        if not isinstance(changes, list) or not changes:
+            raise repo_sync.RepoSyncError("Full validation requires verifiable change metadata")
+        validation, error = sync_workflow.validate_patch_in_disposable_clone(
+            validation_repo,
+            validation_baseline,
+            patch,
+            changes,
+            use_actual_worktree=False,
+        )
+        if error:
+            raise repo_sync.RepoSyncError(error)
+        whitespace = list(validation.get("whitespace_findings", []))
+        checks.extend(["temp-clone-apply", "diff-check"])
+        details.update(
+            {
+                "temp-clone-apply": "passed",
+                "diff-check": "completed",
+                "index-contract": validation["index_contract"],
+                "worktree-applicability": validation["worktree_applicability"],
+            }
+        )
+    else:
+        with tempfile.TemporaryDirectory(prefix="sync-validation-") as temp:
+            target = Path(temp) / "target"
+            clone_at(validation_repo, validation_baseline, target)
+            repo_sync.apply_patch(target, patch, check=True)
 
     changed_files = git_text(source, "diff", "--name-only", base, head, "--", *manifest.get("paths", [])).splitlines()
     bundle = args.bundle.resolve()
@@ -118,6 +129,7 @@ def validate(args: argparse.Namespace) -> dict[str, object]:
         "excluded_changes": args.excluded,
         "checks": checks,
         "check_results": details,
+        "whitespace_findings": whitespace,
     }
 
 

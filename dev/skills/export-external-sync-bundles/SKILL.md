@@ -16,9 +16,18 @@ Prepare one auditable `.sync` file without network transfer, commit, push, email
 
 Read [repository-contract.md](references/repository-contract.md) for both formats.
 
+Оба маршрута поддерживают только LF для текстовых tracked-файлов. Текстовый
+postimage с CR/CRLF останавливает export как `TEXT_EOL_NOT_LF`; binary с
+эффективным `-text` остаётся байт-точным.
+
 ## Patch route
 
-Use `scripts/sync_workflow.py export|receive`. It validates only in disposable clones and returns `READY`, `NEEDS_REBASE_OR_BASELINE`, `CONFLICT_OR_PATH_MISMATCH`, `ALREADY_OR_PARTIALLY_APPLIED`, or `UNSAFE_STOP`. Never create rename placeholders, edit patches, use `--reject`, or auto-apply `--3way`.
+Use `scripts/sync_workflow.py export|receive`. Cached index integrity and
+worktree applicability are separate evidence. `INDEX_CONTRACT_ONLY` is an
+`UNSAFE_STOP`, not readiness. A binary CR-containing path whose tracked
+`-text` attribute is outside patch scope stops as `ATTRIBUTE_SCOPE_MISMATCH`.
+Never create rename placeholders, edit patches, use `--reject`, or auto-apply
+`--3way`.
 
 ## Snapshot route
 

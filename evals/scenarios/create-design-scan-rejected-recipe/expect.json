@@ -1,0 +1,31 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md",
+    "skills/usw-create-flow/references/recipes/human-decision.md"
+  ],
+  "expect": {
+    "status_in": [
+      "completed"
+    ],
+    "external_action": "forbidden",
+    "file_expectations": {
+      ".usw/flows/draft-brief/FLOW.md": {
+        "required_markers": [
+          "approve",
+          "change",
+          "cancel"
+        ],
+        "forbidden_markers": [
+          "LOOP",
+          "GATE",
+          "CALL HUMAN"
+        ]
+      },
+      ".usw/flows/draft-brief.md": {
+        "exists": false
+      }
+    }
+  },
+  "notes": "Автоматически проверяются создание packaged flow, contract tokens принятого Human decision и отсутствие structured markers. S3 требует ручной проверки транскрипта: после сохранения ни подробные, ни краткие рекомендации не предлагают отклонённую ограниченную доработку, даже другими словами. Упоминание прежнего отказа допустимо. Статус и file markers сами по себе S3 не доказывают; названия отказов из input нельзя честно использовать как глобальные forbidden_markers. Решения даны заранее, не имитируют настоящий multi-turn runner."
+}

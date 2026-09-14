@@ -34,7 +34,24 @@ python scripts/sync_workflow.py receive <bundle>.sync \
 | `ALREADY_OR_PARTIALLY_APPLIED` | `ALREADY_APPLIED`, `PARTIALLY_APPLIED` | Stop; reconcile target history/content before deciding whether anything remains. |
 | `UNSAFE_STOP` | dirty worktree, invalid bundle/content, target mismatch, unsupported platform | Correct the unsafe condition; do not publish or apply. |
 
-The JSON report is the receiver receipt. It includes outcome/classification, captured target data, candidate and patch evidence, validation details, handoff/replacement data where relevant, and `real_target_modified: false`.
+Additional `UNSAFE_STOP` classifications:
+
+| Classification | Meaning |
+|---|---|
+| `TEXT_EOL_NOT_LF` | A canonical text postimage contains CR/CRLF; normalize it to LF or mark truly opaque data `-text`. |
+| `INDEX_CONTRACT_ONLY` | `git apply --cached` produced the expected blobs, but the target worktree policy did not prove LF readiness. |
+| `LF_WORKTREE_UNSUPPORTED` | Target config or attributes (`autocrlf=true`, `eol=crlf`, native CRLF) cannot preserve the LF-only contract. |
+| `ATTRIBUTE_SCOPE_MISMATCH` | A CR-containing binary relies on source `-text`, but the final target attributes do not contain it; include `.gitattributes` in scope. |
+| `WORKTREE_INCOMPATIBLE` | The final index is exact, but a non-EOL platform/worktree condition prevents a clean materialization. |
+
+The JSON report is the receiver receipt. It includes separate
+`index_contract` and `worktree_applicability` evidence plus nonblocking
+`whitespace_findings`. An error running the whitespace check remains blocking.
+Validation scans the complete final tracked index and copies unchanged
+worktree bytes from the supplied target, so a patch that changes attributes or
+interacts with a local filter cannot hide mismatches outside the patch paths.
+Receive validation never modifies the supplied target and records
+`real_target_modified: false`.
 
 ## Embedded handoff contract
 
@@ -51,12 +68,16 @@ python scripts/repo_sync.py inspect <bundle>.sync \
   --patch-out <absolute-output>.patch
 cd <disposable-validation-checkout>
 git apply --summary < <absolute-output>.patch
+git apply --cached --check < <absolute-output>.patch
 git apply --check < <absolute-output>.patch
 # Only when HEAD drifted from the expected target checkpoint; diagnostic only:
 git apply --3way --check < <absolute-output>.patch
 ```
 
-Do not treat a successful `git apply --3way --check` exit code as readiness: Git may report conflicts with a zero status. Never hand-edit the patch, use `--reject`, force, or apply with `--3way` automatically.
+Cached success proves only the index contract; normal worktree validation must
+also pass. Do not treat a successful `git apply --3way --check` exit code as
+readiness: Git may report conflicts with a zero status. Never hand-edit the
+patch, use `--reject`, force, or apply with `--3way` automatically.
 
 | Evidence | Defect class | Required action |
 |---|---|---|

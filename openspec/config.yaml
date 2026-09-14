@@ -1,20 +1,42 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# Инжектится во ВСЕ артефакты. Держать коротким.
+context: |
+  Продукт: USW — standalone workflow для Qwen Code, Codex и Claude Code:
+  именованные Markdown flow, исполняемые моделью как текст, плюс routed
+  handoff. Стек: Markdown-скиллы + Python 3.10 (unittest, без зависимостей).
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Иерархия знания: openspec/context/ → openspec/specs/ → skills/ → tests/.
+  Спеки нормативны; расходится skill или код со спекой — верь спеке и чини
+  производное, спорное выноси человеку.
+
+  Перед созданием ЛЮБОГО артефакта обязательно прочитай файлы из
+  openspec/context/:
+  - 00-start-here.md — навигация и главные запреты
+  - 01-product-context.md — что за продукт и что нельзя ломать
+  - 02-domain-glossary.md — термины USW
+  - 04-engineering-standards.md — язык, дисциплина изменений, проверки
+  - 07-anti-patterns.md — снятое и чего не делать
+  Если нужного контекста не хватает — НЕ угадывай, явно сформулируй, какого.
+
+# Инжектится только в свой артефакт.
+rules:
+  proposal:
+    - Всегда заполняй Scope и Non-goals; ничего вне scope.
+    - Требования противоречат друг другу или спекам — подними вопрос
+      человеку, не выбирай интуитивно.
+  specs:
+    - Кросс-катящий факт живёт в openspec/context/, специфичный для
+      capability — в её спеке; ссылайся, не пересказывай.
+    - Contract tokens в обратных кавычках сохраняй дословно.
+  design:
+    - Опирайся на инварианты из 03-architecture.md и релевантные ADR из
+      context/ADR/.
+  tasks:
+    - Соблюдай PR Size Rule; задачи с Definition of Done и proof of
+      completion.
+    - Каждое изменение нормативного текста включает задачу на обновление
+      stable-token тестов и, при правке SKILL.md, прогон behavior evals
+      (06-testing-and-quality.md).
+    - Не делай refactor вне задачи; анти-паттерны из 07-anti-patterns.md
+      запрещены.

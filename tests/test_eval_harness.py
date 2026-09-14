@@ -253,6 +253,13 @@ class ScenarioLoadingTests(unittest.TestCase):
         self.assertIn("find-does-not-execute", names)
         self.assertIn("assess-does-not-read-siblings", names)
 
+    def test_shared_authoring_scenarios_are_checked_in(self):
+        names = {path.name for path in HARNESS.discover_scenarios()}
+
+        self.assertIn("create-default-shared", names)
+        self.assertIn("create-custom-flows-root", names)
+        self.assertIn("create-missing-flow-root", names)
+
 
 class ExpectationTests(unittest.TestCase):
     def scenario(self, **overrides) -> "HARNESS.Scenario":

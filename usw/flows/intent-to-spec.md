@@ -252,7 +252,7 @@ Review focus:
 строку, evidence и минимальное упрощение.
 
 Используя findings LLM-critic как evidence, второй агент также проверяет по
-PR Size Rule из `AGENTS.md`:
+PR Size Rule из `GIGACODE.md`:
 
 - суммарный объём `tasks.md` укладывается в один PR;
 - задачи не переплетены так, что change лучше разделить по естественным
