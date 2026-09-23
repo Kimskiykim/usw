@@ -1,6 +1,6 @@
 ---
 owner: maintainer
-updated: 2026-09-01
+updated: 2026-09-23
 ---
 # Глоссарий
 
@@ -10,8 +10,8 @@ updated: 2026-09-01
 - **Entrypoint / раскладка** — `<flow-root>/<name>.md` (flat) или
   `<flow-root>/<name>/FLOW.md` (canonical, package). Обе формы одного имени
   в одном origin → `ambiguous_flow_layout`.
-- **Package** — каталог flow с `FLOW.md` и ресурсами; ресурсы читаются
-  только по явной ссылке из `FLOW.md`, как immutable bytes.
+- **Package** — каталог flow с `FLOW.md` и соседними файлами; исполнитель
+  читает нужные файлы обычным инструментом относительно `flow_directory`.
 - **version-2** — text-first авторская конвенция с маркерами `CALL`,
   `GATE`, `LOOP`, `PARALLEL`; подсказки модели, не machine DSL.
 - **Contract tokens** — дословные статусы и варианты ответа человека в

@@ -5,8 +5,8 @@
 
 ## Safe-access boundary
 
-Доступ к файлам идёт через один общий safe-access boundary с backend по
-платформе. Там, где доступен `dir_fd`, traversal остаётся
+Выбор и чтение entrypoint, а также запись flow проходят через общий
+safe-access boundary с backend по платформе. Там, где доступен `dir_fd`, traversal остаётся
 descriptor-relative: после проверки компонента к нему больше не обращаются по
 имени. Там, где `dir_fd` отсутствует, включая Windows, boundary отвергает
 symlink и reparse point на каждом entry и запрещает имена, пересекающие
@@ -14,17 +14,19 @@ symlink и reparse point на каждом entry и запрещает имен�
 окно между проверкой и использованием. Разница намеренная и раскрыта: не
 описывать backends как равнозначные.
 
-Обе формы entrypoint — `<name>.md` и `<name>/FLOW.md` — и package resources
-разрешаются одинаково на Linux, macOS и Windows.
+Обе формы entrypoint — `<name>.md` и `<name>/FLOW.md` — разрешаются на Linux,
+macOS и Windows. Соседние файлы packaged flow исполнитель при необходимости
+читает обычными инструментами, относительно возвращённого `flow_directory`.
 
-## Почему только возвращённые bytes
+## Почему Markdown entrypoint не перечитывается
 
-Identity вычисляется от тех же байт, которые получит модель. Повторное чтение
-`path` или `resource_path` после вычисления identity открыло бы окно подмены:
+Identity вычисляется от тех же байт entrypoint, которые получит модель.
+Повторное чтение `path` после вычисления identity открыло бы окно подмены:
 файл мог измениться или стать symlink между проверкой и чтением. Поэтому
-и flow Markdown, и package resource используются только в том виде, в каком их
-вернул runner, а `stale_flow_resource` останавливает работу вместо
-перечитывания.
+исполнитель использует Markdown в том виде, в каком его вернул runner.
+Соседний файл читается отдельно, в момент обращения к нему; identity
+entrypoint не обещает неизменяемый snapshot соседних файлов. Их чтение
+ограничено обычными разрешениями инструментов, а не safe-access boundary USW.
 
 ## Конкурентность и ownership
 

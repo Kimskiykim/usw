@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import importlib.util
 import io
@@ -10,7 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from contextlib import redirect_stderr
+from contextlib import nullcontext, redirect_stderr
 from unittest import mock
 
 
@@ -71,225 +70,63 @@ class TextFlowRunnerTests(unittest.TestCase):
                 invocation.flow.identity,
             )
 
-    def test_packaged_resource_resolves_from_flow_directory(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, shared = self.project(directory)
-            package = shared / "review"
-            script = package / "scripts/check.py"
-            script.parent.mkdir(parents=True)
-            (package / "FLOW.md").write_text(
-                "Use scripts/check.py.\n", encoding="utf-8"
-            )
-            script.write_text("print('ok')\n", encoding="utf-8", newline="\n")
-            flow = RUNNER.resolve_markdown_flow(project, shared, "review")
-
-            self.assertTrue(
-                hasattr(RUNNER, "resolve_flow_resource"),
-                "packaged resources need an executor boundary",
-            )
-            resource = RUNNER.resolve_flow_resource(flow, "scripts/check.py")
-
-            self.assertEqual(Path(os.path.realpath(script)), resource.path)
-            self.assertEqual(b"print('ok')\n", resource.content)
-            self.assertEqual(
-                "usw-resource:" + hashlib.sha256(resource.content).hexdigest(),
-                resource.identity,
-            )
-
-    def test_packaged_resource_declaration_accepts_markdown_punctuation(self):
-        for markdown in (
-            "Use <scripts/check.py>.\n",
-            "Use scripts/check.py—then continue.\n",
-        ):
-            with self.subTest(markdown=markdown), tempfile.TemporaryDirectory() as directory:
-                project, shared = self.project(directory)
-                package = shared / "review"
-                script = package / "scripts/check.py"
-                script.parent.mkdir(parents=True)
-                (package / "FLOW.md").write_text(markdown, encoding="utf-8", newline="\n")
-                script.write_text("print('ok')\n", encoding="utf-8", newline="\n")
-                flow = RUNNER.resolve_markdown_flow(project, shared, "review")
-
-                resource = RUNNER.resolve_flow_resource(flow, "scripts/check.py")
-
-                self.assertEqual(Path(os.path.realpath(script)), resource.path)
-
-    def test_packaged_resource_content_survives_post_read_path_swap(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, shared = self.project(directory)
-            package = shared / "review"
-            script = package / "scripts/check.py"
-            script.parent.mkdir(parents=True)
-            (package / "FLOW.md").write_text(
-                "Use scripts/check.py.\n", encoding="utf-8"
-            )
-            script.write_text("print('trusted')\n", encoding="utf-8", newline="\n")
-            outside = project / "outside.py"
-            outside.write_text("print('outside')\n", encoding="utf-8", newline="\n")
-            flow = RUNNER.resolve_markdown_flow(project, shared, "review")
-            expected_path = Path(os.path.realpath(script))
-
-            resource = RUNNER.resolve_flow_resource(flow, "scripts/check.py")
-            script.unlink()
-            os.symlink(outside, script)
-
-            self.assertEqual(b"print('trusted')\n", resource.content)
-            self.assertEqual(expected_path, resource.path)
-
-    def test_packaged_resource_declaration_rejects_longer_path_substring(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, shared = self.project(directory)
-            package = shared / "review"
-            script = package / "scripts/check.py"
-            script.parent.mkdir(parents=True)
-            (package / "FLOW.md").write_text(
-                "Use archive/scripts/check.py.bak.\n", encoding="utf-8"
-            )
-            script.write_text("print('not declared')\n", encoding="utf-8", newline="\n")
-            flow = RUNNER.resolve_markdown_flow(project, shared, "review")
-
-            with self.assertRaisesRegex(
-                RUNNER.FlowError, "undeclared_flow_resource"
-            ):
-                RUNNER.resolve_flow_resource(flow, "scripts/check.py")
-
-    def test_packaged_resource_rejects_absolute_and_escape_paths(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, shared = self.project(directory)
-            package = shared / "review"
-            package.mkdir()
-            (package / "FLOW.md").write_text(
-                "Use scripts/check.py.\n", encoding="utf-8"
-            )
-            flow = RUNNER.resolve_markdown_flow(project, shared, "review")
-
-            self.assertTrue(hasattr(RUNNER, "resolve_flow_resource"))
-            for path in ("/tmp/check.py", "../check.py", "scripts/../check.py"):
-                with self.subTest(path=path), self.assertRaisesRegex(
-                    RUNNER.FlowError, "invalid_flow_resource"
-                ):
-                    RUNNER.resolve_flow_resource(flow, path)
-
-    def test_packaged_resource_rejects_symlink_components(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, shared = self.project(directory)
-            package = shared / "review"
-            package.mkdir()
-            (package / "FLOW.md").write_text(
-                "Use scripts/check.py.\n", encoding="utf-8"
-            )
-            actual = project / "actual-scripts"
-            actual.mkdir()
-            (actual / "check.py").write_text("print('unsafe')\n", encoding="utf-8", newline="\n")
-            os.symlink(actual, package / "scripts", target_is_directory=True)
-            flow = RUNNER.resolve_markdown_flow(project, shared, "review")
-
-            self.assertTrue(hasattr(RUNNER, "resolve_flow_resource"))
-            with self.assertRaisesRegex(RUNNER.FlowError, "unsafe_flow_resource"):
-                RUNNER.resolve_flow_resource(flow, "scripts/check.py")
-
-    def test_packaged_resource_rejects_final_symlink(self):
+    def test_cli_resolve_packaged_entrypoint_without_reading_sibling(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
             package = shared / "review"
             scripts = package / "scripts"
             scripts.mkdir(parents=True)
-            (package / "FLOW.md").write_text(
-                "Use scripts/check.py.\n", encoding="utf-8"
+            content = b"Read scripts/check.py.\r\n"
+            (package / "FLOW.md").write_bytes(content)
+            sibling = scripts / "check.py"
+            sibling.write_bytes(b"\xff not UTF-8")
+            arguments = ["resolve", str(project), str(shared), "review", "input"]
+
+            for pathname_backend in (False, True):
+                with self.subTest(pathname_backend=pathname_backend):
+                    reports = []
+                    backend = (
+                        mock.patch.object(
+                            RUNNER.SAFE_ACCESS,
+                            "supports_descriptor_relative_access",
+                            return_value=False,
+                        )
+                        if pathname_backend
+                        else nullcontext()
+                    )
+                    with backend, mock.patch.object(
+                        RUNNER, "_print_json", side_effect=lambda value: reports.append(value)
+                    ):
+                        self.assertEqual(0, RUNNER.main(arguments))
+                    self.assertEqual(1, len(reports))
+                    report = reports[0]
+                    self.assertEqual(content.decode("utf-8"), report["markdown"])
+                    self.assertEqual(os.path.realpath(package), report["flow_directory"])
+                    self.assertEqual(
+                        "usw-markdown:shared:" + hashlib.sha256(content).hexdigest(),
+                        report["identity"],
+                    )
+                    self.assertEqual("input", report["input"])
+                    self.assertNotIn("content_base64", report)
+
+            sibling.write_text("new content\n", encoding="utf-8", newline="\n")
+            self.assertEqual("new content\n", sibling.read_text(encoding="utf-8"))
+            self.assertEqual(
+                report["identity"],
+                RUNNER.resolve_markdown_flow(project, shared, "review").identity,
             )
-            target = package / "actual.py"
-            target.write_text("print('unsafe')\n", encoding="utf-8", newline="\n")
-            os.symlink(target, scripts / "check.py")
-            flow = RUNNER.resolve_markdown_flow(project, shared, "review")
 
-            with self.assertRaisesRegex(RUNNER.FlowError, "unsafe_flow_resource"):
-                RUNNER.resolve_flow_resource(flow, "scripts/check.py")
-
-    def test_packaged_resource_rejects_post_resolution_ancestor_symlink_swap(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, shared = self.project(directory)
-            package = shared / "review"
-            script = package / "scripts/check.py"
-            script.parent.mkdir(parents=True)
-            (package / "FLOW.md").write_text(
-                "Use scripts/check.py.\n", encoding="utf-8"
-            )
-            script.write_text("print('trusted')\n", encoding="utf-8", newline="\n")
-            flow = RUNNER.resolve_markdown_flow(project, shared, "review")
-
-            outside = project / "outside-flows"
-            outside_script = outside / "review/scripts/check.py"
-            outside_script.parent.mkdir(parents=True)
-            outside_script.write_text("print('outside')\n", encoding="utf-8", newline="\n")
-            held = shared.with_name("flows-held")
-            shared.rename(held)
-            os.symlink(outside, shared, target_is_directory=True)
-            try:
-                with self.assertRaisesRegex(
-                    RUNNER.FlowError, "unsafe_flow_resource|unsafe_flow_root"
-                ):
-                    RUNNER.resolve_flow_resource(flow, "scripts/check.py")
-            finally:
-                shared.unlink()
-                held.rename(shared)
-
-    def test_packaged_resource_rejects_missing_and_non_regular_targets(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, shared = self.project(directory)
-            package = shared / "review"
-            package.mkdir()
-            (package / "FLOW.md").write_text(
-                "Use scripts/missing.py or scripts/directory.py.\n",
-                encoding="utf-8",
-            )
-            (package / "scripts").mkdir()
-            (package / "scripts/directory.py").mkdir()
-            flow = RUNNER.resolve_markdown_flow(project, shared, "review")
-
-            self.assertTrue(hasattr(RUNNER, "resolve_flow_resource"))
-            with self.assertRaisesRegex(RUNNER.FlowError, "missing_flow_resource"):
-                RUNNER.resolve_flow_resource(flow, "scripts/missing.py")
-            with self.assertRaisesRegex(RUNNER.FlowError, "unsafe_flow_resource"):
-                RUNNER.resolve_flow_resource(flow, "scripts/directory.py")
-
-    def test_user_input_does_not_declare_a_package_resource(self):
+    def test_user_input_keeps_its_original_path_text(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)
             package = shared / "review"
             package.mkdir()
-            (package / "FLOW.md").write_text("Review the input.\n", encoding="utf-8", newline="\n")
-            (package / "scripts").mkdir()
-            (package / "scripts/check.py").write_text(
-                "print('not declared')\n", encoding="utf-8"
-            )
-
+            (package / "FLOW.md").write_text("Review the input.\n", encoding="utf-8")
             invocation = RUNNER.prepare_markdown_run(
                 project, shared, "review", "Use scripts/check.py"
             )
-
             self.assertEqual("Use scripts/check.py", invocation.user_input)
             self.assertNotIn("scripts/check.py", invocation.flow.markdown)
-            with self.assertRaisesRegex(
-                RUNNER.FlowError, "undeclared_flow_resource"
-            ):
-                RUNNER.resolve_flow_resource(
-                    invocation.flow, "scripts/check.py"
-                )
-
-    def test_flat_flow_resource_boundary_does_not_rebase_workspace_path(self):
-        flow = RUNNER.load_markdown_flow(
-            ROOT,
-            ROOT / "usw/flows",
-            "chat-review",
-            origin="shared",
-        )
-
-        self.assertTrue(hasattr(RUNNER, "resolve_flow_resource"))
-        with self.assertRaisesRegex(RUNNER.FlowError, "flat_flow_resource"):
-            RUNNER.resolve_flow_resource(
-                flow, "commands/usw-reviewer-llm-critic.md"
-            )
-        self.assertTrue((ROOT / "commands/usw-reviewer-llm-critic.md").is_file())
 
     def test_root_execution_uses_begin_or_ephemeral_identity(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -665,26 +502,6 @@ class TextFlowRunnerTests(unittest.TestCase):
                 Path(os.path.realpath(package)), invocation.flow.flow_directory
             )
 
-    def test_pathname_backend_reads_a_packaged_resource(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, shared = self.project(os.path.realpath(directory))
-            package = shared / "review"
-            script = package / "scripts/check.py"
-            script.parent.mkdir(parents=True)
-            (package / "FLOW.md").write_text("Use scripts/check.py.\n", encoding="utf-8", newline="\n")
-            script.write_text("print('ok')\n", encoding="utf-8", newline="\n")
-
-            invocation = RUNNER.prepare_markdown_run(project, shared, "review", "input")
-            expected = RUNNER.resolve_flow_resource(invocation.flow, "scripts/check.py")
-            with self.as_pathname_platform():
-                resource = RUNNER.resolve_flow_resource(
-                    invocation.flow, "scripts/check.py"
-                )
-
-            self.assertEqual(b"print('ok')\n", resource.content)
-            self.assertEqual(expected.identity, resource.identity)
-            self.assertEqual(expected.path, resource.path)
-
     def test_pathname_backend_still_rejects_a_symlinked_flow(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(os.path.realpath(directory))
@@ -966,133 +783,6 @@ class TextFlowRunnerTests(unittest.TestCase):
             report = json.loads(completed.stdout)
             self.assertEqual("shared", report["origin"])
             self.assertEqual("shared\n", report["markdown"])
-
-    def test_cli_resource_binds_original_identity_and_entrypoint(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, shared = self.project(directory)
-            package = shared / "review"
-            script = package / "scripts/check.py"
-            script.parent.mkdir(parents=True)
-            (package / "FLOW.md").write_text(
-                "Use scripts/check.py.\n", encoding="utf-8"
-            )
-            script.write_text("print('ok')\n", encoding="utf-8", newline="\n")
-            flow = RUNNER.resolve_markdown_flow(project, shared, "review")
-
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    str(SCRIPT),
-                    "resource",
-                    str(project),
-                    str(shared),
-                    "review",
-                    flow.identity,
-                    str(flow.path),
-                    "scripts/check.py",
-                    "--origin",
-                    "shared",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-
-            self.assertEqual(0, completed.returncode, completed.stderr)
-            report = json.loads(completed.stdout)
-            self.assertEqual(os.path.realpath(script), report["resource_path"])
-            self.assertEqual(flow.identity, report["identity"])
-            self.assertEqual(str(flow.path), report["path"])
-            self.assertEqual(
-                b"print('ok')\n",
-                base64.b64decode(report["content_base64"], validate=True),
-            )
-            self.assertEqual(
-                "usw-resource:"
-                + hashlib.sha256(b"print('ok')\n").hexdigest(),
-                report["resource_identity"],
-            )
-
-            stale = subprocess.run(
-                [
-                    sys.executable,
-                    str(SCRIPT),
-                    "resource",
-                    str(project),
-                    str(shared),
-                    "review",
-                    flow.identity,
-                    str(package / "OTHER.md"),
-                    "scripts/check.py",
-                    "--origin",
-                    "shared",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(2, stale.returncode)
-            self.assertEqual("stale_flow_resource", json.loads(stale.stderr)["error"])
-
-            stale_identity = subprocess.run(
-                [
-                    sys.executable,
-                    str(SCRIPT),
-                    "resource",
-                    str(project),
-                    str(shared),
-                    "review",
-                    "usw-markdown:shared:" + "0" * 64,
-                    str(flow.path),
-                    "scripts/check.py",
-                    "--origin",
-                    "shared",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(2, stale_identity.returncode)
-            self.assertEqual(
-                "stale_flow_resource",
-                json.loads(stale_identity.stderr)["error"],
-            )
-
-    def test_cli_resource_requires_exact_origin(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, shared = self.project(directory)
-            package = shared / "review"
-            script = package / "scripts/check.py"
-            script.parent.mkdir(parents=True)
-            (package / "FLOW.md").write_text(
-                "Use scripts/check.py.\n", encoding="utf-8"
-            )
-            script.write_text("print('ok')\n", encoding="utf-8", newline="\n")
-            flow = RUNNER.resolve_markdown_flow(
-                project, shared, "review", origin="shared"
-            )
-
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    str(SCRIPT),
-                    "resource",
-                    str(project),
-                    str(shared),
-                    "review",
-                    flow.identity,
-                    str(flow.path),
-                    "scripts/check.py",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-
-            self.assertEqual(2, completed.returncode)
-            self.assertEqual(
-                "missing_flow_origin", json.loads(completed.stderr)["error"]
-            )
 
     def test_cli_rejects_repeated_or_conflicting_origins(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import errno
 import hashlib
 import importlib.util
@@ -58,12 +57,6 @@ class MarkdownInvocation(NamedTuple):
     flow: MarkdownFlow
     user_input: str
     warnings: tuple[str, ...] = ()
-
-
-class FlowResource(NamedTuple):
-    path: Path
-    identity: str
-    content: bytes
 
 
 class FlowWritePlan(NamedTuple):
@@ -852,85 +845,6 @@ def write_prepared_flow(
     return written
 
 
-def resolve_flow_resource(flow: MarkdownFlow, relative_path: str) -> FlowResource:
-    """Read one explicitly named packaged resource through the safe boundary."""
-    if flow.path.name != "FLOW.md" or flow.path.parent != flow.flow_directory:
-        raise FlowError(
-            "flat_flow_resource",
-            "flat flow references keep project/workspace-relative semantics",
-        )
-    if not isinstance(relative_path, str) or not relative_path:
-        raise FlowError("invalid_flow_resource", "resource path must be relative")
-    normalized = relative_path.replace("\\", "/")
-    parts = normalized.split("/")
-    if (
-        normalized.startswith("/")
-        or re.match(r"^[A-Za-z]:", normalized)
-        or any(part in {"", ".", ".."} for part in parts)
-    ):
-        raise FlowError(
-            "invalid_flow_resource",
-            f"unsafe packaged resource path: {relative_path!r}",
-        )
-    resource_token = re.compile(
-        r"(?<![\w./\\-])"
-        + re.escape(normalized)
-        + r"(?![\w/\\-]|\.(?=\w))"
-    )
-    if resource_token.search(flow.markdown) is None:
-        raise FlowError(
-            "undeclared_flow_resource",
-            f"packaged flow Markdown does not name resource: {relative_path!r}",
-        )
-
-    with _open_directory(
-        flow.project_root,
-        flow.flow_directory,
-        "flow package resource base",
-    ) as (base, base_directory):
-        path = base.joinpath(*parts)
-        directory = base_directory
-        opened = None
-        try:
-            current = base
-            for part in parts[:-1]:
-                current /= part
-                try:
-                    child = directory.child_directory(part)
-                except FileNotFoundError as error:
-                    raise FlowError(
-                        "missing_flow_resource", f"resource is missing: {current}"
-                    ) from error
-                except OSError as error:
-                    raise FlowError(
-                        "unsafe_flow_resource",
-                        f"resource component is unsafe: {current}",
-                    ) from error
-                if opened is not None:
-                    opened.close()
-                opened = child
-                directory = child
-
-            try:
-                content = directory.read_bytes(parts[-1])
-            except FileNotFoundError as error:
-                raise FlowError(
-                    "missing_flow_resource", f"resource is missing: {path}"
-                ) from error
-            except OSError as error:
-                raise FlowError(
-                    "unsafe_flow_resource", f"resource is unsafe: {path}"
-                ) from error
-            return FlowResource(
-                path=path,
-                identity="usw-resource:" + hashlib.sha256(content).hexdigest(),
-                content=content,
-            )
-        finally:
-            if opened is not None:
-                opened.close()
-
-
 def resolve_markdown_flow(
     project_root: Path,
     shared_root: Path,
@@ -1230,17 +1144,6 @@ def main(argv: list[str] | None = None) -> int:
         "--origin", choices=sorted(ORIGINS), default=argparse.SUPPRESS
     )
 
-    resource = commands.add_parser("resource")
-    resource.add_argument("project_root", type=Path)
-    resource.add_argument("shared_root", type=Path)
-    resource.add_argument("name")
-    resource.add_argument("expected_identity")
-    resource.add_argument("expected_path", type=Path)
-    resource.add_argument("relative_path")
-    resource.add_argument(
-        "--origin", choices=sorted(ORIGINS), default=argparse.SUPPRESS
-    )
-
     prepare_write = commands.add_parser("prepare-write")
     prepare_write.add_argument("project_root", type=Path)
     prepare_write.add_argument("name")
@@ -1258,11 +1161,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(arguments)
 
     try:
-        if args.command == "resource" and args.origin is None:
-            raise FlowError(
-                "missing_flow_origin",
-                "resource lookup requires the exact resolved flow origin",
-            )
         if args.command == "prepare-write":
             write_plan = prepare_flow_write(
                 args.project_root,
@@ -1289,25 +1187,13 @@ def main(argv: list[str] | None = None) -> int:
                 markdown,
                 origin=args.origin,
             )
-        elif args.command in {"inspect", "resource"}:
+        elif args.command == "inspect":
             flow = resolve_markdown_flow(
                 args.project_root,
                 args.shared_root,
                 args.name,
                 origin=args.origin,
             )
-            if args.command == "resource":
-                expected_path = args.expected_path
-                if (
-                    not expected_path.is_absolute()
-                    or flow.identity != args.expected_identity
-                    or flow.path != expected_path
-                ):
-                    raise FlowError(
-                        "stale_flow_resource",
-                        "resource lookup does not match the resolved flow identity and path",
-                    )
-                flow_resource = resolve_flow_resource(flow, args.relative_path)
         else:
             invocation = prepare_markdown_run(
                 args.project_root,
@@ -1335,21 +1221,6 @@ def main(argv: list[str] | None = None) -> int:
                 "flow_directory": str(flow.flow_directory),
                 "markdown": flow.markdown,
                 "warnings": [],
-            }
-        )
-    elif args.command == "resource":
-        _print_json(
-            {
-                "name": flow.name,
-                "origin": flow.origin,
-                "identity": flow.identity,
-                "path": str(flow.path),
-                "flow_directory": str(flow.flow_directory),
-                "resource_path": str(flow_resource.path),
-                "resource_identity": flow_resource.identity,
-                "content_base64": base64.b64encode(flow_resource.content).decode(
-                    "ascii"
-                ),
             }
         )
     else:
