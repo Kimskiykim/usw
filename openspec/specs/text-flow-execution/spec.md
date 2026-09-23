@@ -42,9 +42,10 @@ containment и каждый существующий path component, откло�
 `dir_fd`, либо pathname-based с отклонением reparse point для каждого component
 и повторной проверкой containment на остальных платформах. Если в одном
 выбранном origin существуют оба layout, разрешение MUST остановиться с
-`ambiguous_flow_layout`. Оба flow layout и packaged resources SHALL разрешаться
-на каждой поддерживаемой платформе; `unsupported_safe_flow_platform` MUST NOT
-быть обычным результатом разрешения packaged flow на поддерживаемой платформе.
+`ambiguous_flow_layout`. Оба flow layout SHALL разрешаться на каждой
+поддерживаемой платформе; `unsupported_safe_flow_platform` MUST NOT быть
+обычным результатом разрешения packaged flow на поддерживаемой платформе.
+Этот resolver обслуживает entrypoint, а не соседние файлы пакета.
 
 #### Scenario: Промежуточный symlink
 - **WHEN** любой component, ведущий к выбранному flat или packaged flow, является symbolic link
@@ -59,8 +60,8 @@ containment и каждый существующий path component, откло�
 - **THEN** USW использует pathname-based backend и возвращает те же name, origin, identity, path, flow directory и точный Markdown, что и на остальных платформах
 
 #### Scenario: Packaged resource без descriptor-relative access
-- **WHEN** packaged Markdown называет sibling resource на такой платформе
-- **THEN** resource читается через ту же boundary, привязывается к исходным flow identity и entrypoint и отклоняется при link, escape или неожиданном filesystem type
+- **WHEN** выбранный packaged `FLOW.md` ссылается на соседний файл на поддерживаемой платформе без `dir_fd`
+- **THEN** USW передаёт `flow_directory`, а исполнитель при необходимости читает файл обычным инструментом; отдельный resource resolver и fallback для него не требуются
 
 #### Scenario: Windows fallback разрешает legacy flat flow
 - **WHEN** descriptor-relative API недоступны и существует только совместимый entrypoint `<name>.md`
