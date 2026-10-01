@@ -78,7 +78,6 @@ FLOW_IDENTITY = re.compile(r"^usw-markdown:(local|shared):[0-9a-f]{64}$")
 INVOCATION = re.compile(r"^[0-9a-f]{32}$")
 OPERATION_ID = re.compile(r"^usw-operation:([0-9a-f]{64})$")
 REVISION = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
-LEGACY_HEADER = "| Subject | Role | Attempt | Current operation | Status | Updated |"
 ROUTER_HEADER = "# Developer Handoff Router"
 ROUTER_EMPTY = "No registered operations."
 ROUTER_CLEANUP = (
@@ -120,7 +119,6 @@ class Handoff:
     status: str
     metadata: dict[str, str]
     sections: dict[str, str]
-    legacy: bool = False
 
 
 @dataclass(frozen=True)
@@ -324,11 +322,7 @@ def _read_operation_at(
             missing_detail=f"operation is not registered: {operation}",
         )
     parsed = parse_handoff(content)
-    if (
-        parsed.legacy
-        or parsed.status == "idle"
-        or parsed.metadata.get("Operation") != operation
-    ):
+    if parsed.status == "idle" or parsed.metadata.get("Operation") != operation:
         raise HandoffError(
             "invalid_operation_state",
             "operation document identity does not match its route",
@@ -702,7 +696,8 @@ def handoff_format(content: str) -> str:
     if content.startswith(f"{ROUTER_HEADER}\n"):
         parse_router(content)
         return "router"
-    return "legacy" if parse_handoff(content).legacy else "generic"
+    parse_handoff(content)
+    return "generic"
 
 
 def _metadata(lines: list[str]) -> dict[str, str]:
@@ -739,19 +734,6 @@ def _sections(lines: list[str]) -> tuple[list[str], dict[str, str]]:
     }
 
 
-def _legacy_handoff(lines: list[str]) -> Handoff:
-    index = lines.index(LEGACY_HEADER)
-    if index + 2 >= len(lines):
-        raise HandoffError("invalid_legacy_handoff", "incomplete legacy metadata")
-    cells = [
-        value.strip()
-        for value in lines[index + 2].strip().strip("|").split("|")
-    ]
-    if len(cells) != 6 or cells[4] not in {*NON_IDLE_STATUSES, "idle"}:
-        raise HandoffError("invalid_legacy_handoff", "invalid legacy status")
-    return Handoff(cells[4], {}, {}, legacy=True)
-
-
 def _operation_id(
     origin: str, flow_identity: str, input_digest: str, invocation: str
 ) -> str:
@@ -767,8 +749,6 @@ def parse_handoff(content: str) -> Handoff:
         raise HandoffError(
             "invalid_handoff", "expected '# Developer Handoff' as first line"
         )
-    if LEGACY_HEADER in lines:
-        return _legacy_handoff(lines)
     if any(line.startswith("# ") for line in lines[1:]):
         raise HandoffError("invalid_handoff", "multiple top-level headings")
 
@@ -1020,14 +1000,11 @@ def _install_operation_document(
 
 def _ensure_router_locked(
     root: Path, state_directory: int
-) -> tuple[Path, Router | None, str]:
+) -> tuple[Path, Router, str]:
     path, content = _read_handoff_content_locked(root, state_directory)
     state_format = handoff_format(content)
     if state_format == "router":
         return path, parse_router(content), content
-    if state_format == "legacy":
-        return path, None, content
-
     current = parse_handoff(content)
     if current.status == "idle":
         candidate = render_readable_router()
@@ -1088,11 +1065,6 @@ def _registered_operation_locked(
 ) -> tuple[Path, Router, Path, str, Handoff]:
     _operation_suffix(operation)
     router_path, router, _ = _ensure_router_locked(root, state_directory)
-    if router is None:
-        raise HandoffError(
-            "legacy_recovery_required",
-            "legacy HANDOFF is read-only until explicit finish",
-        )
     if operation not in router.operations:
         raise HandoffError(
             "stale_operation",
@@ -1112,11 +1084,7 @@ def _write_operation_at(
 ) -> Path:
     path = _operation_path(root, operation)
     parsed = parse_handoff(content)
-    if (
-        parsed.legacy
-        or parsed.status == "idle"
-        or parsed.metadata.get("Operation") != operation
-    ):
+    if parsed.status == "idle" or parsed.metadata.get("Operation") != operation:
         raise HandoffError(
             "invalid_operation_state",
             "operation document identity does not match its route",
@@ -1185,12 +1153,10 @@ def _write_readable_router_locked(
 
 def discover_handoffs(
     project: Path,
-) -> tuple[Path, str, tuple[dict[str, str], ...], bool]:
+) -> tuple[Path, str, tuple[dict[str, str], ...]]:
     root = _enabled_root(project)
     with _locked_local_directory(root) as (_, directory):
         path, router, content = _ensure_router_locked(root, directory)
-        if router is None:
-            return path, content, (), True
         summaries = _operation_summaries_locked(root, directory, router)
         readable = render_readable_router(summaries)
         if content != readable:
@@ -1201,12 +1167,7 @@ def discover_handoffs(
                 validator=parse_router,
             )
             content = readable
-        return (
-            path,
-            content,
-            summaries,
-            False,
-        )
+        return path, content, summaries
 
 
 def assert_current_handoff(project: Path, operation: str) -> Path:
@@ -1247,13 +1208,6 @@ def read_handoff(
     root = _enabled_root(project)
     with _locked_local_directory(root) as (_, directory):
         path, router, content = _ensure_router_locked(root, directory)
-        if router is None:
-            if operation is not None:
-                raise HandoffError(
-                    "legacy_recovery_required",
-                    "legacy HANDOFF has no routed operation identity",
-                )
-            return path, content, parse_handoff(content).status
         if operation is not None:
             _, _, operation_path, operation_content, current = (
                 _registered_operation_locked(root, directory, operation)
@@ -1286,11 +1240,6 @@ def begin_handoff(
     root = _enabled_root(project)
     with _locked_local_directory(root) as (_, directory):
         router_path, router, _ = _ensure_router_locked(root, directory)
-        if router is None:
-            raise HandoffError(
-                "legacy_recovery_required",
-                "legacy HANDOFF is read-only; inspect or finish it before a new flow",
-            )
         candidate = render_begin(
             flow_name,
             origin,
@@ -1434,8 +1383,6 @@ def save_handoff(
                 missing_detail=f"candidate is missing: {candidate}",
             )
         parsed = parse_handoff(content)
-        if parsed.legacy:
-            raise HandoffError("legacy_read_only", "legacy HANDOFF cannot be saved")
         if parsed.status == "idle":
             raise HandoffError(
                 "invalid_transition", "only explicit finish may write idle"
@@ -1516,20 +1463,6 @@ def finish_handoff(
     root = _enabled_root(project)
     with _locked_local_directory(root) as (_, directory):
         path, router, _ = _ensure_router_locked(root, directory)
-        if router is None:
-            if operation is not None:
-                raise HandoffError(
-                    "legacy_recovery_required",
-                    "legacy HANDOFF has no routed operation identity",
-                )
-            _atomic_write(
-                directory,
-                path,
-                render_readable_router(),
-                validator=parse_router,
-            )
-            return path
-
         if operation is None:
             if not router.operations:
                 return path
@@ -1567,27 +1500,24 @@ def finish_handoff(
         return path
 
 
-def cleanup_handoffs(project: Path) -> tuple[Path, tuple[str, ...]]:
+def cleanup_handoffs(
+    project: Path, *, all_operations: bool = False
+) -> tuple[Path, tuple[str, ...]]:
     root = _enabled_root(project)
     with _locked_local_directory(root) as (_, directory):
         path, router, _ = _ensure_router_locked(root, directory)
-        if router is None:
-            raise HandoffError(
-                "legacy_recovery_required",
-                "legacy HANDOFF must be finished explicitly",
-            )
-        terminal: list[str] = []
+        selected: list[str] = []
         for operation in router.operations:
             _, _, current = _read_operation_at(root, directory, operation)
-            if current.status in TERMINAL_STATUSES:
-                terminal.append(operation)
-        if not terminal:
+            if all_operations or current.status in TERMINAL_STATUSES:
+                selected.append(operation)
+        if not selected:
             _write_readable_router_locked(
                 root, directory, path, router
             )
             return path, ()
 
-        removed = tuple(terminal)
+        removed = tuple(selected)
         remaining = tuple(
             operation
             for operation in router.operations
@@ -1631,6 +1561,7 @@ def main(argv: list[str] | None = None) -> int:
     finish.add_argument("operation", nargs="?")
     cleanup = commands.add_parser("cleanup")
     cleanup.add_argument("project", nargs="?", default=".", type=Path)
+    cleanup.add_argument("--all", dest="all_operations", action="store_true")
     save = commands.add_parser("save")
     save.add_argument("project", type=Path)
     save.add_argument("operation")
@@ -1662,10 +1593,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command in {"show", "resume"}:
             if args.operation is None:
-                router_path, router_content, operations, legacy = (
+                router_path, router_content, operations = (
                     discover_handoffs(args.project)
                 )
-                if not legacy and len(operations) != 1:
+                if len(operations) != 1:
                     _print(
                         {
                             "path": str(router_path),
@@ -1674,7 +1605,6 @@ def main(argv: list[str] | None = None) -> int:
                                 if not operations
                                 else "selection_required"
                             ),
-                            "legacy": False,
                             "recovery_only": bool(operations),
                             "operations": operations,
                             "content": router_content,
@@ -1689,13 +1619,11 @@ def main(argv: list[str] | None = None) -> int:
             path, content, status = read_handoff(
                 args.project, selected
             )
-            parsed = parse_handoff(content)
             _print(
                 {
                     "path": str(path),
                     "status": status,
-                    "legacy": parsed.legacy,
-                    "recovery_only": parsed.legacy or status != "idle",
+                    "recovery_only": status != "idle",
                     "content": content,
                 }
             )
@@ -1710,7 +1638,9 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
         elif args.command == "cleanup":
-            path, removed = cleanup_handoffs(args.project)
+            path, removed = cleanup_handoffs(
+                args.project, all_operations=args.all_operations
+            )
             _print(
                 {
                     "path": str(path),

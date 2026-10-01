@@ -85,6 +85,10 @@ class AtomicSkillContractTests(unittest.TestCase):
         for content in (manage, run, initialize, fallback):
             self.assertIn(".usw/handoffs/", content)
         self.assertIn("assert-current", manage)
+        self.assertIn("Неподдерживаемый формат HANDOFF отклоняется", manage)
+        self.assertIn("cleanup --all", manage)
+        command = (ROOT / "commands/usw-handoff.md").read_text(encoding="utf-8")
+        self.assertIn("cleanup --all", command)
         self.assertNotIn("{{updated_at}}", fallback)
 
     def test_run_flow_reads_packaged_siblings_with_agent_tools(self):

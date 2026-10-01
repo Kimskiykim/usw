@@ -200,31 +200,30 @@ class TextFirstEndToEndTests(unittest.TestCase):
                 HANDOFF.read_handoff(project)
             self.assertEqual(before, existing.read_bytes())
 
-    def test_legacy_flow_and_handoff_are_preserved(self):
+    def test_old_flow_file_is_preserved_and_role_table_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             INIT.initialize_usw(project)
             legacy_flow = project / ".usw/FLOW.json"
             legacy_flow.write_text("{legacy", encoding="utf-8", newline="\n")
-            legacy_handoff = (
+            old_role_table = (
                 "# Developer Handoff\n\n"
                 "| Subject | Role | Attempt | Current operation | Status | Updated |\n"
                 "|---|---|---|---|---|---|\n"
                 "| task/a/1 | Development | old:1/1 | op-001 | paused | 2026-07-30T10:00:00+03:00 |\n"
             )
             handoff = project / ".usw/HANDOFF.md"
-            handoff.write_text(legacy_handoff, encoding="utf-8", newline="\n")
+            handoff.write_text(old_role_table, encoding="utf-8", newline="\n")
             flow = project / "usw/flows/review.md"
             flow.write_text("Review.\n", encoding="utf-8", newline="\n")
 
             invocation = RUNNER.prepare_markdown_run(
                 project, project / "usw/flows", "review", "input"
             )
-            _, content, status = HANDOFF.read_handoff(project)
-
             self.assertEqual(1, len(invocation.warnings))
-            self.assertEqual(("paused", legacy_handoff), (status, content))
-            with self.assertRaisesRegex(HANDOFF.HandoffError, "legacy"):
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_handoff"):
+                HANDOFF.read_handoff(project)
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_handoff"):
                 HANDOFF.begin_handoff(
                     project,
                     invocation.flow.name,
@@ -233,7 +232,7 @@ class TextFirstEndToEndTests(unittest.TestCase):
                     invocation.user_input,
                 )
             self.assertEqual("{legacy", legacy_flow.read_text(encoding="utf-8"))
-            self.assertEqual(legacy_handoff, handoff.read_text(encoding="utf-8"))
+            self.assertEqual(old_role_table, handoff.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

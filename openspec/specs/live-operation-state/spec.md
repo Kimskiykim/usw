@@ -43,20 +43,35 @@ Permission boundary в root или nested child SHALL использовать
 - **THEN** только этот root executor записывает Outcome своей operation и
   включает фактический nested progress, необходимый для recovery
 
+### Requirement: Неподдерживаемое содержимое HANDOFF отклоняется
+При включённом handoff runtime SHALL проверять `.usw/HANDOFF.md` как router или
+поддерживаемый generic single-state документ. Содержимое, не прошедшее эти
+проверки, SHALL отклоняться ошибкой валидации без изменения bytes
+`.usw/HANDOFF.md`, operation documents и candidates.
+
+#### Scenario: Файл другого формата
+- **WHEN** handoff-команда читает файл, который не является ни валидным router,
+  ни валидным generic single-state документом
+- **THEN** команда возвращает ошибку валидации, а bytes HANDOFF, operation
+  documents и candidates остаются неизменными
+
 ### Requirement: Recoverable state требует explicit finish
 Generic states `in_progress`, `paused`, `blocked` и `decision_required` SHALL
-оставаться зарегистрированными до Finish с их exact operation identity. Они
+оставаться зарегистрированными до Finish с их exact operation identity или
+явно запрошенного `cleanup --all`. Они
 MUST NOT блокировать Begin независимой root operation. Recoverable root state
 MAY допускать nested executions, переданные его root executor с его exact
 current identity, но MUST отклонять nested execution для любой другой identity
 или terminal state.
 
 Generic states `failed` и `completed` SHALL оставаться доступными для inspection
-до Finish с их exact identity. Новый Begin SHALL создавать другую operation и
+до явного Finish или Cleanup. Новый Begin SHALL создавать другую operation и
 MUST NOT заменять несвязанное terminal state. Неожиданное прерывание после
 регистрации SHALL оставлять status `in_progress` и MUST NOT вызывать automatic
-retry. Cleanup SHALL явно удалять все зарегистрированные operations со status
-`failed` и `completed`, сохраняя каждую recoverable operation.
+retry. Cleanup без `--all` SHALL удалять только зарегистрированные operations
+со status `failed` и `completed`, сохраняя recoverable operations. Явный
+`cleanup --all` SHALL удалять все зарегистрированные operations независимо от
+status; файлы продукта и незарегистрированные документы MUST NOT удаляться.
 
 #### Scenario: Тот же flow получает новый input
 - **WHEN** существует recoverable operation и тот же flow начинается с новым input
@@ -82,7 +97,7 @@ retry. Cleanup SHALL явно удалять все зарегистрирова
   outcome остаётся доступным для inspection
 
 #### Scenario: Terminal operations очищаются вместе
-- **WHEN** Cleanup запрошен при зарегистрированных terminal и recoverable
+- **WHEN** Cleanup без `--all` запрошен при зарегистрированных terminal и recoverable
   operations
 - **THEN** удаляются только terminal routes и их exact files, а recoverable
   operations остаются зарегистрированными
@@ -91,6 +106,15 @@ retry. Cleanup SHALL явно удалять все зарегистрирова
 - **WHEN** Resume выбирает operation со status `in_progress` без terminal Outcome
 - **THEN** он возвращает recovery context этой operation без автоматического
   повтора root или nested mutations
+
+#### Scenario: Все операции очищаются явно
+- **WHEN** пользователь вызывает `cleanup --all` при операциях в любых статусах
+- **THEN** router становится пустым, документы и кандидаты всех зарегистрированных
+  операций удаляются, а остальные файлы остаются неизменными
+
+#### Scenario: Пустой журнал очищается повторно
+- **WHEN** пользователь вызывает `cleanup --all` при пустом router
+- **THEN** возвращается пустой список удалённых операций
 
 ### Requirement: Operation identity связывает flow, input и route
 Operation identity SHALL выводиться из flow origin, flow identity и exact input
@@ -140,13 +164,13 @@ MUST NOT начинать model execution до подтверждения обе
 обновлять только выбранный authoritative operation document, а затем обновлять
 человекочитаемый status snapshot в router.
 
-Save MUST использовать operation-scoped candidate и MUST NOT заменять legacy
-state, переписывать terminal operation, изменять operation identity или
-immutable context либо указывать на незарегистрированную operation. Finish
-SHALL отменять регистрацию только выбранной identity до удаления только её
-exact operation document и candidate. Cleanup SHALL сначала отменить регистрацию
-всех terminal identities, а затем удалить только их exact operation documents
-и candidates.
+Save MUST использовать operation-scoped candidate и MUST NOT переписывать
+terminal operation, изменять operation identity или immutable context либо
+указывать на незарегистрированную operation. Finish SHALL отменять регистрацию
+только выбранной identity до удаления только её exact operation document и
+candidate. Cleanup SHALL сначала отменить регистрацию выбранных identities
+(terminal без `--all`, всех зарегистрированных с `--all`), а затем удалить
+только их exact operation documents и candidates.
 
 #### Scenario: Два вызова Begin пересекаются
 - **WHEN** два process concurrently создают разные operation identities
@@ -179,17 +203,6 @@ exact operation document и candidate. Cleanup SHALL сначала отмени
   где нет `fcntl`
 - **THEN** transition сериализуется locking primitive этой платформы, а его
   state files читаются и записываются через общую safe-access boundary
-
-### Requirement: Legacy handoff доступен только для recovery
-Role-based HANDOFF SHALL оставаться доступным для чтения через Show и Resume без
-automatic migration. Resume MUST NOT исполнять работу или записывать generic
-Outcome поверх legacy content. Legacy state SHALL блокировать Begin, а явный
-Finish SHALL заменять его empty router.
-
-#### Scenario: Активное legacy state
-- **WHEN** Resume читает role-based handoff
-- **THEN** он показывает доступный recovery context и требует Finish до начала
-  routed operation
 
 ### Requirement: Отключённая capability не касается HANDOFF
 Когда effective `handoff` равен `false`, initialization, root и nested execution,
@@ -251,8 +264,8 @@ USW SHALL предоставлять read-only handoff operation, которая
 - **THEN** verification проходит, а bytes router и operation остаются неизменными
 
 #### Scenario: Stale parent проверен
-- **WHEN** запрошенная identity отсутствует, не совпадает, является idle, legacy
-  или terminal
+- **WHEN** запрошенная identity отсутствует, не совпадает, является idle или
+  terminal
 - **THEN** verification завершается ошибкой, а каждый local handoff artifact
   остаётся неизменным
 

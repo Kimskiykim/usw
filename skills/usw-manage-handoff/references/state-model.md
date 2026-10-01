@@ -36,17 +36,15 @@ router с readback и только потом возвращает ID и path. O
 snapshot в router. Finish сначала подтверждённо удаляет route, затем только её
 document и candidate; cleanup failure после unregistration может оставить
 безопасный orphan, но не возвращает operation в recovery. Cleanup сначала
-подтверждает новый router без terminal routes, затем удаляет только их
-documents и candidates.
+подтверждает router без выбранных routes (terminal по умолчанию, всех с `--all`),
+затем удаляет только их documents и candidates.
 
 ## Миграции и совместимость
 
 Generic single-state HANDOFF мигрирует под lock: idle превращается в empty
 router; non-idle сначала exact-byte записывается в operation document по его
 validated embedded identity и только потом HANDOFF заменяется router-ом —
-до успешной замены single-state файл остаётся authoritative. Legacy role-based
-HANDOFF доступен только для Show/Resume/Finish, блокирует Begin и не
-мигрируется автоматически; его Finish создаёт empty router.
+до успешной замены single-state файл остаётся authoritative.
 
 Старые generic operation documents без Summary, Started и Workspace читаются
 без изменения байт; discovery выводит bounded summary из exact input и
