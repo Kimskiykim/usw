@@ -247,9 +247,15 @@ Review focus:
 ```
 
 Не изменять файлы и не публиковать finding без конкретного evidence. Если
-материальных findings нет, сохранить точный verdict prompt:
+проверка завершена и материальных findings нет, сохранить точный verdict prompt:
 `No material LLM slop found.` Если findings есть, сохранить их severity, файл,
-строку, evidence и минимальное упрощение.
+строку, evidence и минимальное упрощение. Материальные findings включают `low`.
+
+При `Review incomplete.` сохранить причину, непроверенную область и
+подтверждённые findings в decision log как `llm-critic: incomplete — <причина>`.
+Вернуть `blocked` при недоступных файлах или инструментах либо
+`decision_required` при недостатке необходимых данных. Не выставлять
+`llm-critic: clean` и не завершать gate-7.2 до разрешения причины.
 
 Используя findings LLM-critic как evidence, второй агент также проверяет по
 PR Size Rule из `GIGACODE.md`:

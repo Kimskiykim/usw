@@ -45,8 +45,10 @@ subagents.
 - Review focus: CALL COMMAND `/usw-reviewer-llm-critic`; прочитать полный
   prompt `commands/usw-reviewer-llm-critic.md` и применить без смягчения.
 - Output contract: findings по severity; для каждого — точный файл и строка,
-  defect, evidence, impact и минимальный fix. Если material findings нет,
-  вернуть ровно `No material LLM slop found.`
+  defect, evidence, impact и минимальный fix. Material findings включают `low`.
+  При завершённой проверке без findings вернуть ровно
+  `No material LLM slop found.` При незавершённой — `Review incomplete.`
+  с причиной, непроверенной областью и уже подтверждёнными findings.
 
 ### `custom`
 
@@ -101,8 +103,12 @@ review-budget-reason: <triggers и factors либо low-risk reason>
 выполняет ровно одно read-only discovery review непосредственно по этим трём
 блокам.
 
-Reviewers ничего не меняют. Tool-unavailable результат возвращает `blocked`;
-пустой или не соответствующий output contract результат возвращает
+Reviewers ничего не меняют. Tool-unavailable результат возвращает `blocked`.
+`Review incomplete.` из-за недоступных файлов или инструментов также
+возвращает `blocked`; из-за недостатка необходимых данных —
+`decision_required`. Сохранить причину, непроверенную область и findings;
+не переходить к `accept-as-is` или voting до завершения проверки.
+Пустой или не соответствующий output contract результат возвращает
 `decision_required`. Автоматически не повторять и не подменять reviewer-а.
 
 ### 3. Дедуплицировать candidates
