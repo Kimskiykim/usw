@@ -225,6 +225,19 @@ class InitializeUswTests(unittest.TestCase):
                 "complete content\n", destination.read_text(encoding="utf-8")
             )
 
+    def test_initialization_copies_frontmatter_and_preserves_existing_example(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            existing = project / "usw/flows/examples/chat-review.md"
+            existing.parent.mkdir(parents=True)
+            existing.write_bytes(b"# Legacy user example\r\n")
+            INIT_USW.initialize_usw(project)
+            self.assertEqual(b"# Legacy user example\r\n", existing.read_bytes())
+            for name in ("dev-test", "plan-small-steps", "refine-intent"):
+                example = project / f"usw/flows/examples/{name}.md"
+                self.assertTrue(example.read_bytes().startswith(f"---\nname: {name}\ndescription: ".encode()))
+                self.assertEqual(INIT_USW.read_template(f"flows/examples/{name}.md"), example.read_text())
+
     def test_creates_standalone_workspace_and_local_state(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)

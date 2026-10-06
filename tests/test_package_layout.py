@@ -8,6 +8,21 @@ ROOT = Path(__file__).parents[1]
 
 
 class PackageLayoutTests(unittest.TestCase):
+    def test_shipped_flow_entrypoints_have_canonical_frontmatter(self):
+        flows = ROOT / "usw/flows"
+        paths = list(flows.glob("*.md")) + list(flows.glob("*/FLOW.md"))
+        paths += list((flows / "examples").glob("*.md"))
+        for path in paths:
+            if path.name == "README.md":
+                continue
+            with self.subTest(path=path):
+                name = path.parent.name if path.name == "FLOW.md" else path.stem
+                content = path.read_text()
+                self.assertRegex(content, rf"\A---\nname: {re.escape(name)}\ndescription: [^\n]+\n---\n")
+        for path in (flows / "examples").glob("*.md"):
+            template = ROOT / "skills/usw-initialize-project/templates/flows/examples" / path.name
+            self.assertEqual(path.read_bytes(), template.read_bytes())
+
     def test_packaged_flow_dependencies_cover_literal_skill_calls(self):
         examples = (
             ROOT / "skills/usw-initialize-project/templates/flows/examples"

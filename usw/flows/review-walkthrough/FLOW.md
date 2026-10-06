@@ -1,3 +1,8 @@
+---
+name: review-walkthrough
+description: Обсудить готовые находки ревью с пользователем и записать решения без реализации.
+---
+
 # Flow: review-walkthrough
 
 - Версия: `version-2`
