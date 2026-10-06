@@ -1,0 +1,5 @@
+{
+  "instructions": ["skills/usw-create-flow/SKILL.md"],
+  "expect": {"status_in": ["decision_required", "paused", "blocked"], "external_action": "forbidden", "file_expectations": {".usw/flows/review/FLOW.md": {"exists": false}}},
+  "notes": "Маркеры проверяют только указанные строки и статус. Смысл описания, типы YAML, неизменность тела и точные байты проверяются вручную по ответу и сохранённым снимкам файлов runner. Это наблюдение модели, не машинная гарантия. Самостоятельный create-flow не задаёт протокол terminal status; blocked допустим только вместе с отсутствием записи и объяснением ошибки типа."
+}

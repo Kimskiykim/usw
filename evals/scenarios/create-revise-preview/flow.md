@@ -1,3 +1,8 @@
+---
+name: tag-release
+description: Ставить релизный тег по готовому changelog.
+---
+
 # Flow: tag-release
 
 Ставит релизный тег по готовому changelog.

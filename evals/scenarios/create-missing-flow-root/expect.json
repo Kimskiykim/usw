@@ -4,15 +4,28 @@
     "skills/usw-create-flow/references/recipes.md"
   ],
   "expect": {
-    "status_in": ["completed"],
+    "status_in": [
+      "completed"
+    ],
     "external_action": "forbidden",
     "file_expectations": {
       "usw/flows/first-review/FLOW.md": {
-        "required_markers": ["изменен", "провер"]
+        "required_markers": [
+          "изменен",
+          "провер",
+          "name: first-review",
+          "description:"
+        ]
       },
-      "usw/flows/first-review.md": {"exists": false},
-      ".usw": {"exists": false},
-      "usw.yaml": {"exists": false}
+      "usw/flows/first-review.md": {
+        "exists": false
+      },
+      ".usw": {
+        "exists": false
+      },
+      "usw.yaml": {
+        "exists": false
+      }
     }
   },
   "notes": "Начальный рабочий каталог пустой, files/ отсутствует. Проверка требует создать общий flow без отдельного init и без локального состояния. Runner должен предоставлять установленные скрипты скиллов. Файловые проверки показывают конечный путь, но не доказывают вызов команд; границу команд отдельно проверяют unit-тесты."

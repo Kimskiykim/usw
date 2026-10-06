@@ -23,7 +23,9 @@
         "required_markers": [
           "approve",
           "change",
-          "cancel"
+          "cancel",
+          "name: draft-post",
+          "description:"
         ],
         "forbidden_markers": [
           "GATE",

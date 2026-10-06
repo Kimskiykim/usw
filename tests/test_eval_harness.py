@@ -247,6 +247,18 @@ class ScenarioLoadingTests(unittest.TestCase):
             with self.subTest(scenario=directory.name):
                 HARNESS.load_scenario(directory)
 
+    def test_frontmatter_behavior_scenarios_are_checked_in(self):
+        names = {path.name for path in HARNESS.discover_scenarios()}
+        for name in ("create-flow-frontmatter", "create-flow-frontmatter-structured",
+                     "create-optional-frontmatter", "create-no-optional-frontmatter",
+                     "create-invalid-metadata-tags", "create-invalid-metadata-version",
+                     "create-preserve-frontmatter", "create-legacy-body-edit",
+                     "create-frontmatter-preview", "create-exact-legacy-conflict",
+                     "find-by-description", "find-legacy-frontmatter", "find-ambiguous-descriptions",
+                     "assess-frontmatter-notice", "assess-frontmatter-legacy",
+                     "run-frontmatter-name", "run-frontmatter-version", "run-frontmatter-compatibility"):
+            self.assertIn(name, names)
+
     def test_inventory_behavior_scenarios_are_checked_in(self):
         names = {path.name for path in HARNESS.discover_scenarios()}
 

@@ -29,6 +29,63 @@ class TextFlowRunnerTests(unittest.TestCase):
         shared.mkdir(parents=True)
         return project, shared
 
+    def test_frontmatter_and_legacy_markdown_remain_exact_across_origins_and_layouts(self):
+        header = ('---\r\nname: review\r\ndescription: |\r\n  Проверка.\r\n'
+                  '  Перед ревью.\r\ncompatibility: Git\r\nmetadata:\r\n'
+                  '  version: "1.0"\r\n  tags: "git, review"\r\n---\r\n')
+        for origin in ("local", "shared"):
+            for layout in ("flat", "package"):
+                for content in (header + "1. Проверить.\r\n", "# Legacy\n", "# Body\n---\nname: body\n"):
+                    with self.subTest(origin=origin, layout=layout, content=content), tempfile.TemporaryDirectory() as raw:
+                        project, shared = self.project(raw)
+                        root = project / ".usw/flows" if origin == "local" else shared
+                        target = root / ("review.md" if layout == "flat" else "review/FLOW.md")
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_bytes(content.encode())
+                        old = RUNNER.prepare_markdown_run(project, shared, "review", "input", origin=origin)
+                        self.assertEqual(content, old.flow.markdown)
+                        target.write_bytes((content + "\n").encode())
+                        new = RUNNER.prepare_markdown_run(project, shared, "review", "input", origin=origin)
+                        self.assertNotEqual(old.flow.identity, new.flow.identity)
+                        self.assertEqual(content, old.flow.markdown)
+                        if content.startswith("---"):
+                            target.write_bytes(content.replace("Проверка.", "Ревью.").encode())
+                            changed = RUNNER.resolve_markdown_flow(project, shared, "review", origin=origin)
+                            self.assertNotEqual(old.flow.identity, changed.identity)
+
+    def test_frontmatter_only_change_stales_write_and_body_revision_preserves_header(self):
+        header = ('---\r\nname: review\r\ndescription: |\r\n  Проверка.\r\n'
+                  'compatibility: Git\r\nmetadata:\r\n  version: "1.0"\r\n'
+                  'x-note: untouched\r\n---\r\n')
+        for origin in ("local", "shared"):
+            for layout in ("flat", "package"):
+                for pathname in (False, True):
+                    with self.subTest(origin=origin, layout=layout, pathname=pathname), tempfile.TemporaryDirectory() as raw:
+                        project, shared = self.project(raw)
+                        root = project / ".usw/flows" if origin == "local" else shared
+                        target = root / ("review.md" if layout == "flat" else "review/FLOW.md")
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        sibling = target.parent / "notes.bin"
+                        sibling.write_bytes(b"\xff sibling")
+                        original = header + "1. OLD.\r\n"
+                        target.write_bytes(original.encode())
+                        native = RUNNER.SAFE_ACCESS.supports_descriptor_relative_access()
+                        with mock.patch.object(RUNNER.SAFE_ACCESS, "supports_descriptor_relative_access", return_value=native and not pathname):
+                            prepared = RUNNER.prepare_flow_write(project, "review", origin=origin)
+                            self.assertEqual(original, prepared.markdown)
+                            changed = original.replace("Проверка.", "Ревью.")
+                            target.write_bytes(changed.encode())
+                            with self.assertRaisesRegex(RUNNER.FlowError, "stale_flow_target"):
+                                RUNNER.write_prepared_flow(project, "review", prepared.write_token, original, origin=origin)
+                            self.assertEqual(changed.encode(), target.read_bytes())
+                            prepared = RUNNER.prepare_flow_write(project, "review", origin=origin)
+                            revision = changed.replace("1. OLD.", "1. NEW.")
+                            written = RUNNER.write_prepared_flow(project, "review", prepared.write_token, revision, origin=origin)
+                            self.assertEqual(revision, written.markdown)
+                            self.assertEqual(revision.encode(), target.read_bytes())
+                            self.assertTrue(target.read_bytes().startswith(header.replace("Проверка.", "Ревью.").encode()))
+                            self.assertEqual(b"\xff sibling", sibling.read_bytes())
+
     def test_exact_bytes_create_identity_and_model_markdown(self):
         with tempfile.TemporaryDirectory() as directory:
             project, shared = self.project(directory)

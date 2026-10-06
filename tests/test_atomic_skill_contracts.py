@@ -25,6 +25,18 @@ ARTIFACTS = load(
 
 
 class AtomicSkillContractTests(unittest.TestCase):
+    def test_flow_skills_reference_frontmatter_without_client_extensions(self):
+        for name in ("create", "find", "assess", "run"):
+            content = (ROOT / "skills" / f"usw-{name}-flow/SKILL.md").read_text()
+            with self.subTest(skill=name):
+                self.assertIn("flow-frontmatter", content)
+                self.assertIn("`description`", content)
+                self.assertNotIn("allowed-tools", content)
+                self.assertNotIn("license", content)
+        create = (ROOT / "skills/usw-create-flow/SKILL.md").read_text()
+        for token in ("`name`", "`compatibility`", "`metadata`", "1024", "500", '"1.0"'):
+            self.assertIn(token, create)
+
     def test_production_skills_do_not_import_research_runtime(self):
         for path in (ROOT / "skills").rglob("*"):
             if path.is_file() and "__pycache__" not in path.parts:

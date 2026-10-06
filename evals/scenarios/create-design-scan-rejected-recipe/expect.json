@@ -14,7 +14,9 @@
         "required_markers": [
           "approve",
           "change",
-          "cancel"
+          "cancel",
+          "name: draft-brief",
+          "description:"
         ],
         "forbidden_markers": [
           "LOOP",
