@@ -3,5 +3,6 @@ __pycache__/
 .claude
 .codex
 .codex-plugin
+.agents/
 .DS_Store
 .superpowers
