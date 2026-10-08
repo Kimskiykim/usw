@@ -2,28 +2,23 @@
 
 Карточки по аудитам 3–4 октября 2026. Созданы 6 октября 2026: 44 находки и ограничения, 27 групп рекомендаций. Приоритеты и критерии перенесены из локального списка; подробные доказательства доступны по ссылкам в карточках.
 
-Статус ведётся в самой карточке; этот индекс служит навигацией. Составные пункты разбиваются на независимые изменения при взятии в работу. Перенос карточек не означает выполнения исправлений или принятия открытых продуктовых решений. Ранее заведённые R*/S* остаются в [локальном бэклоге](/Users/leonidkim/Documents/projects/usw/.usw/BACKLOG.md).
+Статус ведётся в самой карточке; этот индекс содержит открытые карточки. Составные пункты разбиваются на независимые изменения при взятии в работу. Перенос карточек не означает выполнения исправлений или принятия открытых продуктовых решений. Оставшиеся локальные R*/S* и ссылки на объединённые пункты — в [локальном бэклоге](/Users/leonidkim/Documents/projects/usw/.usw/BACKLOG.md).
 
-## P1 — 7 карточек
+## P1 — 3 карточки
 
 | Карточка | Предмет |
 | --- | --- |
-| [AUD-F01](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F01.md) | Локальная старая инструкция архивирует даже после Cancel. Дефект текста |
-| [AUD-F01b](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F01b.md) | Старая синхронизация может записать specs в другой проект. Дефект локальной копии |
-| [AUD-F02](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F02.md) | intent-to-spec использует неправильный контракт OpenSpec-артефактов. Дефект интеграции |
 | [AUD-F03](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F03.md) | Пересказ модели может стать «дословной цитатой пользователя». Дефект инструкции |
 | [AUD-F04](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F04.md) | Продолжение сохранённой операции описано не до конца. Функциональный пробел |
-| [AUD-S01](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S01.md) | Миграция HANDOFF теряет состояние при ошибке после замены router |
 | [AUD-S02](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S02.md) | Writer не различает прежний и подставленный обычный каталог |
 
-## P2 — 39 карточек
+## P2 — 37 карточек
 
 | Карточка | Предмет |
 | --- | --- |
 | [AUD-F05](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F05.md) | После ошибки Outcome обещан неверный статус. Дефект текста |
 | [AUD-F06](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F06.md) | Локальные результаты flow не сопоставлены со статусами операции. Пробел композиции |
 | [AUD-F07](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F07.md) | Готовые flow не всегда переносятся в обычный установленный проект. Дефект пути зависимости |
-| [AUD-F08](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F08.md) | LLM fallback инициализации содержит два противоречия. Дефекты текста |
 | [AUD-F09](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F09.md) | В рецепте ревью пересекаются условия веток. Дефект инструкции |
 | [AUD-F10](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F10.md) | Условие завершения review-fix-and-backlog слабее его обязательств. Дефект контракта |
 | [AUD-F11](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F11.md) | Чтение конфигурации разошлось с централизованной валидацией. Подтверждённый разрыв, последствия условны |
@@ -36,7 +31,6 @@
 | [AUD-E02](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-E02.md) | Изолированный eval не готовит обязательные зависимости текущих skills |
 | [AUD-E03](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-E03.md) | Тест полномочий смешивает утверждение внутри flow и пользовательский ввод |
 | [AUD-E04](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-E04.md) | Охват поведения неравномерен |
-| [AUD-S03](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S03.md) | Частичный migration document блокирует автоматический повтор |
 | [AUD-S04](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S04.md) | Initializer после проверки parent записывает через подменённую ссылку |
 | [AUD-S05](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S05.md) | Регистр имени обходит запрет записи в `.git` |
 | [AUD-S06](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S06.md) | Pathname lock открывает заранее существующую ссылку |
@@ -60,7 +54,7 @@
 | [AUD-I25](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I25.md) | Проверка macOS и Windows в CI |
 | [AUD-I26](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I26.md) | Область проверки реализации в конвейере ролей |
 
-## P3 — 25 карточек
+## P3 — 21 карточка
 
 | Карточка | Предмет |
 | --- | --- |
@@ -70,8 +64,6 @@
 | [AUD-I03](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I03.md) | Поиск flow по описанию и безопасное разрешение кандидатов |
 | [AUD-I04](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I04.md) | Структура и локализация оценки flow |
 | [AUD-I05](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I05.md) | Режимы handoff и отчёт о частичном завершении |
-| [AUD-I06](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I06.md) | Контракт инициализации и решение о fallback |
-| [AUD-I07](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I07.md) | Матрица активации скиллов |
 | [AUD-I08](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I08.md) | Аргументы и ошибки командных обёрток |
 | [AUD-I09](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I09.md) | Контракты и примеры результатов ролей |
 | [AUD-I10](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I10.md) | Критерии результата и ограничение повторных исправлений |
@@ -79,7 +71,6 @@
 | [AUD-I12](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I12.md) | Выбор альтернатив и обработка зависимых элементов |
 | [AUD-I13](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I13.md) | Разрешения на внешние действия и ожидание событий |
 | [AUD-I14](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I14.md) | Каталог рецептов и повторное использование возможностей |
-| [AUD-I16](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I16.md) | Решения о режимах аудита и todo-зависимости |
 | [AUD-I17](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I17.md) | Область чтения, origin продолжения и структура готовых flow |
 | [AUD-I18](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I18.md) | Самодостаточные примеры flow |
 | [AUD-I19](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I19.md) | Заполнение контрактов и доказательств в шаблонах |
@@ -88,4 +79,3 @@
 | [AUD-I22](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I22.md) | Единый нормативный источник и редакторское упрощение |
 | [AUD-I23](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I23.md) | Граница между анализируемым текстом и инструкциями |
 | [AUD-I24](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I24.md) | Диагностика версий установленного USW |
-| [AUD-I27](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I27.md) | Описание роли архивного helper в основном тестовом наборе |

@@ -221,9 +221,9 @@ class TextFirstEndToEndTests(unittest.TestCase):
                 project, project / "usw/flows", "review", "input"
             )
             self.assertEqual(1, len(invocation.warnings))
-            with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_handoff"):
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_router"):
                 HANDOFF.read_handoff(project)
-            with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_handoff"):
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_router"):
                 HANDOFF.begin_handoff(
                     project,
                     invocation.flow.name,

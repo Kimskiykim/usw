@@ -1,0 +1,12 @@
+USW behavior evaluation
+Runner: codex exec --sandbox workspace-write --skip-git-repo-check --ignore-user-config --ignore-rules --ephemeral -C {workdir} -
+
+- assess-natural-request: 1/1 observed passes of 1 attempted [pass]
+- assess-unclear-target: 1/1 observed passes of 1 attempted [pass]
+- find-natural-request: 1/1 observed passes of 1 attempted [pass]
+- find-unclear-intent: 1/1 observed passes of 1 attempted [pass]
+- flow-readers-generic-code: 1/1 observed passes of 1 attempted [pass]
+- flow-readers-mention: 1/1 observed passes of 1 attempted [pass]
+- handoff-explicit-disabled: 1/1 observed passes of 1 attempted [pass]
+
+Observed rates for the runner named above, at this run only. This is a measurement of instruction following, not a guarantee of behavior, and it does not certify any model or release.

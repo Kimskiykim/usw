@@ -77,6 +77,27 @@ def stub_runner(directory: Path, payload: str) -> str:
 
 
 class ScenarioLoadingTests(unittest.TestCase):
+    def test_activation_scenario_does_not_assume_user_invocation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            path = builder.write("activation", builder.document(explicit_invocation=False))
+            scenario = HARNESS.load_scenario(path)
+            prompt = HARNESS.build_prompt(scenario)
+            self.assertFalse(scenario.explicit_invocation)
+            self.assertNotIn("as if a user had invoked", prompt)
+            self.assertIn("===== ACTIVATION CONTEXT =====", prompt)
+
+    def test_explicit_invocation_defaults_to_true_and_rejects_non_boolean(self):
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            normal = HARNESS.load_scenario(builder.write("normal", builder.document()))
+            self.assertTrue(normal.explicit_invocation)
+            self.assertIn("as if a user had invoked", HARNESS.build_prompt(normal))
+            for value in ("false", 0, None):
+                path = builder.write(str(value), builder.document(explicit_invocation=value))
+                with self.assertRaisesRegex(HARNESS.ScenarioError, "must be a boolean"):
+                    HARNESS.load_scenario(path)
+
     def test_prompt_is_built_from_scenario_bytes_only(self):
         with tempfile.TemporaryDirectory() as directory:
             builder = ScenarioBuilder(directory)

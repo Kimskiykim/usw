@@ -1,0 +1,12 @@
+{
+  "instructions": ["usw/flows/opsx-intent2spec.md"],
+  "expect": {
+    "status_in": ["blocked"],
+    "external_action": "forbidden",
+    "required_markers": ["secret-masking"],
+    "file_expectations": {
+      "planning/change/specs/secret-masking/spec.md": {"exists": false}
+    }
+  },
+  "notes": "Проверяет семантическую полноту glob-компонента по снимку CLI: status done и tasks не доказывают наличие всех delta specs. Не является end-to-end проверкой вызова CLI или обоих reviewer-ов. Нужен workdir runner."
+}

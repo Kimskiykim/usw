@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"01a11dc9-03a0-7a11-b027-7c7b8bbce3c5"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Использую явно вызванный `usw-manage-handoff`: сначала проверю только верхнеуровневое поле `handoff` в `usw.yaml`; при отключении состояние handoff читать не буду."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc \"sed -n '1,200p' usw.yaml\"","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc \"sed -n '1,200p' usw.yaml\"","aggregated_output":"schema_version: 1\nhandoff: false\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"Handoff отключён конфигурацией: `handoff: false`. Состояние handoff не проверялось."}}
+{"type":"turn.completed","usage":{"input_tokens":33619,"cached_input_tokens":21504,"cache_write_input_tokens":0,"output_tokens":179,"reasoning_output_tokens":0}}

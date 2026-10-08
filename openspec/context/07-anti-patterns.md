@@ -9,8 +9,9 @@ updated: 2026-09-01
 - `--experimental-structured`, `.usw/FLOW.json` и внутренние команды снятого
   structured runtime — отклонять до mutation; код живёт только в
   `research/structured-runtime/` и не устанавливается.
-- Generic single-state `HANDOFF.md` — legacy; мигрирует в router при первом
-  обращении, новый код пишет только routed-форму.
+- Generic single-state `HANDOFF.md` и operation documents без обязательных
+  recovery fields не поддерживаются; отклонять без автоматической миграции
+  и без изменения пользовательских файлов. Контракт — `live-operation-state`.
 
 ## Чего не делать
 
@@ -20,8 +21,10 @@ updated: 2026-09-01
   человек вводит их дословно.
 - Не использовать маркеры `CALL`/`GATE`/`LOOP`/`PARALLEL` в обычном
   Markdown flow — только в `version-2`.
-- Не имитировать todo-инструмент markdown-чек-листом — если инструмент
-  недоступен, останавливаться со статусом `blocked`.
+- Не имитировать todo-инструмент markdown-чек-листом. Если flow требует его
+  обязательно, при недоступности останавливаться со статусом `blocked`;
+  если todo необязателен, явно сообщать о его отсутствии и продолжать без
+  отслеживания задач.
 - Не пересказывать спеки в производных текстах (skills, README, context) —
   ссылаться на спеку.
 - Не мигрировать раскладку flow (`<name>.md` ↔ `<name>/FLOW.md`)

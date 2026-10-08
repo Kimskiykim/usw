@@ -1,0 +1,4 @@
+Возможность handoff отключена конфигурацией; состояние не проверялось.
+
+handoff: false
+USW-EVAL-RESULT: status=completed; external_action=no

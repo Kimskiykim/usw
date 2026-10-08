@@ -1,0 +1,3 @@
+Какой flow оценить? Укажите безопасное kebab-case имя, например: `release-check` или `--local release-check`.
+
+USW-EVAL-RESULT: status=decision_required; external_action=no

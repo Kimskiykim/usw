@@ -103,6 +103,27 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertNotIn(obsolete, fallback)
 
+    def test_llm_init_cleans_only_its_incomplete_new_file(self):
+        fallback = (ROOT / "skills/usw-initialize-project/references/llm-fallback.md").read_text(encoding="utf-8")
+        for token in ("недописанный новый файл текущей попытки", "write или close", "уже существовавшие", "успешно созданные"):
+            self.assertTrue(token in fallback, token)
+        self.assertNotIn("не сливать, не удалять", fallback)
+
+    def test_llm_init_preserves_existing_router_bytes(self):
+        fallback = (ROOT / "skills/usw-initialize-project/references/llm-fallback.md").read_text(encoding="utf-8")
+        for token in ("исходные байты", "Созданный HANDOFF", "Существовавший HANDOFF", "существующий `.usw/handoffs/`"):
+            self.assertTrue(token in fallback, token)
+        self.assertNotIn("`.usw/HANDOFF.md` — точный packaged empty router", fallback)
+
+    def test_init_describes_only_its_available_capabilities(self):
+        skill_dir = ROOT / "skills/usw-initialize-project"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        metadata = (skill_dir / "agents/openai.yaml").read_text(encoding="utf-8")
+        self.assertIn("недопустимые пересечения", skill)
+        self.assertIn("create/run/find/assess/handoff", skill)
+        self.assertNotIn("artifact templates", metadata)
+        self.assertIn("configuration, flow examples and optional handoff", metadata)
+
     def test_removed_helpers_are_examples_not_skills(self):
         examples = ROOT / "usw/flows/examples"
         plan = (examples / "plan-small-steps.md").read_text(encoding="utf-8")
@@ -294,7 +315,7 @@ class PackageLayoutTests(unittest.TestCase):
         )
         for fragment in required_fragments:
             self.assertIn(fragment, skill)
-        self.assertIn("allow_implicit_invocation: false", metadata)
+        self.assertIn("allow_implicit_invocation: true", metadata)
         self.assertFalse((skill_dir / "scripts").exists())
         self.assertFalse((ROOT / "skills/usw-route-task").exists())
         self.assertFalse((ROOT / "commands/usw-route-task.md").exists())
@@ -341,9 +362,22 @@ class PackageLayoutTests(unittest.TestCase):
             {"assessment-model.md"},
             {path.name for path in (skill_dir / "references").glob("*.md")},
         )
-        self.assertIn("allow_implicit_invocation: false", metadata)
+        self.assertIn("allow_implicit_invocation: true", metadata)
         self.assertIn("usw-assess-flow", command)
         self.assertFalse((skill_dir / "scripts").exists())
+
+    def test_flow_readers_guard_natural_request_activation(self):
+        for name in ("usw-find-flow", "usw-assess-flow"):
+            text = (ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+            with self.subTest(skill=name):
+                self.assertTrue("## Активация" in text)
+                self.assertTrue("Простое упоминание flow" in text)
+                self.assertTrue("до чтения конфигурации" in text)
+                self.assertNotIn("Использовать только при явном вызове", text)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("Матрица активации", readme)
+        for name in ("initialize-project", "create-flow", "run-flow", "find-flow", "assess-flow", "manage-handoff"):
+            self.assertTrue(f"`usw-{name}`" in readme, name)
 
     def test_assess_flow_acceptance_evidence_is_checked_in(self):
         changes = ROOT / "openspec/changes"
@@ -405,6 +439,15 @@ class PackageLayoutTests(unittest.TestCase):
         design = archived_designs[0].read_text(encoding="utf-8")
         for path in preserved:
             self.assertIn(f"`{path}`", design)
+
+    def test_handoff_requires_explicit_native_invocation(self):
+        metadata = (
+            ROOT / "skills/usw-manage-handoff/agents/openai.yaml"
+        ).read_text(encoding="utf-8")
+        self.assertRegex(
+            metadata,
+            r"(?m)^policy:\n  allow_implicit_invocation: false$",
+        )
 
     def test_public_commands_delegate_to_internal_skills(self):
         expectations = {
@@ -500,32 +543,28 @@ class PackageLayoutTests(unittest.TestCase):
         ):
             self.assertTrue((commands_dir / command_name).is_file())
 
-    def test_codex_marketplace_points_to_plugin(self):
-        marketplace = json.loads(
-            (ROOT / ".agents" / "plugins" / "marketplace.json").read_text(
-                encoding="utf-8"
-            )
+    def test_codex_plugin_points_to_shared_skills(self):
+        manifest = json.loads(
+            (ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
         )
-        plugin = marketplace["plugins"][0]
+        skills_dir = ROOT / manifest["skills"]
 
-        self.assertEqual("usw", marketplace["name"])
-        self.assertEqual("url", plugin["source"]["source"])
+        self.assertEqual("usw", manifest["name"])
         self.assertEqual(
-            "https://github.com/Kimskiykim/usw.git", plugin["source"]["url"]
+            "https://github.com/Kimskiykim/usw", manifest["repository"]
         )
-        self.assertTrue((ROOT / ".codex-plugin" / "plugin.json").is_file())
         self.assertTrue((ROOT / "commands" / "usw-init.md").is_file())
         self.assertTrue(
-            (ROOT / "skills" / "usw-initialize-project" / "SKILL.md").is_file()
+            (skills_dir / "usw-initialize-project" / "SKILL.md").is_file()
         )
         self.assertTrue(
-            (ROOT / "skills" / "usw-manage-handoff" / "SKILL.md").is_file()
+            (skills_dir / "usw-manage-handoff" / "SKILL.md").is_file()
         )
-        self.assertFalse((ROOT / "skills" / "usw-refine-task").exists())
-        self.assertTrue((ROOT / "skills" / "usw-create-flow" / "SKILL.md").is_file())
-        self.assertTrue((ROOT / "skills" / "usw-run-flow" / "SKILL.md").is_file())
-        self.assertTrue((ROOT / "skills" / "usw-find-flow" / "SKILL.md").is_file())
-        self.assertTrue((ROOT / "skills" / "usw-assess-flow" / "SKILL.md").is_file())
+        self.assertFalse((skills_dir / "usw-refine-task").exists())
+        self.assertTrue((skills_dir / "usw-create-flow" / "SKILL.md").is_file())
+        self.assertTrue((skills_dir / "usw-run-flow" / "SKILL.md").is_file())
+        self.assertTrue((skills_dir / "usw-find-flow" / "SKILL.md").is_file())
+        self.assertTrue((skills_dir / "usw-assess-flow" / "SKILL.md").is_file())
         self.assertTrue((ROOT / "commands" / "usw-handoff.md").is_file())
         self.assertTrue((ROOT / "commands" / "usw-resume.md").is_file())
         self.assertTrue(

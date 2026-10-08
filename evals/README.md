@@ -107,6 +107,11 @@ One directory per scenario under `evals/scenarios/<name>/`:
 copying them, so a scenario always evaluates the text that actually ships and a
 renamed or deleted file fails loudly instead of passing against a stale copy.
 
+Optional top-level `explicit_invocation` defaults to `true`, preserving the
+usual simulated invocation. Set it to `false` to test activation: instructions
+are supplied as a candidate, and the prompt does not imply that the user
+invoked the skill. Native host discovery still needs a separate observation.
+
 `expect` accepts `status_in` (required), `external_action`
 (`forbidden` by default, or `allowed`) and three marker lists, each compared
 case-insensitively against the reply after the prompt echo is stripped:

@@ -1,25 +1,39 @@
-# Structured runtime research snapshot
+# Архив эксперимента structured runtime
 
-This directory preserves the unsupported structured-runtime experiment as it
-existed when production USW moved to text-first Markdown execution.
+Каталог сохраняет неподдерживаемый эксперимент structured runtime в состоянии
+на момент перехода USW к исполнению Markdown как текста моделью.
 
-It includes the parser, typed executors, gates, loops, parallel execution,
-bindings, JSON checkpoints, role-scenario validator, specialized tests and the
-superseded `add-result-list-iteration` and `implement-nested-flow-runtime`
-changes. The snapshot also preserves the in-progress run-scoped UUID checkpoint
-work that was present in the working tree.
+Здесь находятся parser, типизированные исполнители, gates, loops, parallel
+execution, bindings, JSON checkpoints, валидатор ролевых сценариев,
+специализированные тесты и снятые changes `add-result-list-iteration` и
+`implement-nested-flow-runtime`. Сохранена также незавершённая работа над
+run-scoped UUID checkpoints, находившаяся в рабочем дереве при переносе.
 
-The superseded role-authorized planning-artifact and review-receipt writer is
-preserved under `legacy/usw-manage-artifacts/` with its contract validator under
-`runtime/artifact_contract.py`. It is not a production skill and is not
-installed by the default installer.
+Снятый writer планирующих артефактов и review receipts с разграничением ролей
+находится в `legacy/usw-manage-artifacts/`; его валидатор контрактов — в
+`runtime/artifact_contract.py`. Этот skill не входит в текущую поставку.
+Код архива не устанавливается и не импортируется продуктовым кодом.
 
-Nothing under this directory is installed, imported by production code,
-normative for current USW behavior or included in the main test discovery.
-Tests are preserved as historical material and are not guaranteed to run from
-their relocated paths.
+## Использование в основном наборе тестов
 
-The production roadmap may use this material as input to a future compiler or
-iterator proposal. Such a proposal must define a derived machine
-representation, explicit input, durable state and a next-step or terminal
-outcome API; this snapshot does not establish those contracts.
+Архивные helper сохранены как вспомогательный код тестов шаблонов и контрактов:
+
+- `tests/test_artifact_contract.py` и `tests/test_replanning.py` импортируют
+  `runtime/artifact_contract.py`: всего 16 тестов.
+- Ещё два теста writer в `tests/test_atomic_skill_contracts.py` используют
+  `legacy/usw-manage-artifacts/scripts/artifact_writer.py`.
+
+Эти тесты входят в основной запуск `python3 -m unittest discover -s tests`.
+Это проверка helper и связанных шаблонов/контрактов, а не запуск structured
+executor или подтверждение наличия helper в установленном USW. Архивный код
+не определяет нормативное поведение продукта; источник — `openspec/specs/`.
+Зависимость тестов от helper сохранена осознанно; она не означает возобновления
+поддержки архивного runtime.
+
+Тесты внутри самого архива сохраняются как исторический материал и не входят
+в основной test discovery. Их запуск из перенесённых путей не гарантируется.
+
+Материал может использоваться при подготовке будущего предложения о compiler
+или iterator. Такое предложение должно отдельно определить производное
+машинное представление, явный input, сохраняемое состояние и API следующего
+шага либо конечного результата. Этот архив таких контрактов не устанавливает.

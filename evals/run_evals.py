@@ -38,7 +38,7 @@ DEFAULT_RUNS = 3
 DEFAULT_TIMEOUT = 120.0
 WORKDIR_PLACEHOLDER = "{workdir}"
 
-SCENARIO_KEYS = frozenset({"instructions", "expect", "notes", "runs"})
+SCENARIO_KEYS = frozenset({"instructions", "expect", "notes", "runs", "explicit_invocation"})
 EXPECT_KEYS = frozenset(
     {
         "status_in",
@@ -86,6 +86,7 @@ class Scenario(NamedTuple):
     fixtures: Path | None
     runs: int | None
     notes: str
+    explicit_invocation: bool = True
 
 
 class RunOutcome(NamedTuple):
@@ -160,6 +161,10 @@ def load_scenario(directory: Path) -> Scenario:
     unknown = sorted(set(document) - SCENARIO_KEYS)
     if unknown:
         raise ScenarioError(f"{name}: unknown scenario keys: {', '.join(unknown)}")
+
+    explicit_invocation = document.get("explicit_invocation", True)
+    if not isinstance(explicit_invocation, bool):
+        raise ScenarioError(f"{name}: explicit_invocation must be a boolean")
 
     references = document.get("instructions")
     if not isinstance(references, list) or not references:
@@ -293,6 +298,7 @@ def load_scenario(directory: Path) -> Scenario:
         fixtures=fixtures,
         runs=runs,
         notes=notes,
+        explicit_invocation=explicit_invocation,
     )
 
 
@@ -309,6 +315,14 @@ def build_prompt(scenario: Scenario) -> str:
         "You are the agent executing a USW skill. Follow the instructions below "
         "exactly as if a user had invoked the skill in their project.",
     ]
+    if not scenario.explicit_invocation:
+        blocks[0] = (
+            "===== ACTIVATION CONTEXT =====\n"
+            "You are an agent considering a candidate USW skill. Loading its "
+            "instructions does not imply a user invocation. Decide whether "
+            "the user input activates the skill; apply it only when its "
+            "activation conditions are met. Otherwise handle the ordinary request."
+        )
     for path in scenario.instructions:
         relative = path.relative_to(ROOT)
         blocks.append(f"===== INSTRUCTIONS: {relative} =====\n{path.read_text(encoding='utf-8')}")

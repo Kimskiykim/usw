@@ -173,6 +173,27 @@ class TextFlowContractTests(unittest.TestCase):
         for fragment in required:
             self.assertIn(fragment, content)
 
+    def test_opsx_intent2spec_uses_complete_schema_contract(self):
+        content = (ROOT / "usw/flows/opsx-intent2spec.md").read_text(encoding="utf-8")
+        for token in (
+            "openspec status --change",
+            "openspec instructions <artifact-id>",
+            "changeRoot",
+            "artifactPaths",
+            "existingOutputPaths",
+            "resolvedOutputPath",
+            "requires",
+            "skipped",
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, content)
+        for obsolete in ("`change.md`", "openspec/changes/<slug>/", "три формальных артефакта"):
+            self.assertNotIn(obsolete, content)
+        drift = content.split("#### 7.1.", 1)[1].split("#### 7.2.", 1)[0]
+        feasibility = content.split("#### 7.2.", 1)[1].split("### 8.", 1)[0]
+        for review in (drift, feasibility):
+            self.assertIn("всех компонентов", review)
+
     def test_active_project_flows_use_text_first_contracts(self):
         chat = (ROOT / "usw/flows/chat-review.md").read_text(encoding="utf-8")
         development = (ROOT / "usw/flows/dev-test.md").read_text(encoding="utf-8")

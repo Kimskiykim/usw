@@ -1,0 +1,27 @@
+{
+  "instructions": [
+    "skills/usw-initialize-project/references/llm-fallback.md"
+  ],
+  "expect": {
+    "status_in": [
+      "blocked"
+    ],
+    "external_action": "forbidden",
+    "file_expectations": {
+      "project/usw.yaml": {
+        "exists": false
+      },
+      "project/.usw/.gitignore": {
+        "required_markers": [
+          "*"
+        ]
+      },
+      "project/keep.txt": {
+        "required_markers": [
+          "USER_OWNED_PRESERVE"
+        ]
+      }
+    }
+  },
+  "notes": "Наблюдение обработки подготовленного состояния после сбоя, не настоящая I/O fault injection и не полный init. File markers не доказывают побайтную сохранность: сравнивать файлы и transcript отдельно. Нужен workdir runner."
+}

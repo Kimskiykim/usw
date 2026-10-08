@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-09",
+  "host": "Codex CLI 0.146.0",
+  "model_override": null,
+  "flags": [
+    "--ignore-user-config",
+    "--ignore-rules",
+    "--ephemeral",
+    "--sandbox",
+    "workspace-write",
+    "--skip-git-repo-check",
+    "--json"
+  ],
+  "backup": "/private/var/folders/pt/pg7fz4fd1_5fr07tng9zjbrw0000gn/T/usw-installed-backup-m1mu4j8h",
+  "runs": [
+    {
+      "case": "find",
+      "exit_code": 0
+    },
+    {
+      "case": "assess",
+      "exit_code": 0,
+      "seconds": 26.8
+    },
+    {
+      "case": "mention",
+      "exit_code": 0,
+      "seconds": 9.0
+    },
+    {
+      "case": "unclear",
+      "exit_code": 0,
+      "seconds": 27.8
+    },
+    {
+      "case": "generic-save",
+      "exit_code": 0,
+      "seconds": 18.6
+    },
+    {
+      "case": "generic-resume",
+      "exit_code": 0,
+      "seconds": 9.5
+    },
+    {
+      "case": "explicit-disabled",
+      "exit_code": 0,
+      "seconds": 9.3
+    },
+    {
+      "case": "explicit-enabled",
+      "exit_code": 0,
+      "seconds": 14.6
+    },
+    {
+      "case": "flow-enabled",
+      "exit_code": 0,
+      "seconds": 35.3
+    },
+    {
+      "case": "flow-disabled",
+      "exit_code": 0,
+      "seconds": 21.9
+    }
+  ],
+  "launch_template": "codex exec --ignore-user-config --ignore-rules --ephemeral --sandbox workspace-write --skip-git-repo-check -C <case-workspace> --json -o <case.last.txt> -"
+}

@@ -1,0 +1,23 @@
+# Flow assessment
+
+- Flow: test-evidence
+- Origin: shared
+- Path: /private/var/folders/pt/pg7fz4fd1_5fr07tng9zjbrw0000gn/T/usw-eval-ofd_94f3/usw/flows/test-evidence.md
+- Directory: /private/var/folders/pt/pg7fz4fd1_5fr07tng9zjbrw0000gn/T/usw-eval-ofd_94f3/usw/flows
+- Identity: usw-markdown:shared:00c6a3e0057379fcbcc453f22f8f22a29036120dd7fb4b4268b8a60f2cbb71a6
+- Verdict: executable
+- Basis: evidence-backed semantic model analysis; not machine guarantee.
+
+## Terminal paths
+
+- Строки 7–8: создать `activation-executed.txt` с итогом проверки → перечислить ошибки из входа → вернуть `completed`. Путь связный и имеет явный терминальный исход.
+
+## Dependencies
+
+None.
+
+## Findings
+
+None.
+
+USW-EVAL-RESULT: status=completed; external_action=no

@@ -1,0 +1,52 @@
+{
+  "find": [
+    "fixture unchanged byte-for-byte",
+    "native finder instructions loaded",
+    "resolve called",
+    "match and command returned"
+  ],
+  "assess": [
+    "fixture unchanged byte-for-byte",
+    "native assessor instructions loaded",
+    "inspect called",
+    "assessment returned"
+  ],
+  "mention": [
+    "fixture unchanged byte-for-byte",
+    "no tools on simple mention"
+  ],
+  "unclear": [
+    "fixture unchanged byte-for-byte",
+    "clarification requested",
+    "no configuration/catalog/flow access"
+  ],
+  "generic-save": [
+    "only requested note added",
+    "ordinary save completed",
+    "no handoff invocation/read command"
+  ],
+  "generic-resume": [
+    "fixture unchanged byte-for-byte",
+    "no handoff invocation/read command"
+  ],
+  "explicit-disabled": [
+    "fixture unchanged byte-for-byte",
+    "disabled reason returned",
+    "handoff state not accessed"
+  ],
+  "explicit-enabled": [
+    "fixture unchanged byte-for-byte",
+    "explicit show called"
+  ],
+  "flow-enabled": [
+    "flow output verified",
+    "service Begin called",
+    "service Outcome called",
+    "operation durably completed"
+  ],
+  "flow-disabled": [
+    "flow output verified",
+    "disabled handoff preserved",
+    "no service handoff calls or state read commands"
+  ]
+}

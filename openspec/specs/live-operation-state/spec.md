@@ -44,16 +44,21 @@ Permission boundary в root или nested child SHALL использовать
   включает фактический nested progress, необходимый для recovery
 
 ### Requirement: Неподдерживаемое содержимое HANDOFF отклоняется
-При включённом handoff runtime SHALL проверять `.usw/HANDOFF.md` как router или
-поддерживаемый generic single-state документ. Содержимое, не прошедшее эти
-проверки, SHALL отклоняться ошибкой валидации без изменения bytes
-`.usw/HANDOFF.md`, operation documents и candidates.
+При включённом handoff runtime SHALL проверять `.usw/HANDOFF.md` только как
+router. Иной формат, включая прежний generic single-state HANDOFF, SHALL
+отклоняться ошибкой валидации без изменения bytes `.usw/HANDOFF.md`, operation
+documents и candidates и без автоматического преобразования состояния.
 
 #### Scenario: Файл другого формата
-- **WHEN** handoff-команда читает файл, который не является ни валидным router,
-  ни валидным generic single-state документом
+- **WHEN** handoff-команда читает файл, который не является валидным router
 - **THEN** команда возвращает ошибку валидации, а bytes HANDOFF, operation
   documents и candidates остаются неизменными
+
+#### Scenario: Старый single-state HANDOFF
+- **WHEN** команда получает прежний single-state HANDOFF со status `idle`
+  или non-idle status
+- **THEN** файл отклоняется без преобразования в router и без создания
+  operation document
 
 ### Requirement: Recoverable state требует explicit finish
 Generic states `in_progress`, `paused`, `blocked` и `decision_required` SHALL
@@ -235,22 +240,6 @@ recovery state.
 - **THEN** он возвращает их identities, flows и statuses без возобновления любой
   operation
 
-### Requirement: Generic single-state handoff мигрирует безопасно
-Когда включённая handoff command встречает текущий generic single-state format,
-USW SHALL мигрировать idle в empty router, а non-idle state — сначала записать
-его exact bytes в path, выведенный из валидированной embedded operation identity,
-и только затем заменить HANDOFF router-ом. Single-state file MUST оставаться
-authoritative до успешной замены router.
-
-#### Scenario: Recoverable generic state мигрирует
-- **WHEN** valid generic HANDOFF со status `paused` впервые читается routed runtime
-- **THEN** его exact operation content остаётся recoverable через
-  зарегистрированную route
-
-#### Scenario: Migration завершается ошибкой до замены router
-- **WHEN** operation document не удаётся подтвердить во время migration
-- **THEN** исходный single-state HANDOFF остаётся authoritative и неизменным
-
 ### Requirement: Проверка active parent остаётся read-only
 USW SHALL предоставлять read-only handoff operation, которая подтверждает,
 имеет ли exact identity зарегистрированный operation document со status
@@ -298,33 +287,6 @@ ownership concurrent product writes.
 - **THEN** Begin записывает base revision как `unknown`, не заявляя unborn
   repository
 
-### Requirement: Enriched recovery context остаётся backwards-compatible
-USW SHALL читать существующие generic operation documents без Summary, Started
-и Workspace, не изменяя их bytes во время Show, Resume или parent verification.
-Discovery SHALL выводить bounded display summary из exact input и SHALL сообщать
-неизвестное start time для такого document.
-
-Mutation Outcome существующего document SHALL записывать enriched shape,
-используя явное `unknown` для недоступных historical start и base revision. Save
-MUST NOT заменять enriched operation старой shape или выдумывать недоступные
-historical facts.
-
-#### Scenario: Существующая operation проверяется
-- **WHEN** Show, Resume или parent verification читает старый routed operation
-  document
-- **THEN** document остаётся byte-for-byte неизменным, а его recovery content —
-  пригодным к использованию
-
-#### Scenario: Существующая operation получает Outcome
-- **WHEN** Outcome обновляет старую recoverable operation
-- **THEN** operation получает enriched shape с derived summary, неизвестными
-  historical fields и новыми reported observed changes
-
-#### Scenario: Save пытается выполнить downgrade
-- **WHEN** candidate старой shape указывает на enriched operation
-- **THEN** Save отклоняет candidate и оставляет зарегистрированную operation
-  неизменной
-
 ### Requirement: Multi-operation discovery показывает human context
 Когда зарегистрировано более одной operation, Show и Resume SHALL перечислять
 summary, flow, status, start time, latest update time, exact operation identity
@@ -336,3 +298,62 @@ summary, flow, status, start time, latest update time, exact operation identity
   одинаковым flow name
 - **THEN** их summaries и timestamps возвращаются вместе с разными exact
   operation identities без возобновления любой operation
+
+### Requirement: Устаревшая форма operation document отклоняется
+Runtime SHALL принимать только operation documents с обязательными `Summary`,
+`Started` и `Workspace`. Старые документы без этих полей SHALL отклоняться
+ошибкой валидации до изменения router, documents и candidates. Runtime MUST NOT
+выводить недостающие поля из input или преобразовывать старый document при записи.
+
+#### Scenario: Старый документ читается
+- **WHEN** Show, Resume или parent verification получает зарегистрированный
+  operation document без одного из обязательных recovery fields
+- **THEN** операция возвращает ошибку валидации без изменения состояния
+
+#### Scenario: Старый документ изменяется
+- **WHEN** Begin, Outcome, Save, Finish или Cleanup затрагивает старый
+  operation document без обязательных recovery fields
+- **THEN** команда возвращает ошибку валидации, сохраняет router, documents
+  и candidates и не записывает восстановленные исторические поля
+
+#### Scenario: Старый candidate сохраняется
+- **WHEN** Save получает candidate без обязательных recovery fields для
+  актуального operation document
+- **THEN** candidate отклоняется, а router, document и candidate остаются неизменными
+
+### Requirement: Ручной handoff требует прямого вызова человека
+Вне служебного вызова из flow USW SHALL активировать handoff только по прямому
+вызову человеком команды, skill или явной просьбе использовать handoff.
+Общие просьбы сохранить состояние или продолжить работу MUST NOT активировать
+handoff и MUST NOT приводить к чтению или изменению его state.
+
+#### Scenario: Общая просьба сохранить состояние
+- **WHEN** вне flow пользователь просит сохранить состояние без обращения к handoff
+- **THEN** агент обрабатывает обычный запрос сохранения, уточняя destination
+  при необходимости, и не обращается к HANDOFF или operation documents
+
+#### Scenario: Общая просьба продолжить работу
+- **WHEN** вне flow пользователь просит продолжить работу, не вызывая handoff
+- **THEN** агент не выполняет Show/Resume и не обращается к handoff state
+
+#### Scenario: Пользователь прямо вызывает handoff
+- **WHEN** человек вызывает `/usw-handoff`, `/usw-resume`,
+  `$usw-manage-handoff` или явно просит использовать handoff
+- **THEN** соответствующий режим выполняется по действующему контракту выбора
+  operation и конфигурации
+
+### Requirement: Служебный handoff внутри flow следует конфигурации
+Прямой ручной вызов MUST NOT требоваться для служебных Begin/Outcome и read-only
+parent verification, предусмотренных контрактом запуска flow. Эти вызовы SHALL
+следовать effective `handoff`; при `false` handoff state MUST NOT читаться или
+изменяться.
+
+#### Scenario: Flow запущен с включённым handoff
+- **WHEN** пользователь запустил flow с effective `handoff: true`
+- **THEN** runner выполняет предусмотренные контрактом служебные вызовы без
+  отдельного ручного обращения к handoff
+
+#### Scenario: Handoff отключён
+- **WHEN** прямой ручной вызов или запуск flow имеет effective `handoff: false`
+- **THEN** `.usw/HANDOFF.md`, operation documents и candidates не читаются и
+  не изменяются

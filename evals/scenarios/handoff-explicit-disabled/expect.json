@@ -1,0 +1,29 @@
+{
+  "instructions": [
+    "skills/usw-manage-handoff/SKILL.md"
+  ],
+  "expect": {
+    "status_in": [
+      "completed",
+      "decision_required",
+      "paused",
+      "blocked"
+    ],
+    "external_action": "forbidden",
+    "required_markers": [
+      "handoff: false"
+    ],
+    "file_expectations": {
+      ".usw/HANDOFF.md": {
+        "required_markers": [
+          "# Developer Handoff Router",
+          "No registered operations"
+        ]
+      },
+      ".usw/handoffs": {
+        "exists": false
+      }
+    }
+  },
+  "notes": "Прямой вызов должен дойти до проверки конфигурации, сообщить отключение и не трогать state. Input явно запрашивает YAML-строку, поскольку маркер проверяет буквальный формат: объяснение «поле handoff имеет значение false» семантически верно и не должно трактоваться как дефект skill. File expectations проверяют часть эффектов, но не отсутствие чтения. Вызовы Begin/Outcome при enabled/disabled отдельно покрыты runtime тестами."
+}

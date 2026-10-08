@@ -1,6 +1,6 @@
 # Модель routed state (usw-manage-handoff)
 
-Читать при вопросах об устройстве router и operation documents, миграциях и
+Читать при вопросах об устройстве router и operation documents, совместимости и
 конкурентных переходах. Для обычных вызовов команд этот файл не нужен:
 SKILL.md самодостаточен.
 
@@ -39,17 +39,10 @@ document и candidate; cleanup failure после unregistration может ос
 подтверждает router без выбранных routes (terminal по умолчанию, всех с `--all`),
 затем удаляет только их documents и candidates.
 
-## Миграции и совместимость
+## Совместимость
 
-Generic single-state HANDOFF мигрирует под lock: idle превращается в empty
-router; non-idle сначала exact-byte записывается в operation document по его
-validated embedded identity и только потом HANDOFF заменяется router-ом —
-до успешной замены single-state файл остаётся authoritative.
-
-Старые generic operation documents без Summary, Started и Workspace читаются
-без изменения байт; discovery выводит bounded summary из exact input и
-показывает unknown start time. Outcome такого документа записывает enriched
-форму с явными `unknown` для недоступных исторических полей. Enriched
-operation нельзя заменить старой формой; старую generic operation разрешено
-обновить только enriched candidate с `Started: unknown`, unknown base и
-пустыми expected writes.
+Поддерживаются только routed HANDOFF и operation documents с Summary, Started
+и Workspace. Прежние single-state HANDOFF и неполные operation documents
+отклоняются без преобразования и без изменения router, documents и candidates.
+Уже сохранённые явные `unknown` в полном актуальном документе допустимы:
+runtime не заменяет их выдуманными историческими значениями.

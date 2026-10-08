@@ -34,7 +34,7 @@ used only for its riskiest business rule.
 | Situation | Default response | Why |
 | --- | --- | --- |
 | Ordinary small work with clear behavior | Use the normal USW flow or direct project practice | The operational path is already sufficient. |
-| A behavior, public contract or durable product decision must be made | Create or update OpenSpec; use [intent-to-spec](../flows/intent-to-spec.md) when its decision process is useful | The decision needs an authoritative, durable home. |
+| A behavior, public contract or durable product decision must be made | Create or update OpenSpec; use [opsx-intent2spec](../flows/opsx-intent2spec.md) when its decision process is useful | The decision needs an authoritative, durable home. |
 | A bug, regression or test failure has an unclear cause | Use systematic debugging until the cause is evidenced | Diagnosis is the risk; guessing at fixes is premature. |
 | Business logic is risky, subtle or costly to regress | Use TDD for that behavior | Executable examples reduce implementation and regression risk. |
 | A substantial change needs isolation from current work | Use a worktree | Isolation protects unrelated work and makes scope easier to inspect. |
@@ -92,7 +92,7 @@ into a mandatory scheduled service or a gate on every task.
    [README](../../README.md), [`usw.yaml`](../../usw.yaml),
    [`usw-create-flow`](../../skills/usw-create-flow/SKILL.md),
    [`usw-run-flow`](../../skills/usw-run-flow/SKILL.md),
-   [intent-to-spec](../flows/intent-to-spec.md), current packaged templates and
+   [opsx-intent2spec](../flows/opsx-intent2spec.md), current packaged templates and
    the repository-local [`openspec/specs`](../../openspec/specs/) tree.
 3. Resolve every referenced path and command. Validate claims about ownership,
    versions, selectors, templates and contracts against current primary source.

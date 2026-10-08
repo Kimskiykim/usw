@@ -1,0 +1,3 @@
+Возможность handoff отключена конфигурацией: верхнеуровневое поле `handoff` имеет значение `false`. Состояние handoff не проверялось и не изменялось.
+
+USW-EVAL-RESULT: status=completed; external_action=no

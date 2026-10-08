@@ -1,0 +1,28 @@
+{
+  "instructions": [
+    "skills/usw-find-flow/SKILL.md"
+  ],
+  "explicit_invocation": false,
+  "expect": {
+    "status_in": [
+      "completed"
+    ],
+    "external_action": "forbidden",
+    "file_expectations": {
+      "activation-executed.txt": {
+        "exists": false
+      },
+      ".usw/HANDOFF.md": {
+        "exists": false
+      },
+      ".usw/handoffs": {
+        "exists": false
+      }
+    },
+    "required_markers": [
+      "$usw-run-flow --shared test-evidence"
+    ],
+    "forbidden_markers": []
+  },
+  "notes": "Проверка candidate activation по обычному запросу; prompt не утверждает вызов skill. Для положительного поиска/оценки runner должен предоставлять shipped resolve/inspect helpers. Это не native discovery. Отсутствие sentinel наблюдает ветку записи при ошибочном запуске, но не доказывает отсутствие чтения/Begin/Outcome: нужен tool transcript. Для отрицательных запросов каталог/entrypoint не должны читаться. Не считать инфраструктурную недоступность helper наблюдением правил активации."
+}
