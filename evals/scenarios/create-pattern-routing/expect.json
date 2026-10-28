@@ -1,0 +1,11 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md",
+    "skills/usw-create-flow/references/patterns/routing.md",
+    "skills/usw-create-flow/references/recipes/routing.md"
+  ],
+  "expect": {"status_in": ["completed", "paused", "decision_required"], "external_action": "forbidden",
+    "file_expectations": {".usw/flows/route-request/FLOW.md": {"exists": false}, ".usw/flows/route-request.md": {"exists": false}}},
+  "notes": "Автоматически: допустимый статус, отсутствие внешнего действия и файлов flow. Ручная семантическая оценка сохранённого транскрипта (каждый критерий pass|fail|unchecked с evidence): Routing выбирает ветку по входу, а не создаёт динамический пул работников. Входы/выходы явны; неоднозначный выбор запрашивает решение; отсутствующая capability не выдаётся за доступную; есть остановка или согласованная альтернатива. Статус и отсутствие файлов сами по себе эти критерии не доказывают. Это preview-only обсуждение, не проверка записи или исполнения."
+}

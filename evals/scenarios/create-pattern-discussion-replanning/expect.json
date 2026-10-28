@@ -1,0 +1,17 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md",
+    "skills/usw-create-flow/references/patterns/group-discussion.md",
+    "skills/usw-create-flow/references/patterns/voting.md",
+    "skills/usw-create-flow/references/patterns/hierarchical-decomposition.md",
+    "skills/usw-create-flow/references/patterns/planner-executor-replanner.md",
+    "skills/usw-create-flow/references/patterns/context-isolation.md",
+    "skills/usw-create-flow/references/recipes/subagent-orchestration.md",
+    "skills/usw-create-flow/references/recipes/bounded-refinement.md",
+    "skills/usw-create-flow/references/recipes/human-decision.md"
+  ],
+  "expect": {"status_in": ["completed", "paused", "decision_required"], "external_action": "forbidden",
+    "file_expectations": {".usw/flows/investigate-design/FLOW.md": {"exists": false}, ".usw/flows/investigate-design.md": {"exists": false}}},
+  "notes": "Автоматически: допустимый статус, отсутствие внешнего действия и файлов flow. Ручная семантическая оценка сохранённого транскрипта (каждый критерий pass|fail|unchecked с evidence): Group discussion допускает взаимное влияние и не названа независимым Voting. Иерархия ограничена глубиной с возвратом результатов; обсуждение ограничено раундами. Перепланирование ограничено попытками/отсутствием прогресса, сохраняет факты и согласованный scope. Полная история допустима по запросу, но не названа чистым изолированным контекстом; фактическое наследование host учтено. Статус и отсутствие файлов сами по себе эти критерии не доказывают. Это preview-only обсуждение, не проверка записи или исполнения."
+}

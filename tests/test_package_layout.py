@@ -242,6 +242,11 @@ class PackageLayoutTests(unittest.TestCase):
         recipes_dir = ROOT / "skills/usw-create-flow/references/recipes"
 
         recipe_files = {
+            "Последовательные стадии": "sequential-stages.md",
+            "Маршрутизация": "routing.md",
+            "Независимые части работы": "independent-work.md",
+            "Независимые оценки": "independent-voting.md",
+            "Передача артефактов": "artifact-passing.md",
             "Проверка результата": "result-check.md",
             "Human decision": "human-decision.md",
             "Подтверждение внешнего действия": "external-action-approval.md",
@@ -270,6 +275,32 @@ class PackageLayoutTests(unittest.TestCase):
                 self.assertTrue(content.startswith(f"# {name}"))
 
         self.assertIn("references/recipes.md", skill)
+
+    def test_pattern_catalog_is_complete_and_locally_navigable(self):
+        import re
+
+        refs = ROOT / "skills/usw-create-flow/references"
+        names = {
+            "pipeline", "routing", "sectioning", "voting", "orchestrator-workers",
+            "evaluator-optimizer", "maker-checker", "claim-check", "fan-out-fan-in",
+            "hierarchical-decomposition", "handoff", "group-discussion",
+            "planner-executor-replanner", "blackboard", "shared-work-queue",
+            "context-isolation",
+        }
+        self.assertEqual(names, {p.stem for p in (refs / "patterns").glob("*.md")})
+        index = (refs / "recipes.md").read_text(encoding="utf-8")
+        for name in names:
+            with self.subTest(pattern=name):
+                self.assertIn(f"patterns/{name}.md", index)
+                card = (refs / "patterns" / f"{name}.md").read_text(encoding="utf-8")
+                for field in ("Проблема", "Применять", "Не применять", "Устройство",
+                              "Ограничения", "Пример USW", "Проверка пользы", "Происхождение"):
+                    self.assertIn(f"**{field}:**", card)
+                self.assertRegex(card, r"\]\(https://[^)]+\)")
+        for path in [refs / "recipes.md", *refs.glob("patterns/*.md"), *refs.glob("recipes/*.md")]:
+            for link in re.findall(r"\]\(([^)]+)\)", path.read_text(encoding="utf-8")):
+                if not link.startswith(("https://", "http://", "#")):
+                    self.assertTrue((path.parent / link.split("#")[0]).is_file(), (path, link))
 
     def test_run_flow_has_one_text_path_and_local_precedence(self):
         skill_dir = ROOT / "skills/usw-run-flow"

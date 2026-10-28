@@ -1,0 +1,15 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md",
+    "skills/usw-create-flow/references/patterns/handoff.md",
+    "skills/usw-create-flow/references/patterns/blackboard.md",
+    "skills/usw-create-flow/references/patterns/shared-work-queue.md",
+    "skills/usw-create-flow/references/patterns/claim-check.md",
+    "skills/usw-create-flow/references/recipes/subagent-orchestration.md",
+    "skills/usw-create-flow/references/recipes/artifact-passing.md"
+  ],
+  "expect": {"status_in": ["completed", "paused", "decision_required"], "external_action": "forbidden",
+    "file_expectations": {".usw/flows/shared-team/FLOW.md": {"exists": false}, ".usw/flows/shared-team.md": {"exists": false}}},
+  "notes": "Автоматически: допустимый статус, отсутствие внешнего действия и файлов flow. Ручная семантическая оценка сохранённого транскрипта (каждый критерий pass|fail|unchecked с evidence): Handoff требует реальной передачи активного управления; вызов с возвратом и recovery-handoff её не заменяют. Общая папка сама по себе не Blackboard: нужны выбор работ по общим знаниям, writers и конфликты. Self-claim queue требует эксклюзивного захвата и восстановления, Markdown lock не выдуман. Предложена достижимая альтернатива без заявления доступности отсутствующих host capabilities. Статус и отсутствие файлов сами по себе эти критерии не доказывают. Это preview-only обсуждение, не проверка записи или исполнения."
+}

@@ -1,0 +1,11 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md",
+    "skills/usw-create-flow/references/patterns/pipeline.md",
+    "skills/usw-create-flow/references/recipes/sequential-stages.md"
+  ],
+  "expect": {"status_in": ["completed", "paused", "decision_required"], "external_action": "forbidden",
+    "file_expectations": {".usw/flows/brief-notes/FLOW.md": {"exists": false}, ".usw/flows/brief-notes.md": {"exists": false}}},
+  "notes": "Автоматически: допустимый статус, отсутствие внешнего действия и файлов flow. Ручная семантическая оценка сохранённого транскрипта (каждый критерий pass|fail|unchecked с evidence): Линейные зависимые шаги соответствуют Pipeline; нет лишних агентов, ветвлений, циклов или обязательных файлов. Название объяснено как паттерн, шаги остаются обычной прозой. Статус и отсутствие файлов сами по себе эти критерии не доказывают. Это preview-only обсуждение, не проверка записи или исполнения."
+}

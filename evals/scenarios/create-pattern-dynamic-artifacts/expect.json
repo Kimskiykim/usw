@@ -1,0 +1,15 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md",
+    "skills/usw-create-flow/references/patterns/orchestrator-workers.md",
+    "skills/usw-create-flow/references/patterns/claim-check.md",
+    "skills/usw-create-flow/references/patterns/context-isolation.md",
+    "skills/usw-create-flow/references/recipes/subagent-orchestration.md",
+    "skills/usw-create-flow/references/recipes/artifact-passing.md",
+    "skills/usw-create-flow/references/recipes/subagent-review.md"
+  ],
+  "expect": {"status_in": ["completed", "paused", "decision_required"], "external_action": "forbidden",
+    "file_expectations": {".usw/flows/investigate-bug/FLOW.md": {"exists": false}, ".usw/flows/investigate-bug.md": {"exists": false}}},
+  "notes": "Автоматически: допустимый статус, отсутствие внешнего действия и файлов flow. Ручная семантическая оценка сохранённого транскрипта (каждый критерий pass|fail|unchecked с evidence): Состав работ динамический (Orchestrator–workers), передача файлов — Claim Check, не отдельная система исполнения. Есть прямые исходные требования, объявленные пути и один writer на файл; reviewer читает фактическую правку и её версию, а не только отчёт автора. Execution status отделён от verdict; непроверенные критерии остаются unchecked; нет нового обязательного state/report schema. Статус и отсутствие файлов сами по себе эти критерии не доказывают. Это preview-only обсуждение, не проверка записи или исполнения."
+}
