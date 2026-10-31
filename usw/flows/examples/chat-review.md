@@ -14,10 +14,19 @@ description: Провести независимое ревью с голосо�
 
 ## Dependencies
 
-- bundled command: `usw-reviewer-llm-critic`
+- bundled command только для `llm-critic`: `usw-reviewer-llm-critic`.
 
-Если обязательная dependency недоступна, вернуть `blocked` до запуска
-subagents. Не подменять dependency другим skill или prompt.
+Разрешать полный prompt по подтверждённому источнику установки команды текущей
+среды. При установке через `install.sh`: для Codex —
+`${CODEX_HOME:-$HOME/.codex}/prompts/usw-reviewer-llm-critic.md`, для Qwen —
+`${QWEN_HOME:-$HOME/.qwen}/commands/usw-reviewer-llm-critic.md`, для Claude —
+`${CLAUDE_HOME:-$HOME/.claude}/commands/usw-reviewer-llm-critic.md`. Для Qwen
+extension использовать `commands/usw-reviewer-llm-critic.md` внутри подтверждённого
+корня расширения; для GigaCode — `<project>/.gigacode/commands/usw-reviewer-llm-critic.md`.
+Иной способ установки требует подтверждённого источника текущей среды. Не угадывать
+`commands/...` относительно проекта или `flow_directory` без подтверждения
+установки. Если команда или её полный prompt недоступны, вернуть `blocked` до
+запуска reviewers, не подменяя их. Для `custom` эта dependency не требуется.
 
 ## Вход
 
@@ -48,7 +57,8 @@ subagents.
 
 - Scope: scope из input.
 - Review focus: CALL COMMAND `/usw-reviewer-llm-critic`; прочитать полный
-  prompt `commands/usw-reviewer-llm-critic.md` и применить без смягчения.
+  установленный prompt по правилу Dependencies, передать reviewers и применить
+  без смягчения.
 - Output contract: findings по severity; для каждого — точный файл и строка,
   defect, evidence, impact и минимальный fix. Material findings включают `low`.
   При завершённой проверке без findings вернуть ровно

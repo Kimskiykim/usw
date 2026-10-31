@@ -305,9 +305,19 @@ Status проверяет наличие файлов, а не полноту и
 
 #### 7.2. Проверить feasibility и гранулярность
 
-Второй агент полностью читает prompt команды
-`commands/usw-reviewer-llm-critic.md` (`/usw-reviewer-llm-critic`) и применяет
-его как жёсткую read-only стратегию ревью. Передать prompt два явных блока:
+Второй агент полностью читает prompt установленной команды текущей среды
+`/usw-reviewer-llm-critic` по подтверждённому источнику установки и применяет его
+как жёсткую read-only стратегию ревью. При установке через `install.sh`: для
+Codex — `${CODEX_HOME:-$HOME/.codex}/prompts/usw-reviewer-llm-critic.md`, для
+Qwen — `${QWEN_HOME:-$HOME/.qwen}/commands/usw-reviewer-llm-critic.md`, для
+Claude — `${CLAUDE_HOME:-$HOME/.claude}/commands/usw-reviewer-llm-critic.md`.
+Для Qwen extension использовать `commands/usw-reviewer-llm-critic.md` внутри
+подтверждённого корня расширения; для GigaCode —
+`<project>/.gigacode/commands/usw-reviewer-llm-critic.md`. Иной способ установки
+требует подтверждённого источника текущей среды. Не угадывать `commands/...`
+относительно проекта или `flow_directory` без подтверждения установки. Если
+команда или полный prompt недоступны, вернуть `blocked`, не подменяя их. Передать
+prompt два явных блока:
 
 ```text
 Scope:
