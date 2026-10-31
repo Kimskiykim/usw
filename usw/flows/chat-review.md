@@ -58,9 +58,18 @@ subagents.
 ### `custom`
 
 Использовать scope из input и непустые `Review focus` и `Output contract` из
-`Custom profile`. Если хотя бы один блок отсутствует, вернуть
-`decision_required` до запуска subagents. Неизвестный profile обрабатывать так
-же.
+`Custom profile`. До discovery убедиться, что contract позволяет различить:
+
+- отдельные проверяемые findings с привязкой к scope и evidence, пригодным для
+  проверки каждого finding при voting, и явное завершение проверки всего scope;
+- явно завершённую проверку всего scope без material findings;
+- незавершённую проверку с причиной, непроверенным scope и уже подтверждёнными
+  findings с evidence.
+
+Если блок отсутствует или contract несовместим с этими исходами, запросить
+уточнение и вернуть `decision_required` до запуска subagents. Например,
+только число или только `PASS/FAIL` недостаточны. Неизвестный profile
+обрабатывать так же.
 
 ## Режим запуска
 
@@ -108,11 +117,18 @@ review-budget-reason: <triggers и factors либо low-risk reason>
 выполняет ровно одно read-only discovery review непосредственно по этим трём
 блокам.
 
-Reviewers ничего не меняют. Tool-unavailable результат возвращает `blocked`.
-`Review incomplete.` из-за недоступных файлов или инструментов также
-возвращает `blocked`; из-за недостатка необходимых данных —
-`decision_required`. Сохранить причину, непроверенную область и findings;
-не переходить к `accept-as-is` или voting до завершения проверки.
+Reviewers ничего не меняют. Для `custom` считать проверку завершённой только
+при явном подтверждении проверки всего scope; clean требует также явного
+отсутствия material findings. Если результат или его полноту нельзя достоверно
+интерпретировать, вернуть `decision_required`; отсутствие извлекаемых findings
+не является clean.
+
+Tool-unavailable результат возвращает `blocked`. Незавершённая проверка любого
+profile, включая `custom` без буквальной строки `Review incomplete.`, из-за
+недоступных файлов или инструментов возвращает `blocked`; из-за недостатка
+необходимых данных — `decision_required`. Сохранить причину, непроверенный scope
+и подтверждённые findings с evidence; не переходить к `accept-as-is` или voting
+до завершения проверки.
 Пустой или не соответствующий output contract результат возвращает
 `decision_required`. Автоматически не повторять и не подменять reviewer-а.
 
