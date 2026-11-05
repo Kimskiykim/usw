@@ -17,6 +17,9 @@ description: Реализовать согласованную USW-задачу 
 
 - external skill: `ponytail-review`
 
+Если обязательный external skill недоступен, вернуть `blocked` до начала
+реализации. Не подменять его другим skill или prompt.
+
 ## Порядок действий
 
 1. `capture-baseline` — основной чат перед реализацией сохраняет read-only
