@@ -659,6 +659,44 @@ class HandoffStateTests(unittest.TestCase):
         with self.assertRaisesRegex(HANDOFF.HandoffError, "bounded lines"):
             HANDOFF.parse_handoff(content)
 
+    def test_cli_outcome_preserves_repeated_done_facts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = self.initialize(directory)
+            path, operation = HANDOFF.begin_handoff(
+                project, "review", "shared", self.identity, "review auth"
+            )
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "outcome", str(project), "paused",
+                 "--operation", operation,
+                 "--done", "First fact.", "--done", "Second fact.",
+                 "--done", "Third fact.", "--position", "Paused.",
+                 "--next-action", "Continue.", "--blocker", "none"],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            state = HANDOFF.parse_handoff(path.read_text(encoding="utf-8"))
+            self.assertEqual("First fact.\n\nSecond fact.\n\nThird fact.",
+                             state.sections["Done"])
+
+    def test_cli_outcome_rejects_empty_repeated_done_without_writing(self):
+        for facts in (("", "valid"), ("valid", " ", "later"), ("valid", "")):
+            with self.subTest(facts=facts), tempfile.TemporaryDirectory() as directory:
+                project, router = self.initialize(directory)
+                path, operation = HANDOFF.begin_handoff(
+                    project, "review", "shared", self.identity, "review auth"
+                )
+                before = path.read_bytes(), router.read_bytes()
+                done_args = [item for fact in facts for item in ("--done", fact)]
+                result = subprocess.run(
+                    [sys.executable, str(SCRIPT), "outcome", str(project), "paused",
+                     "--operation", operation, *done_args, "--position", "Paused.",
+                     "--next-action", "Continue.", "--blocker", "none"],
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(2, result.returncode)
+                self.assertEqual("invalid_outcome", json.loads(result.stderr)["error"])
+                self.assertEqual(before, (path.read_bytes(), router.read_bytes()))
+
     def test_cli_carries_workspace_hints_from_begin_to_outcome(self):
         with tempfile.TemporaryDirectory() as directory:
             project, _ = self.initialize(directory)
