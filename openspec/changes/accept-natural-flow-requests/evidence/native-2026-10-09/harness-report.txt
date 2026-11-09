@@ -1,0 +1,9 @@
+USW behavior evaluation
+Runner: codex exec --sandbox workspace-write --skip-git-repo-check --ignore-user-config --ignore-rules --ephemeral -C {workdir} -
+
+- handoff-explicit-disabled: 0/1 observed passes of 1 attempted [fail]
+    required marker 'handoff: false' is absent from the reply
+- handoff-generic-resume: 1/1 observed passes of 1 attempted [pass]
+- handoff-generic-save: 1/1 observed passes of 1 attempted [pass]
+
+Observed rates for the runner named above, at this run only. This is a measurement of instruction following, not a guarantee of behavior, and it does not certify any model or release.

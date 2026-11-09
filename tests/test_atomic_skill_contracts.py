@@ -25,6 +25,18 @@ ARTIFACTS = load(
 
 
 class AtomicSkillContractTests(unittest.TestCase):
+    def test_flow_skills_reference_frontmatter_without_client_extensions(self):
+        for name in ("create", "find", "assess", "run"):
+            content = (ROOT / "skills" / f"usw-{name}-flow/SKILL.md").read_text()
+            with self.subTest(skill=name):
+                self.assertIn("flow-frontmatter", content)
+                self.assertIn("`description`", content)
+                self.assertNotIn("allowed-tools", content)
+                self.assertNotIn("license", content)
+        create = (ROOT / "skills/usw-create-flow/SKILL.md").read_text()
+        for token in ("`name`", "`compatibility`", "`metadata`", "1024", "500", '"1.0"'):
+            self.assertIn(token, create)
+
     def test_production_skills_do_not_import_research_runtime(self):
         for path in (ROOT / "skills").rglob("*"):
             if path.is_file() and "__pycache__" not in path.parts:
@@ -85,24 +97,35 @@ class AtomicSkillContractTests(unittest.TestCase):
         for content in (manage, run, initialize, fallback):
             self.assertIn(".usw/handoffs/", content)
         self.assertIn("assert-current", manage)
+        self.assertIn("Неподдерживаемый формат HANDOFF отклоняется", manage)
+        self.assertIn("cleanup --all", manage)
+        command = (ROOT / "commands/usw-handoff.md").read_text(encoding="utf-8")
+        self.assertIn("cleanup --all", command)
         self.assertNotIn("{{updated_at}}", fallback)
 
-    def test_run_flow_keeps_packaged_resources_inside_resolved_context(self):
-        run = (ROOT / "skills/usw-run-flow/SKILL.md").read_text(
-            encoding="utf-8"
+    def test_run_flow_reads_packaged_siblings_with_agent_tools(self):
+        run = " ".join(
+            (ROOT / "skills/usw-run-flow/SKILL.md")
+            .read_text(encoding="utf-8")
+            .split()
         )
 
         for fragment in (
             "`flow_directory`",
-            "`scripts/run_flow.py resource`",
             "`flow_identity`",
+            "`flow_markdown`",
+            "`user_input`",
+            "читать его обычным инструментом агента",
+        ):
+            self.assertIn(fragment, run)
+        for obsolete in (
+            "`scripts/run_flow.py resource`",
             "`resource_identity`",
             "`content_base64`",
             "`resource_path`",
-            "`flow_markdown`",
-            "`user_input`",
+            "`stale_flow_resource`",
         ):
-            self.assertIn(fragment, run)
+            self.assertNotIn(obsolete, run)
 
     def test_nested_child_does_not_own_durable_state(self):
         """Deliberate phrase assertion: the harness cannot observe state calls."""

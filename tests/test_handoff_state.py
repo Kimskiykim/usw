@@ -19,7 +19,7 @@ sys.modules[SPEC.name] = HANDOFF
 SPEC.loader.exec_module(HANDOFF)
 
 
-def current_operation_shape(content: str) -> str:
+def legacy_operation_shape(content: str) -> str:
     lines = [
         line
         for line in content.splitlines()
@@ -41,8 +41,113 @@ class HandoffStateTests(unittest.TestCase):
         local = project / ".usw"
         local.mkdir()
         handoff = local / "HANDOFF.md"
-        handoff.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
+        handoff.write_text(HANDOFF.render_readable_router(), encoding="utf-8", newline="\n")
         return project, handoff
+
+    def test_legacy_state_is_rejected_without_changes(self):
+        for state in ("single-idle", "single-active", "old-operation"):
+            for action in ("show", "resume", "parent", "begin", "outcome", "save", "finish", "cleanup", "cleanup-all"):
+                with self.subTest(state=state, action=action), tempfile.TemporaryDirectory() as directory:
+                    project, handoff = self.initialize(directory)
+                    content = HANDOFF.render_begin("review", "shared", self.identity, "old input")
+                    operation = HANDOFF.parse_handoff(content).metadata["Operation"]
+                    operations = project / ".usw/handoffs"
+                    operations.mkdir()
+                    if state == "single-idle":
+                        handoff.write_text(
+                            "# Developer Handoff\n\n- Updated: 2026-07-30T10:00:00+00:00\n"
+                            "- Status: idle\n\n## Active work\n\nNo active work.\n",
+                            encoding="utf-8",
+                        )
+                    elif state == "single-active":
+                        handoff.write_text(content, encoding="utf-8")
+                    else:
+                        handoff.write_text(HANDOFF.render_router([operation]), encoding="utf-8")
+                        (operations / HANDOFF.operation_filename(operation)).write_text(
+                            legacy_operation_shape(content), encoding="utf-8"
+                        )
+                    candidate = operations / HANDOFF.operation_candidate_filename(operation)
+                    candidate.write_text(content, encoding="utf-8")
+                    (operations / "unregistered.md").write_text("preserve me\n", encoding="utf-8")
+
+                    def snapshot():
+                        return {
+                            p.relative_to(project): p.read_bytes()
+                            for p in (project / ".usw").rglob("*")
+                            if p.is_file() and p.name != ".lock"
+                        }
+
+                    before = snapshot()
+                    actions = {
+                        "show": lambda: HANDOFF.discover_handoffs(project),
+                        "resume": lambda: HANDOFF.read_handoff(project),
+                        "parent": lambda: HANDOFF.assert_current_handoff(project, operation),
+                        "begin": lambda: HANDOFF.begin_handoff(project, "review", "shared", self.identity, "new input"),
+                        "outcome": lambda: HANDOFF.outcome_handoff(
+                            project, "paused", operation=operation, done="Checked.",
+                            position="Paused.", next_action="Continue.", blocker="None.",
+                        ),
+                        "save": lambda: HANDOFF.save_handoff(project, operation, candidate),
+                        "finish": lambda: HANDOFF.finish_handoff(project, operation),
+                        "cleanup": lambda: HANDOFF.cleanup_handoffs(project),
+                        "cleanup-all": lambda: HANDOFF.cleanup_handoffs(project, all_operations=True),
+                    }
+                    with self.assertRaises(HANDOFF.HandoffError):
+                        actions[action]()
+                    self.assertEqual(before, snapshot())
+
+    def test_mutation_rejects_legacy_sibling_before_writing_target(self):
+        for action in ("outcome", "save"):
+            with self.subTest(action=action), tempfile.TemporaryDirectory() as directory:
+                project, handoff = self.initialize(directory)
+                path, operation = HANDOFF.begin_handoff(
+                    project, "review", "shared", self.identity, "current input"
+                )
+                old_path, _ = HANDOFF.begin_handoff(
+                    project, "review", "shared", self.identity, "old input"
+                )
+                old_path.write_text(
+                    legacy_operation_shape(old_path.read_text(encoding="utf-8")),
+                    encoding="utf-8",
+                )
+                candidate = project / ".usw" / HANDOFF.operation_candidate_relative_path(operation)
+                candidate.write_text(
+                    path.read_text(encoding="utf-8").replace("Nothing yet.", "Checked one file."),
+                    encoding="utf-8",
+                )
+                paths = (handoff, path, old_path, candidate)
+                before = [p.read_bytes() for p in paths]
+                with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_handoff"):
+                    if action == "save":
+                        HANDOFF.save_handoff(project, operation, candidate)
+                    else:
+                        HANDOFF.outcome_handoff(
+                            project, "paused", operation=operation, done="Checked one file.",
+                            position="Paused.", next_action="Continue.", blocker="None.",
+                        )
+                self.assertEqual(before, [p.read_bytes() for p in paths])
+
+    def test_full_operation_with_unknown_history_remains_supported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, _ = self.initialize(directory)
+            path, operation = HANDOFF.begin_handoff(
+                project, "review", "shared", self.identity, "input"
+            )
+            content = path.read_text(encoding="utf-8")
+            started = HANDOFF.parse_handoff(content).metadata["Started"]
+            path.write_text(
+                content.replace(f"- Started: {started}", "- Started: unknown")
+                .replace("- Base revision: not-git", "- Base revision: unknown"),
+                encoding="utf-8",
+            )
+            HANDOFF.read_handoff(project, operation)
+            HANDOFF.outcome_handoff(
+                project, "paused", operation=operation, done="Checked.",
+                position="Paused.", next_action="Continue.", blocker="None.",
+            )
+            parsed = HANDOFF.parse_handoff(path.read_text(encoding="utf-8"))
+            self.assertEqual("unknown", parsed.metadata["Started"])
+            self.assertEqual("unknown", HANDOFF._parse_workspace(parsed.sections["Workspace"])[0])
 
     def test_project_root_is_exact_inside_parent_git_repo(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -52,20 +157,6 @@ class HandoffStateTests(unittest.TestCase):
             project.mkdir()
 
             self.assertEqual(project.resolve(), HANDOFF.find_project_root(project))
-
-    def test_idle_format_is_small_and_valid(self):
-        content = HANDOFF.render_idle(
-            datetime(2026, 7, 30, 10, 0, tzinfo=timezone.utc)
-        )
-        self.assertEqual(
-            "# Developer Handoff\n\n"
-            "- Updated: 2026-07-30T10:00:00+00:00\n"
-            "- Status: idle\n\n"
-            "## Active work\n\n"
-            "No active work.\n",
-            content,
-        )
-        self.assertEqual("idle", HANDOFF.validate_handoff(content))
 
     def test_router_round_trips_empty_and_sorted_operations(self):
         empty = HANDOFF.render_router()
@@ -152,17 +243,34 @@ class HandoffStateTests(unittest.TestCase):
         with self.assertRaisesRegex(HANDOFF.HandoffError, "duplicate"):
             HANDOFF.render_router([operation, operation])
 
-    def test_router_generic_and_legacy_formats_are_distinguishable(self):
-        legacy = (
+    def test_router_rejects_old_role_table(self):
+        old_role_table = (
             "# Developer Handoff\n\n"
             "| Subject | Role | Attempt | Current operation | Status | Updated |\n"
             "|---|---|---|---|---|---|\n"
             "| task/a/1 | Development | x:1/1 | op-001 | paused | 2026-07-30T10:00:00+03:00 |\n"
         )
+        with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_router"):
+            HANDOFF.parse_router(old_role_table)
 
-        self.assertEqual("router", HANDOFF.handoff_format(HANDOFF.render_router()))
-        self.assertEqual("generic", HANDOFF.handoff_format(HANDOFF.render_idle()))
-        self.assertEqual("legacy", HANDOFF.handoff_format(legacy))
+    def test_invalid_router_is_rejected_without_state_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, handoff = self.initialize(directory)
+            malformed = "# Developer Handoff Router\ninvalid\n"
+            handoff.write_text(malformed, encoding="utf-8", newline="\n")
+            operations = project / ".usw/handoffs"
+            operations.mkdir()
+            existing = operations / "existing.md"
+            existing.write_text("preserve me\n", encoding="utf-8", newline="\n")
+
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_router"):
+                HANDOFF.begin_handoff(
+                    project, "review", "shared", self.identity, "input"
+                )
+
+            self.assertEqual(malformed.encode(), handoff.read_bytes())
+            self.assertEqual(b"preserve me\n", existing.read_bytes())
+            self.assertEqual([existing], list(operations.iterdir()))
 
     def test_operation_paths_are_derived_and_read_descriptor_relative(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -250,81 +358,6 @@ class HandoffStateTests(unittest.TestCase):
                 ):
                     HANDOFF._read_operation_at(project, descriptor, second)
 
-    def test_generic_idle_and_active_state_migrate_to_router(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, handoff = self.initialize(directory)
-
-            path, content, status = HANDOFF.read_handoff(project)
-
-            self.assertEqual(handoff.resolve(), path)
-            self.assertEqual("idle", status)
-            self.assertEqual(HANDOFF.render_readable_router(), content)
-            self.assertEqual(content, handoff.read_text(encoding="utf-8"))
-            self.assertFalse((project / ".usw/handoffs").exists())
-
-        with tempfile.TemporaryDirectory() as directory:
-            project, handoff = self.initialize(directory)
-            active = HANDOFF.render_begin(
-                "review", "shared", self.identity, "recover me"
-            ).replace("- Status: in_progress", "- Status: paused")
-            operation = HANDOFF.parse_handoff(active).metadata["Operation"]
-            handoff.write_text(active, encoding="utf-8", newline="\n")
-
-            path, content, status = HANDOFF.read_handoff(project)
-
-            self.assertEqual("paused", status)
-            self.assertEqual(active, content)
-            self.assertEqual(
-                (
-                    project
-                    / ".usw"
-                    / HANDOFF.operation_relative_path(operation)
-                ).resolve(),
-                path,
-            )
-            self.assertEqual(
-                (operation,),
-                HANDOFF.parse_router(
-                    handoff.read_text(encoding="utf-8")
-                ).operations,
-            )
-            self.assertEqual(active, path.read_text(encoding="utf-8"))
-
-    def test_failed_generic_migration_preserves_original_and_retries(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, handoff = self.initialize(directory)
-            active = HANDOFF.render_begin(
-                "review", "shared", self.identity, "recover me"
-            ).replace("- Status: in_progress", "- Status: paused")
-            operation = HANDOFF.parse_handoff(active).metadata["Operation"]
-            handoff.write_text(active, encoding="utf-8", newline="\n")
-
-            with (
-                mock.patch.object(
-                    HANDOFF,
-                    "_atomic_write",
-                    side_effect=HANDOFF.HandoffError(
-                        "write_verification", "simulated router failure"
-                    ),
-                ),
-                self.assertRaisesRegex(
-                    HANDOFF.HandoffError, "simulated router failure"
-                ),
-            ):
-                HANDOFF.read_handoff(project)
-
-            operation_path = (
-                project / ".usw" / HANDOFF.operation_relative_path(operation)
-            )
-            self.assertEqual(active, handoff.read_text(encoding="utf-8"))
-            self.assertFalse(operation_path.exists())
-
-            path, content, status = HANDOFF.read_handoff(project)
-            self.assertEqual(
-                (operation_path.resolve(), active, "paused"),
-                (path, content, status),
-            )
-
     def test_show_and_resume_use_zero_one_many_discovery(self):
         with tempfile.TemporaryDirectory() as directory:
             project, _ = self.initialize(directory)
@@ -334,7 +367,9 @@ class HandoffStateTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            self.assertEqual("idle", json.loads(empty.stdout)["status"])
+            empty_payload = json.loads(empty.stdout)
+            self.assertEqual("idle", empty_payload["status"])
+            self.assertNotIn("legacy", empty_payload)
 
             first_path, first = HANDOFF.begin_handoff(
                 project, "review", "shared", self.identity, "first"
@@ -345,6 +380,13 @@ class HandoffStateTests(unittest.TestCase):
                 (path, status),
             )
             self.assertIn(first, content)
+            selected = subprocess.run(
+                [sys.executable, str(SCRIPT), "show", str(project)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotIn("legacy", json.loads(selected.stdout))
 
             _, second = HANDOFF.begin_handoff(
                 project, "review", "shared", self.identity, "second"
@@ -370,6 +412,7 @@ class HandoffStateTests(unittest.TestCase):
                 )
                 payload = json.loads(many.stdout)
                 self.assertEqual("selection_required", payload["status"])
+                self.assertNotIn("legacy", payload)
                 operations = {
                     item["operation"]: item for item in payload["operations"]
                 }
@@ -675,39 +718,6 @@ class HandoffStateTests(unittest.TestCase):
             self.assertEqual(("src/auth.py",), expected)
             self.assertEqual(("src/auth.py",), observed)
 
-    def test_current_operation_shape_is_read_only_and_discoverable(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, _ = self.initialize(directory)
-            path, operation = HANDOFF.begin_handoff(
-                project,
-                "review",
-                "shared",
-                self.identity,
-                "review old operation",
-            )
-            path.write_text(
-                current_operation_shape(path.read_text(encoding="utf-8")),
-                encoding="utf-8",
-            )
-            before = path.read_bytes()
-
-            _, _, operations, legacy = HANDOFF.discover_handoffs(project)
-            selected_path, _, status = HANDOFF.read_handoff(project, operation)
-            HANDOFF.assert_current_handoff(project, operation)
-
-            self.assertFalse(legacy)
-            self.assertEqual(path, selected_path)
-            self.assertEqual("in_progress", status)
-            self.assertEqual(before, path.read_bytes())
-            self.assertEqual("review old operation", operations[0]["summary"])
-            self.assertEqual("unknown", operations[0]["started"])
-            self.assertEqual(
-                HANDOFF.parse_handoff(path.read_text(encoding="utf-8")).metadata[
-                    "Updated"
-                ],
-                operations[0]["updated"],
-            )
-
     def test_outcome_preserves_workspace_context_and_records_changes(self):
         with tempfile.TemporaryDirectory() as directory:
             project, _ = self.initialize(directory)
@@ -753,43 +763,7 @@ class HandoffStateTests(unittest.TestCase):
                 observed,
             )
 
-    def test_outcome_enriches_current_operation_without_inventing_history(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, _ = self.initialize(directory)
-            path, operation = HANDOFF.begin_handoff(
-                project,
-                "review",
-                "shared",
-                self.identity,
-                "review old operation",
-            )
-            path.write_text(
-                current_operation_shape(path.read_text(encoding="utf-8")),
-                encoding="utf-8",
-            )
-
-            HANDOFF.outcome_handoff(
-                project,
-                "paused",
-                operation=operation,
-                done="Inspected one file.",
-                position="Before the remaining checks.",
-                next_action="Run the remaining checks.",
-                blocker="None.",
-                observed_changes=("src/review.py",),
-            )
-
-            enriched = HANDOFF.parse_handoff(path.read_text(encoding="utf-8"))
-            base, expected, observed = HANDOFF._parse_workspace(
-                enriched.sections["Workspace"]
-            )
-            self.assertEqual("review old operation", enriched.metadata["Summary"])
-            self.assertEqual("unknown", enriched.metadata["Started"])
-            self.assertEqual("unknown", base)
-            self.assertEqual((), expected)
-            self.assertEqual(("src/review.py",), observed)
-
-    def test_save_rejects_downgrade_to_current_operation_shape(self):
+    def test_save_rejects_legacy_operation_candidate(self):
         with tempfile.TemporaryDirectory() as directory:
             project, _ = self.initialize(directory)
             path, operation = HANDOFF.begin_handoff(
@@ -805,67 +779,16 @@ class HandoffStateTests(unittest.TestCase):
                 / HANDOFF.operation_candidate_relative_path(operation)
             )
             candidate.write_text(
-                current_operation_shape(path.read_text(encoding="utf-8")),
+                legacy_operation_shape(path.read_text(encoding="utf-8")),
                 encoding="utf-8",
             )
             before = path.read_bytes()
 
-            with self.assertRaisesRegex(HANDOFF.HandoffError, "downgrade"):
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_handoff"):
                 HANDOFF.save_handoff(project, operation, candidate)
 
             self.assertEqual(before, path.read_bytes())
             self.assertTrue(candidate.exists())
-
-    def test_save_upgrades_current_operation_with_unknown_history(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project, _ = self.initialize(directory)
-            path, operation = HANDOFF.begin_handoff(
-                project,
-                "review",
-                "shared",
-                self.identity,
-                "old input",
-            )
-            enriched = path.read_text(encoding="utf-8")
-            parsed = HANDOFF.parse_handoff(enriched)
-            path.write_text(
-                current_operation_shape(enriched),
-                encoding="utf-8",
-            )
-            candidate = (
-                project
-                / ".usw"
-                / HANDOFF.operation_candidate_relative_path(operation)
-            )
-            candidate.write_text(
-                enriched.replace(
-                    f'- Started: {parsed.metadata["Started"]}',
-                    "- Started: unknown",
-                ).replace(
-                    "- Base revision: not-git",
-                    "- Base revision: unknown",
-                ),
-                encoding="utf-8",
-            )
-
-            saved_path, status = HANDOFF.save_handoff(
-                project,
-                operation,
-                candidate,
-            )
-
-            upgraded = HANDOFF.parse_handoff(
-                saved_path.read_text(encoding="utf-8")
-            )
-            base, expected, observed = HANDOFF._parse_workspace(
-                upgraded.sections["Workspace"]
-            )
-            self.assertEqual("in_progress", status)
-            self.assertEqual(operation, upgraded.metadata["Operation"])
-            self.assertEqual('"old input"', upgraded.sections["Input"])
-            self.assertEqual("unknown", upgraded.metadata["Started"])
-            self.assertEqual(("unknown", (), ()), (base, expected, observed))
-            self.assertFalse(candidate.exists())
 
     def test_save_preserves_started_and_workspace_baseline(self):
         replacements = (
@@ -953,11 +876,13 @@ class HandoffStateTests(unittest.TestCase):
         for status in sorted(HANDOFF.RECOVERABLE_STATUSES):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
                 project, handoff = self.initialize(directory)
-                active = HANDOFF.render_begin(
-                    "review", "shared", self.identity, "input"
-                ).replace("- Status: in_progress", f"- Status: {status}")
-                handoff.write_text(active, encoding="utf-8", newline="\n")
-                first = HANDOFF.parse_handoff(active).metadata["Operation"]
+                path, first = HANDOFF.begin_handoff(
+                    project, "review", "shared", self.identity, "input"
+                )
+                active = path.read_text(encoding="utf-8").replace(
+                    "- Status: in_progress", f"- Status: {status}"
+                )
+                path.write_text(active, encoding="utf-8", newline="\n")
                 _, second = HANDOFF.begin_handoff(
                     project, "review", "shared", self.identity, "new input"
                 )
@@ -1008,6 +933,125 @@ class HandoffStateTests(unittest.TestCase):
                 )
                 self.assertEqual("in_progress", current.status)
                 self.assertEqual('"second input"', current.sections["Input"])
+
+    def test_begin_preserves_published_operation_after_router_failure(self):
+        backend = (
+            HANDOFF._DescriptorDirectory
+            if HANDOFF.SAFE_ACCESS.supports_descriptor_relative_access()
+            else HANDOFF._PathnameDirectory
+        )
+        for failure in ("sync", "readback"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                project, handoff = self.initialize(directory)
+                local = (project / ".usw").resolve()
+                original_sync = backend.sync
+                original_read = backend.read_text
+                injected = False
+
+                def fail_once(handle, phase):
+                    nonlocal injected
+                    if (
+                        not injected and failure == phase and handle.path == local
+                        and HANDOFF.parse_router(handoff.read_text()).operations
+                    ):
+                        injected = True
+                        raise OSError("router publication failure")
+
+                def sync(handle):
+                    original_sync(handle)
+                    fail_once(handle, "sync")
+
+                def read_text(handle, name):
+                    content = original_read(handle, name)
+                    if name == "HANDOFF.md":
+                        fail_once(handle, "readback")
+                    return content
+
+                with (
+                    mock.patch.object(backend, "sync", sync),
+                    mock.patch.object(backend, "read_text", read_text),
+                    self.assertRaisesRegex(
+                        OSError if failure == "sync" else HANDOFF.HandoffError,
+                        "router publication failure" if failure == "sync" else "unsafe file",
+                    ),
+                ):
+                    HANDOFF.begin_handoff(
+                        project, "review", "shared", self.identity, "original input"
+                    )
+
+                self.assertTrue(injected)
+                operations = HANDOFF.parse_router(handoff.read_text()).operations
+                self.assertEqual(1, len(operations))
+                path, content, status = HANDOFF.read_handoff(project, operations[0])
+                self.assertTrue(path.is_file())
+                self.assertEqual("in_progress", status)
+                self.assertEqual(
+                    '"original input"', HANDOFF.parse_handoff(content).sections["Input"]
+                )
+
+    def test_begin_preserves_operation_when_router_publication_is_unknown(self):
+        for failure in ("missing", "invalid", "undecodable", "unreadable"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                project, handoff = self.initialize(directory)
+                original_read = HANDOFF._read_router_locked
+                write_started = False
+
+                def fail_write(*args, **kwargs):
+                    nonlocal write_started
+                    write_started = True
+                    if failure == "missing":
+                        handoff.unlink()
+                    elif failure == "invalid":
+                        handoff.write_text("invalid router\n", encoding="utf-8")
+                    elif failure == "undecodable":
+                        handoff.write_bytes(b"\xff")
+                    raise OSError("original router write failure")
+
+                def read_router(*args, **kwargs):
+                    if write_started and failure == "unreadable":
+                        raise OSError("router cannot be read")
+                    return original_read(*args, **kwargs)
+
+                with (
+                    mock.patch.object(HANDOFF, "_write_readable_router_locked", fail_write),
+                    mock.patch.object(HANDOFF, "_read_router_locked", read_router),
+                    self.assertRaisesRegex(OSError, "original router write failure"),
+                ):
+                    HANDOFF.begin_handoff(
+                        project, "review", "shared", self.identity, "preserve input"
+                    )
+
+                documents = list((project / ".usw/handoffs").glob("*.md"))
+                self.assertEqual(1, len(documents))
+                state = HANDOFF.parse_handoff(documents[0].read_text())
+                self.assertEqual('"preserve input"', state.sections["Input"])
+
+    def test_begin_removes_only_unpublished_operation_after_router_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, handoff = self.initialize(directory)
+            previous_path, previous = HANDOFF.begin_handoff(
+                project, "review", "shared", self.identity, "existing input"
+            )
+            before_router = handoff.read_bytes()
+            before_operation = previous_path.read_bytes()
+            with (
+                mock.patch.object(
+                    HANDOFF, "_write_readable_router_locked",
+                    side_effect=OSError("failure before publication"),
+                ),
+                self.assertRaisesRegex(OSError, "failure before publication"),
+            ):
+                HANDOFF.begin_handoff(
+                    project, "review", "shared", self.identity, "new input"
+                )
+
+            self.assertEqual(before_router, handoff.read_bytes())
+            self.assertEqual(before_operation, previous_path.read_bytes())
+            self.assertEqual(
+                [previous_path],
+                list((project.resolve() / ".usw/handoffs").glob("*.md")),
+            )
+            self.assertEqual((previous,), HANDOFF.parse_router(handoff.read_text()).operations)
 
     def test_concurrent_begin_registers_both_operations(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1222,6 +1266,107 @@ class HandoffStateTests(unittest.TestCase):
                 HANDOFF.validate_router(handoff.read_text(encoding="utf-8")),
             )
 
+    def test_cleanup_all_removes_every_status_and_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, handoff = self.initialize(directory)
+            paths = []
+            operations = []
+            for status in sorted(HANDOFF.NON_IDLE_STATUSES):
+                path, operation = HANDOFF.begin_handoff(
+                    project, "review", "shared", self.identity, status
+                )
+                if status != "in_progress":
+                    HANDOFF.outcome_handoff(
+                        project, status, operation=operation, done="Recorded.",
+                        position="Stopped.", next_action="Cleanup.", blocker="None."
+                    )
+                candidate = path.with_suffix(".next.md")
+                candidate.write_bytes(path.read_bytes())
+                paths.extend((path, candidate))
+                operations.append(operation)
+            orphan = paths[0].parent / "unregistered.md"
+            orphan.write_bytes(b"keep orphan")
+            product = project / "product.txt"
+            product.write_bytes(b"keep product")
+
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "cleanup", str(project), "--all"],
+                capture_output=True, text=True, check=True,
+            )
+
+            self.assertEqual(set(operations), set(json.loads(result.stdout)["removed_operations"]))
+            self.assertEqual((), HANDOFF.validate_router(handoff.read_text()))
+            self.assertTrue(all(not path.exists() for path in paths))
+            self.assertEqual(b"keep orphan", orphan.read_bytes())
+            self.assertEqual(b"keep product", product.read_bytes())
+            self.assertEqual((handoff.resolve(), ()), HANDOFF.cleanup_handoffs(project, all_operations=True))
+
+    def test_cleanup_all_corrupt_document_blocks_all_mutations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, handoff = self.initialize(directory)
+            records = sorted(
+                HANDOFF.begin_handoff(
+                    project, "review", "shared", self.identity, user_input
+                )
+                for user_input in ("first", "second")
+            )
+            files = [handoff]
+            for path, _ in records:
+                candidate = path.with_suffix(".next.md")
+                candidate.write_bytes(path.read_bytes())
+                files.extend((path, candidate))
+            records[-1][0].write_bytes(b"corrupted operation")
+            before = {path: path.read_bytes() for path in files}
+
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_handoff"):
+                HANDOFF.cleanup_handoffs(project, all_operations=True)
+
+            self.assertEqual(before, {path: path.read_bytes() for path in files})
+
+    def test_cleanup_all_unregistration_precedes_batch_deletion_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, handoff = self.initialize(directory)
+            records = sorted(
+                HANDOFF.begin_handoff(
+                    project, "review", "shared", self.identity, user_input
+                )
+                for user_input in ("first", "second")
+            )
+            first_path, _ = records[0]
+            orphan_path, orphan_operation = records[1]
+            original_unlink = HANDOFF.os.unlink
+
+            def fail_second_document(name, *args, **kwargs):
+                self.assertEqual((), HANDOFF.validate_router(handoff.read_text()))
+                if os.path.basename(str(name)) == orphan_path.name:
+                    raise OSError("simulated batch deletion failure")
+                return original_unlink(name, *args, **kwargs)
+
+            with (
+                mock.patch.object(HANDOFF.os, "unlink", side_effect=fail_second_document),
+                self.assertRaisesRegex(OSError, "batch deletion failure"),
+            ):
+                HANDOFF.cleanup_handoffs(project, all_operations=True)
+
+            self.assertFalse(first_path.exists())
+            self.assertTrue(orphan_path.exists())
+            self.assertEqual((), HANDOFF.validate_router(handoff.read_text()))
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "stale_operation"):
+                HANDOFF.read_handoff(project, orphan_operation)
+            self.assertEqual(
+                (handoff.resolve(), ()),
+                HANDOFF.cleanup_handoffs(project, all_operations=True),
+            )
+            self.assertTrue(orphan_path.exists())
+
+    def test_cleanup_all_respects_disabled_handoff(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project, handoff = self.initialize(directory, enabled=False)
+            handoff.write_bytes(b"do not read")
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "disabled"):
+                HANDOFF.cleanup_handoffs(project, all_operations=True)
+            self.assertEqual(b"do not read", handoff.read_bytes())
+
     def test_finish_requires_selection_and_preserves_competing_operation(self):
         with tempfile.TemporaryDirectory() as directory:
             project, handoff = self.initialize(directory)
@@ -1282,40 +1427,41 @@ class HandoffStateTests(unittest.TestCase):
             )
             self.assertTrue(path.exists())
 
-    def test_legacy_is_read_only_recovery_until_finish(self):
+    def test_old_role_table_is_rejected_without_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             project, handoff = self.initialize(directory)
-            legacy = (
+            old_role_table = (
                 "# Developer Handoff\n\n"
                 "| Subject | Role | Attempt | Current operation | Status | Updated |\n"
                 "|---|---|---|---|---|---|\n"
                 "| task/a/1 | Development | x:1/1 | op-001 | paused | 2026-07-30T10:00:00+03:00 |\n"
             )
-            handoff.write_text(legacy, encoding="utf-8", newline="\n")
+            handoff.write_text(old_role_table, encoding="utf-8", newline="\n")
+            operation = "usw-operation:" + "0" * 64
+            candidate = project / ".usw/handoffs" / ("0" * 64 + ".next.md")
 
-            _, content, status = HANDOFF.read_handoff(project)
-            self.assertEqual(("paused", legacy), (status, content))
-            self.assertTrue(HANDOFF.parse_handoff(content).legacy)
-            with self.assertRaisesRegex(HANDOFF.HandoffError, "legacy"):
-                HANDOFF.begin_handoff(
+            commands = (
+                lambda: HANDOFF.discover_handoffs(project),
+                lambda: HANDOFF.read_handoff(project),
+                lambda: HANDOFF.begin_handoff(
                     project, "review", "shared", self.identity, "input"
-                )
-            with self.assertRaisesRegex(HANDOFF.HandoffError, "legacy"):
-                HANDOFF.outcome_handoff(
-                    project,
-                    "completed",
-                    operation="usw-operation:" + "0" * 64,
-                    done="Done.",
-                    position="Done.",
-                    next_action="Finish.",
-                    blocker="None.",
-                )
-            self.assertEqual(legacy, handoff.read_text(encoding="utf-8"))
-            HANDOFF.finish_handoff(project)
-            self.assertEqual(
-                (),
-                HANDOFF.validate_router(handoff.read_text(encoding="utf-8")),
+                ),
+                lambda: HANDOFF.outcome_handoff(
+                    project, "completed", operation=operation, done="Done.",
+                    position="Done.", next_action="Finish.", blocker="None."
+                ),
+                lambda: HANDOFF.save_handoff(project, operation, candidate),
+                lambda: HANDOFF.assert_current_handoff(project, operation),
+                lambda: HANDOFF.finish_handoff(project),
+                lambda: HANDOFF.cleanup_handoffs(project),
             )
+            for command in commands:
+                with self.subTest(command=command), self.assertRaisesRegex(
+                    HANDOFF.HandoffError, "invalid_router"
+                ):
+                    command()
+                self.assertEqual(old_role_table.encode(), handoff.read_bytes())
+                self.assertFalse(candidate.exists())
 
     def test_disabled_config_does_not_read_or_change_handoff(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1358,7 +1504,7 @@ class HandoffStateTests(unittest.TestCase):
                 self.assertEqual(before_router, handoff.read_bytes())
                 self.assertEqual(before_operation, path.read_bytes())
 
-    def test_assert_current_rejects_stale_terminal_legacy_and_disabled_state(self):
+    def test_assert_current_rejects_stale_terminal_and_disabled_state(self):
         with tempfile.TemporaryDirectory() as directory:
             project, handoff = self.initialize(directory)
             path, operation = HANDOFF.begin_handoff(
@@ -1378,21 +1524,6 @@ class HandoffStateTests(unittest.TestCase):
                 ):
                     HANDOFF.assert_current_handoff(project, requested)
             self.assertEqual(before, (handoff.read_bytes(), path.read_bytes()))
-
-        with tempfile.TemporaryDirectory() as directory:
-            project, handoff = self.initialize(directory)
-            legacy = (
-                "# Developer Handoff\n\n"
-                "| Subject | Role | Attempt | Current operation | Status | Updated |\n"
-                "|---|---|---|---|---|---|\n"
-                "| task/a/1 | Development | x:1/1 | op-001 | paused | 2026-07-30T10:00:00+03:00 |\n"
-            )
-            handoff.write_text(legacy, encoding="utf-8", newline="\n")
-            with self.assertRaisesRegex(HANDOFF.HandoffError, "routed parent"):
-                HANDOFF.assert_current_handoff(
-                    project, "usw-operation:" + "0" * 64
-                )
-            self.assertEqual(legacy, handoff.read_text(encoding="utf-8"))
 
         with tempfile.TemporaryDirectory() as directory:
             project, handoff = self.initialize(directory, enabled=False)
@@ -1416,15 +1547,15 @@ class HandoffStateTests(unittest.TestCase):
             local = project / ".usw"
             local.mkdir()
             victim = project / "victim"
-            victim.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
+            victim.write_text(HANDOFF.render_readable_router(), encoding="utf-8", newline="\n")
             os.symlink(victim, local / "HANDOFF.md")
             with self.assertRaisesRegex(HANDOFF.HandoffError, "unsafe"):
                 HANDOFF.read_handoff(project)
             self.assertEqual(
-                HANDOFF.render_idle(), victim.read_text(encoding="utf-8")
+                HANDOFF.render_readable_router(), victim.read_text(encoding="utf-8")
             )
 
-    def test_save_accepts_only_generic_exact_candidate(self):
+    def test_save_accepts_only_operation_scoped_candidate(self):
         with tempfile.TemporaryDirectory() as directory:
             project, handoff = self.initialize(directory)
             path, operation = HANDOFF.begin_handoff(
@@ -1453,7 +1584,7 @@ class HandoffStateTests(unittest.TestCase):
             )
 
             wrong = project / "wrong.md"
-            wrong.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
+            wrong.write_text(HANDOFF.render_readable_router(), encoding="utf-8", newline="\n")
             with self.assertRaisesRegex(HANDOFF.HandoffError, "candidate must"):
                 HANDOFF.save_handoff(project, operation, wrong)
 
@@ -1605,7 +1736,7 @@ class HandoffStateTests(unittest.TestCase):
             self.assertEqual(idle, handoff.read_bytes())
             self.assertTrue(candidate.exists())
 
-    def test_save_cannot_clear_replace_legacy_or_change_operation(self):
+    def test_save_cannot_clear_or_change_operation(self):
         with tempfile.TemporaryDirectory() as directory:
             project, handoff = self.initialize(directory)
             path, operation = HANDOFF.begin_handoff(
@@ -1618,8 +1749,8 @@ class HandoffStateTests(unittest.TestCase):
             )
             current = path.read_bytes()
 
-            candidate.write_text(HANDOFF.render_idle(), encoding="utf-8", newline="\n")
-            with self.assertRaisesRegex(HANDOFF.HandoffError, "finish"):
+            candidate.write_text(HANDOFF.render_readable_router(), encoding="utf-8", newline="\n")
+            with self.assertRaisesRegex(HANDOFF.HandoffError, "invalid_handoff"):
                 HANDOFF.save_handoff(project, operation, candidate)
             self.assertEqual(current, path.read_bytes())
 
@@ -1635,23 +1766,6 @@ class HandoffStateTests(unittest.TestCase):
                 HANDOFF.operation_relative_path(operation),
                 handoff.read_text(encoding="utf-8"),
             )
-
-            legacy = (
-                "# Developer Handoff\n\n"
-                "| Subject | Role | Attempt | Current operation | Status | Updated |\n"
-                "|---|---|---|---|---|---|\n"
-                "| task/a/1 | Development | x:1/1 | op-001 | paused | 2026-07-30T10:00:00+03:00 |\n"
-            )
-            handoff.write_text(legacy, encoding="utf-8", newline="\n")
-            candidate.write_text(
-                HANDOFF.render_begin(
-                    "review", "shared", self.identity, "candidate"
-                ),
-                encoding="utf-8",
-            )
-            with self.assertRaisesRegex(HANDOFF.HandoffError, "legacy"):
-                HANDOFF.save_handoff(project, operation, candidate)
-            self.assertEqual(legacy, handoff.read_text(encoding="utf-8"))
 
     def test_save_cannot_change_exact_input_or_flow_context(self):
         with tempfile.TemporaryDirectory() as directory:

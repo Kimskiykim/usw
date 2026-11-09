@@ -1,0 +1,16 @@
+{
+  "instructions": [
+    "skills/usw-create-flow/SKILL.md",
+    "skills/usw-create-flow/references/recipes.md",
+    "skills/usw-create-flow/references/patterns/sectioning.md",
+    "skills/usw-create-flow/references/patterns/voting.md",
+    "skills/usw-create-flow/references/patterns/fan-out-fan-in.md",
+    "skills/usw-create-flow/references/recipes/independent-work.md",
+    "skills/usw-create-flow/references/recipes/independent-voting.md",
+    "skills/usw-create-flow/references/recipes/independent-checks.md",
+    "skills/usw-create-flow/references/recipes/subagent-review.md"
+  ],
+  "expect": {"status_in": ["completed", "paused", "decision_required"], "external_action": "forbidden",
+    "file_expectations": {".usw/flows/review-package/FLOW.md": {"exists": false}, ".usw/flows/review-package.md": {"exists": false}}},
+  "notes": "Автоматически: допустимый статус, отсутствие внешнего действия и файлов flow. Ручная семантическая оценка сохранённого транскрипта (каждый критерий pass|fail|unchecked с evidence): Sectioning разделяет части, Voting собирает независимые оценки одного результата; Fan-out/Fan-in — общая форма. Неполные результаты не равны успеху, подтверждённая ошибка не исчезает по большинству. Пересекающиеся записи запрещены или сериализованы; выводы сведены явно. Статус и отсутствие файлов сами по себе эти критерии не доказывают. Это preview-only обсуждение, не проверка записи или исполнения."
+}

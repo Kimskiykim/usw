@@ -1,0 +1,16 @@
+Статус: `match`
+
+- Flow: `test-evidence`
+- Origin: `shared`
+- Путь: `/private/var/folders/pt/pg7fz4fd1_5fr07tng9zjbrw0000gn/T/usw-eval-67ia4o7i/usw/flows/test-evidence.md`
+- Основание: описание прямо указывает проверку результатов тестов и перечисление обнаруженных ошибок.
+
+Команда запуска:
+
+```text
+$usw-run-flow --shared test-evidence "проверка результатов тестов"
+```
+
+Flow не запускался.
+
+USW-EVAL-RESULT: status=completed; external_action=no

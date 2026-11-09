@@ -1,3 +1,8 @@
+---
+name: chat-review
+description: Провести независимое ревью с голосованием агентов; использовать для обсуждения замечаний перед решением человека.
+---
+
 # Flow: chat-review
 
 Запускает адаптивное read-only ревью двумя или тремя независимыми агентами,
@@ -9,10 +14,19 @@
 
 ## Dependencies
 
-- bundled command: `usw-reviewer-llm-critic`
+- bundled command только для `llm-critic`: `usw-reviewer-llm-critic`.
 
-Если обязательная dependency недоступна, вернуть `blocked` до запуска
-subagents. Не подменять dependency другим skill или prompt.
+Разрешать полный prompt по подтверждённому источнику установки команды текущей
+среды. При установке через `install.sh`: для Codex —
+`${CODEX_HOME:-$HOME/.codex}/prompts/usw-reviewer-llm-critic.md`, для Qwen —
+`${QWEN_HOME:-$HOME/.qwen}/commands/usw-reviewer-llm-critic.md`, для Claude —
+`${CLAUDE_HOME:-$HOME/.claude}/commands/usw-reviewer-llm-critic.md`. Для Qwen
+extension использовать `commands/usw-reviewer-llm-critic.md` внутри подтверждённого
+корня расширения; для GigaCode — `<project>/.gigacode/commands/usw-reviewer-llm-critic.md`.
+Иной способ установки требует подтверждённого источника текущей среды. Не угадывать
+`commands/...` относительно проекта или `flow_directory` без подтверждения
+установки. Если команда или её полный prompt недоступны, вернуть `blocked` до
+запуска reviewers, не подменяя их. Для `custom` эта dependency не требуется.
 
 ## Вход
 
@@ -43,17 +57,29 @@ subagents.
 
 - Scope: scope из input.
 - Review focus: CALL COMMAND `/usw-reviewer-llm-critic`; прочитать полный
-  prompt `commands/usw-reviewer-llm-critic.md` и применить без смягчения.
+  установленный prompt по правилу Dependencies, передать reviewers и применить
+  без смягчения.
 - Output contract: findings по severity; для каждого — точный файл и строка,
-  defect, evidence, impact и минимальный fix. Если material findings нет,
-  вернуть ровно `No material LLM slop found.`
+  defect, evidence, impact и минимальный fix. Material findings включают `low`.
+  При завершённой проверке без findings вернуть ровно
+  `No material LLM slop found.` При незавершённой — `Review incomplete.`
+  с причиной, непроверенной областью и уже подтверждёнными findings.
 
 ### `custom`
 
 Использовать scope из input и непустые `Review focus` и `Output contract` из
-`Custom profile`. Если хотя бы один блок отсутствует, вернуть
-`decision_required` до запуска subagents. Неизвестный profile обрабатывать так
-же.
+`Custom profile`. До discovery убедиться, что contract позволяет различить:
+
+- отдельные проверяемые findings с привязкой к scope и evidence, пригодным для
+  проверки каждого finding при voting, и явное завершение проверки всего scope;
+- явно завершённую проверку всего scope без material findings;
+- незавершённую проверку с причиной, непроверенным scope и уже подтверждёнными
+  findings с evidence.
+
+Если блок отсутствует или contract несовместим с этими исходами, запросить
+уточнение и вернуть `decision_required` до запуска subagents. Например,
+только число или только `PASS/FAIL` недостаточны. Неизвестный profile
+обрабатывать так же.
 
 ## Режим запуска
 
@@ -101,8 +127,19 @@ review-budget-reason: <triggers и factors либо low-risk reason>
 выполняет ровно одно read-only discovery review непосредственно по этим трём
 блокам.
 
-Reviewers ничего не меняют. Tool-unavailable результат возвращает `blocked`;
-пустой или не соответствующий output contract результат возвращает
+Reviewers ничего не меняют. Для `custom` считать проверку завершённой только
+при явном подтверждении проверки всего scope; clean требует также явного
+отсутствия material findings. Если результат или его полноту нельзя достоверно
+интерпретировать, вернуть `decision_required`; отсутствие извлекаемых findings
+не является clean.
+
+Tool-unavailable результат возвращает `blocked`. Незавершённая проверка любого
+profile, включая `custom` без буквальной строки `Review incomplete.`, из-за
+недоступных файлов или инструментов возвращает `blocked`; из-за недостатка
+необходимых данных — `decision_required`. Сохранить причину, непроверенный scope
+и подтверждённые findings с evidence; не переходить к `accept-as-is` или voting
+до завершения проверки.
+Пустой или не соответствующий output contract результат возвращает
 `decision_required`. Автоматически не повторять и не подменять reviewer-а.
 
 ### 3. Дедуплицировать candidates

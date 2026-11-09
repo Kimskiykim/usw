@@ -1,6 +1,6 @@
 ---
 owner: maintainer
-updated: 2026-09-01
+updated: 2026-09-23
 ---
 # Глоссарий
 
@@ -10,15 +10,18 @@ updated: 2026-09-01
 - **Entrypoint / раскладка** — `<flow-root>/<name>.md` (flat) или
   `<flow-root>/<name>/FLOW.md` (canonical, package). Обе формы одного имени
   в одном origin → `ambiguous_flow_layout`.
-- **Package** — каталог flow с `FLOW.md` и ресурсами; ресурсы читаются
-  только по явной ссылке из `FLOW.md`, как immutable bytes.
+- **Package** — каталог flow с `FLOW.md` и соседними файлами; исполнитель
+  читает нужные файлы обычным инструментом относительно `flow_directory`.
 - **version-2** — text-first авторская конвенция с маркерами `CALL`,
   `GATE`, `LOOP`, `PARALLEL`; подсказки модели, не machine DSL.
 - **Contract tokens** — дословные статусы и варианты ответа человека в
   обратных кавычках (`approve`, `change`, `blocked`…); не переводятся.
 - **Design scan** — read-only разбор сохранённого flow по каталогу рецептов
   с ≤3 подсказками.
-- **Рецепт (recipe)** — переиспользуемый блок проектирования flow из
+- **Паттерн** — именованный способ организации работы с условиями применения
+  и ограничениями; не команда и не гарантия исполнения.
+- **Рецепт (recipe)** — конкретный переиспользуемый блок проектирования flow,
+  адаптирующий паттерн или практику к USW; файлы в
   `skills/usw-create-flow/references/recipes/`.
 - **Handoff / router** — `.usw/HANDOFF.md`, validated Markdown-маршрутизатор
   от operation identity к state-файлу под `.usw/handoffs/`.

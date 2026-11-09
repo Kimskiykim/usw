@@ -1,0 +1,1 @@
+$usw-run-flow --shared activation-smoke "Проверка handoff"

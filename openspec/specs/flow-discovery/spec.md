@@ -7,9 +7,9 @@
 ## Requirements
 
 ### Requirement: Явное намерение находит существующий runnable flow
-USW SHALL предоставлять `usw-find-flow` как явно вызываемую read-only capability,
-которая ищет direct developer-local и настроенные shared flat или packaged
-flows для одного переданного намерения.
+USW SHALL предоставлять `usw-find-flow` как read-only capability по явному
+запросу пользователя, которая ищет direct developer-local и настроенные shared
+flat или packaged flows для одного переданного намерения.
 
 #### Scenario: Один flow явно подходит лучше остальных
 - **WHEN** один существующий runnable flat или packaged flow явно соответствует
@@ -24,15 +24,37 @@ flow roots. Он MUST NOT рекурсивно обходить package director
 candidates через ту же contained descriptor-relative no-symlink boundary
 разрешения, что и `usw-run-flow`.
 
+Для сопоставления finder SHALL использовать имя и `description` из frontmatter
+по контракту `flow-frontmatter`. Отсутствие похожих слов в имени MUST NOT
+исключать кандидата до безопасного чтения его описания. Для flow без пригодного
+описания finder SHALL использовать имя и назначение из тела Markdown.
+Сопоставление MUST опираться только на возвращённый загрузчиком текст; наличие
+frontmatter не разрешает отдельное чтение по path или обход ресурсов пакета.
+Конфликт двух раскладок MUST сохранять действующий исход `ambiguous`.
+
 #### Scenario: Candidate является symlink
-- **WHEN** flat entry, package directory, `FLOW.md` или один из компонентов их
-  path является symbolic link
+- **WHEN** flat entry, package directory, `FLOW.md` или один из компонентов их path является symbolic link
 - **THEN** finder исключает или отклоняет его без чтения flow
 
 #### Scenario: Package содержит вложенные Markdown resources
-- **WHEN** direct package содержит Markdown в `references/` или другом каталоге
-  resources
+- **WHEN** direct package содержит Markdown в `references/` или другом каталоге resources
 - **THEN** finder рассматривает только direct entrypoint `FLOW.md` этого package
+
+#### Scenario: Назначение понятно только из описания
+- **WHEN** имя `release-check` не похоже на запрос «проверить наличие результатов тестов», но его `description` точно описывает эту работу
+- **THEN** finder рассматривает его по описанию и возвращает `match`, если остальные кандидаты не соответствуют намерению столь же хорошо
+
+#### Scenario: Старый flow не имеет frontmatter
+- **WHEN** подходящее назначение указано только в теле старого flow
+- **THEN** finder учитывает этот flow без миграции и без снижения приоритета только из-за отсутствия заголовка
+
+#### Scenario: Описание отсутствует или непригодно
+- **WHEN** finder обнаруживает пустое либо некорректное описание в заголовке
+- **THEN** он сопоставляет имя и назначение из тела, отмечает обнаруженную проблему и ничего не исправляет
+
+#### Scenario: Два описания одинаково подходят
+- **WHEN** два существенно разных flow одинаково соответствуют намерению по описаниям
+- **THEN** finder возвращает `ambiguous` с различиями кандидатов без исполнения
 
 ### Requirement: Discovery не имеет side effects
 Finder MUST NOT создавать, адаптировать или исполнять flow, вызывать HANDOFF,
@@ -74,3 +96,23 @@ origin содержит оба совместимых entrypoint для safe nam
   `<name>/FLOW.md` в одном origin
 - **THEN** он возвращает `ambiguous`, называя оба path entrypoint и причину
   `ambiguous_flow_layout`
+
+### Requirement: Обычная прямая просьба активирует поиск flow
+Прямая просьба найти или подобрать именно flow SHALL считаться явным запросом
+без обязательного имени skill или команды. Простое упоминание flow и общая
+задача MUST NOT активировать finder. При неясном намерении finder SHALL
+уточнять его до поиска. Поиск MUST NOT давать разрешение на запуск или изменение.
+
+#### Scenario: Просьба обычными словами
+- **WHEN** пользователь просит «найди flow для проверки результатов тестов»
+- **THEN** finder выполняет ограниченный поиск без требования повторить запрос
+  через имя skill и возвращает результат без запуска
+
+#### Scenario: Flow только упомянут
+- **WHEN** пользователь обсуждает существование flow или просит проверить код
+  без просьбы найти flow
+- **THEN** finder не активируется и не читает flow-каталог для этого запроса
+
+#### Scenario: Назначение поиска неясно
+- **WHEN** пользователь просит найти flow, но из запроса и контекста неясно для чего
+- **THEN** агент задаёт уточняющий вопрос до поиска

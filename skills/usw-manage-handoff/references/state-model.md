@@ -1,6 +1,6 @@
 # Модель routed state (usw-manage-handoff)
 
-Читать при вопросах об устройстве router и operation documents, миграциях и
+Читать при вопросах об устройстве router и operation documents, совместимости и
 конкурентных переходах. Для обычных вызовов команд этот файл не нужен:
 SKILL.md самодостаточен.
 
@@ -36,22 +36,13 @@ router с readback и только потом возвращает ID и path. O
 snapshot в router. Finish сначала подтверждённо удаляет route, затем только её
 document и candidate; cleanup failure после unregistration может оставить
 безопасный orphan, но не возвращает operation в recovery. Cleanup сначала
-подтверждает новый router без terminal routes, затем удаляет только их
-documents и candidates.
+подтверждает router без выбранных routes (terminal по умолчанию, всех с `--all`),
+затем удаляет только их documents и candidates.
 
-## Миграции и совместимость
+## Совместимость
 
-Generic single-state HANDOFF мигрирует под lock: idle превращается в empty
-router; non-idle сначала exact-byte записывается в operation document по его
-validated embedded identity и только потом HANDOFF заменяется router-ом —
-до успешной замены single-state файл остаётся authoritative. Legacy role-based
-HANDOFF доступен только для Show/Resume/Finish, блокирует Begin и не
-мигрируется автоматически; его Finish создаёт empty router.
-
-Старые generic operation documents без Summary, Started и Workspace читаются
-без изменения байт; discovery выводит bounded summary из exact input и
-показывает unknown start time. Outcome такого документа записывает enriched
-форму с явными `unknown` для недоступных исторических полей. Enriched
-operation нельзя заменить старой формой; старую generic operation разрешено
-обновить только enriched candidate с `Started: unknown`, unknown base и
-пустыми expected writes.
+Поддерживаются только routed HANDOFF и operation documents с Summary, Started
+и Workspace. Прежние single-state HANDOFF и неполные operation documents
+отклоняются без преобразования и без изменения router, documents и candidates.
+Уже сохранённые явные `unknown` в полном актуальном документе допустимы:
+runtime не заменяет их выдуманными историческими значениями.

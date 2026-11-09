@@ -1,0 +1,5 @@
+{
+  "instructions": ["skills/usw-create-flow/SKILL.md"],
+  "expect": {"status_in": ["paused", "decision_required"], "external_action": "forbidden", "file_expectations": {".usw/flows/review/FLOW.md": {"exists": false}}},
+  "notes": "Маркеры проверяют только указанные строки и статус. Смысл описания, типы YAML, неизменность тела и точные байты проверяются вручную по ответу и сохранённым снимкам файлов runner. Это наблюдение модели, не машинная гарантия."
+}

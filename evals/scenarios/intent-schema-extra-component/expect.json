@@ -1,0 +1,15 @@
+{
+  "instructions": ["usw/flows/opsx-intent2spec.md"],
+  "expect": {
+    "status_in": ["completed", "decision_required"],
+    "external_action": "forbidden",
+    "required_markers": ["reports.example.invalid"],
+    "file_expectations": {
+      "planning/change/tasks.md": {"exists": false},
+      "planning/change/design.md": {"exists": false},
+      "planning/change/proposal.md": {"exists": false},
+      "planning/change/checks/security/spec.md": {"required_markers": ["https://reports.example.invalid"]}
+    }
+  },
+  "notes": "Адресная проверка охвата gate-7.1 по переданному снимку CLI, не полный запуск flow и не проверка получения CLI-контракта. Дополнительный glob-компонент содержит drift, которого нет в brief/decision. Маркеры файла не доказывают побайтную сохранность или отсутствие чтения; инструменты наблюдать отдельно. Нужен workdir runner."
+}

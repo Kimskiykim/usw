@@ -12,7 +12,9 @@
       "usw/flows/prepare-review-context/FLOW.md": {
         "required_markers": [
           "диапазон",
-          "провер"
+          "провер",
+          "name: prepare-review-context",
+          "description:"
         ]
       },
       "usw/flows/prepare-review-context.md": {

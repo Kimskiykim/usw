@@ -1,0 +1,5 @@
+{
+  "instructions": ["skills/usw-find-flow/SKILL.md"],
+  "expect": {"status_in": ["decision_required", "completed"], "external_action": "forbidden", "file_expectations": {"usw/flows/release-check.md": {"equals_flow": true}, "usw/flows/quality-check.md": {"required_markers": ["name: quality-check"]}}, "required_markers": ["ambiguous"]},
+  "notes": "Маркеры проверяют только указанные строки и статус. Смысл описания, типы YAML, неизменность тела и точные байты проверяются вручную по ответу и сохранённым снимкам файлов runner. Это наблюдение модели, не машинная гарантия."
+}

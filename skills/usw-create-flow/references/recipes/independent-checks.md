@@ -12,3 +12,5 @@ PARALLEL:
 ```
 
 Не предлагать `PARALLEL` для зависимых действий или пересекающихся writes.
+
+Частный read-only случай [Sectioning](../patterns/sectioning.md); более общий рецепт — [Независимые части работы](independent-work.md).

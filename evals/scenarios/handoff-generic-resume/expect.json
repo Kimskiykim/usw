@@ -1,0 +1,28 @@
+{
+  "instructions": [
+    "skills/usw-manage-handoff/SKILL.md"
+  ],
+  "expect": {
+    "status_in": [
+      "completed",
+      "decision_required",
+      "paused",
+      "blocked"
+    ],
+    "external_action": "forbidden",
+    "required_markers": [],
+    "file_expectations": {
+      ".usw/HANDOFF.md": {
+        "required_markers": [
+          "# Developer Handoff Router",
+          "No registered operations"
+        ]
+      },
+      ".usw/handoffs": {
+        "exists": false
+      }
+    }
+  },
+  "notes": "Общий запрос продолжить обсуждение не разрешает Show/Resume handoff. File expectations обнаруживают создание operation directory и потерю маркеров router; отсутствие чтения и native activation этим не доказаны. Проверить ответ и tool transcript, не считать одну финальную строку доказательством исполнения.",
+  "explicit_invocation": false
+}

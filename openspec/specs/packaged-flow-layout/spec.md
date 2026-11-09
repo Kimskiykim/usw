@@ -3,8 +3,8 @@
 ## Purpose
 Определяет skill-подобный каталог flow: канонический entrypoint
 `<flow-root>/<name>/FLOW.md`, совместимость с flat layout `<name>.md`,
-запрет двух layout для одного имени в одном origin и правила доступа к
-package resources через принадлежащий resolver `flow_directory`.
+запрет двух layout для одного имени в одном origin и чтение соседних
+файлов относительно возвращённого `flow_directory`.
 
 ## Requirements
 
@@ -36,35 +36,37 @@ entrypoints. Он MUST NOT использовать предпочтение lay
 
 ### Requirement: Package resources используют contained flow directory от resolver
 USW SHALL передавать точный абсолютный `flow_directory` выбранного entrypoint
-отдельно от Markdown и input. Относительный resource, названный в packaged
-`flow_markdown`, SHALL разрешаться от принадлежащего resolver каталога этого
-invocation и MUST быть отклонён на границе использования, если его path
-абсолютный, выходит наружу через `..`, проходит через обнаруженный symbolic link
-либо не имеет filesystem type, требуемого запрошенной операцией. Тот же path,
-переданный только через `user_input`, MUST NOT становиться package dependency.
-Содержимое resource MUST NOT загружаться автоматически и MUST NOT давать
-дополнительных полномочий. При явном использовании boundary MUST читать final
-regular file через удерживаемый no-follow descriptor, возвращать immutable
-content и отдельную resource identity и считать pathname метаданными только для
-отчёта, которые MUST NOT открываться повторно.
+отдельно от Markdown и input. Если текст выбранного packaged `FLOW.md` называет
+относительный соседний файл, исполнитель SHALL понимать его относительно
+`flow_directory` и читать при необходимости обычными инструментами агента.
+Содержимое соседних файлов MUST NOT загружаться автоматически. USW MUST NOT
+требовать отдельную команду `resource`, base64, identity ресурса или повторное
+разрешение entrypoint для такого чтения. Чтение и использование файла SHALL
+оставаться в обычных границах инструментов и разрешений агента; текст flow
+не предоставляет полномочий на выполнение файла или внешнее действие.
+
+Путь из одного лишь `user_input` SHALL оставаться пользовательским входом,
+а не становиться ссылкой на пакетный ресурс. Для плоских flow действующая
+интерпретация относительных путей от проекта/рабочего каталога сохраняется.
+Безопасное разрешение и identity самого `FLOW.md` остаются отдельными от
+обычного последующего чтения соседей.
 
 #### Scenario: Packaged flow ссылается на sibling script
-- **WHEN** `<name>/FLOW.md` явно ссылается на `scripts/check.py`
-- **THEN** USW читает точные immutable bytes через удерживаемую package boundary
-  и применяет обычные permission boundaries до их интерпретации или выполнения
+- **WHEN** `<name>/FLOW.md` называет `scripts/check.py` и процессу нужен его текст
+- **THEN** исполнитель читает файл обычным инструментом относительно `flow_directory`; само чтение не запускает скрипт
 
 #### Scenario: Resource выходит за пределы своего package
-- **WHEN** packaged Markdown ссылается на `../other-flow/FLOW.md` как на package
-  resource
-- **THEN** USW отклоняет path resource до чтения или выполнения
+- **WHEN** Markdown называет `../other-flow/FLOW.md`
+- **THEN** USW не вводит специальный отказ `invalid_flow_resource`; доступ решается обычным инструментом и его разрешениями
 
 #### Scenario: User input называет path внутри package
-- **WHEN** `scripts/check.py` называет только user input, а не packaged
-  `flow_markdown`
-- **THEN** USW сохраняет его как user input и не считает package dependency
+- **WHEN** `scripts/check.py` называет только user input, а не packaged `flow_markdown`
+- **THEN** USW сохраняет его как user input и не перепривязывает автоматически к `flow_directory`
 
 #### Scenario: Flat относительная ссылка остаётся совместимой
-- **WHEN** совместимый flat flow содержит относительную ссылку на workspace,
-  использовавшуюся до поддержки packaged flow
-- **THEN** USW сохраняет её прежнюю интерпретацию относительно project/workspace
-  вместо перепривязки к `flow_directory`
+- **WHEN** совместимый flat flow содержит относительную ссылку на workspace, использовавшуюся до поддержки packaged flow
+- **THEN** USW сохраняет её прежнюю интерпретацию относительно project/workspace вместо перепривязки к `flow_directory`
+
+#### Scenario: Соседний файл меняется после выбора entrypoint
+- **WHEN** файл рядом с `FLOW.md` изменён до обычного чтения агентом
+- **THEN** агент получает содержимое на момент своего чтения; identity ранее выбранного entrypoint остаётся прежней и не обещает snapshot соседнего файла

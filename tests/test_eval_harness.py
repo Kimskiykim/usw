@@ -77,6 +77,27 @@ def stub_runner(directory: Path, payload: str) -> str:
 
 
 class ScenarioLoadingTests(unittest.TestCase):
+    def test_activation_scenario_does_not_assume_user_invocation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            path = builder.write("activation", builder.document(explicit_invocation=False))
+            scenario = HARNESS.load_scenario(path)
+            prompt = HARNESS.build_prompt(scenario)
+            self.assertFalse(scenario.explicit_invocation)
+            self.assertNotIn("as if a user had invoked", prompt)
+            self.assertIn("===== ACTIVATION CONTEXT =====", prompt)
+
+    def test_explicit_invocation_defaults_to_true_and_rejects_non_boolean(self):
+        with tempfile.TemporaryDirectory() as directory:
+            builder = ScenarioBuilder(directory)
+            normal = HARNESS.load_scenario(builder.write("normal", builder.document()))
+            self.assertTrue(normal.explicit_invocation)
+            self.assertIn("as if a user had invoked", HARNESS.build_prompt(normal))
+            for value in ("false", 0, None):
+                path = builder.write(str(value), builder.document(explicit_invocation=value))
+                with self.assertRaisesRegex(HARNESS.ScenarioError, "must be a boolean"):
+                    HARNESS.load_scenario(path)
+
     def test_prompt_is_built_from_scenario_bytes_only(self):
         with tempfile.TemporaryDirectory() as directory:
             builder = ScenarioBuilder(directory)
@@ -246,6 +267,18 @@ class ScenarioLoadingTests(unittest.TestCase):
         for directory in HARNESS.discover_scenarios():
             with self.subTest(scenario=directory.name):
                 HARNESS.load_scenario(directory)
+
+    def test_frontmatter_behavior_scenarios_are_checked_in(self):
+        names = {path.name for path in HARNESS.discover_scenarios()}
+        for name in ("create-flow-frontmatter", "create-flow-frontmatter-structured",
+                     "create-optional-frontmatter", "create-no-optional-frontmatter",
+                     "create-invalid-metadata-tags", "create-invalid-metadata-version",
+                     "create-preserve-frontmatter", "create-legacy-body-edit",
+                     "create-frontmatter-preview", "create-exact-legacy-conflict",
+                     "find-by-description", "find-legacy-frontmatter", "find-ambiguous-descriptions",
+                     "assess-frontmatter-notice", "assess-frontmatter-legacy",
+                     "run-frontmatter-name", "run-frontmatter-version", "run-frontmatter-compatibility"):
+            self.assertIn(name, names)
 
     def test_inventory_behavior_scenarios_are_checked_in(self):
         names = {path.name for path in HARNESS.discover_scenarios()}

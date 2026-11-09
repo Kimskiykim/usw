@@ -1,3 +1,8 @@
+---
+name: weekly-report
+description: Готовить еженедельный отчёт по проекту.
+---
+
 # Flow: weekly-report
 
 Готовит еженедельный отчёт по проекту.

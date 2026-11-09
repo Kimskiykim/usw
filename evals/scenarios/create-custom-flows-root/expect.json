@@ -12,7 +12,9 @@
       "automation/flows/collect-release-evidence/FLOW.md": {
         "required_markers": [
           "изменен",
-          "тест"
+          "тест",
+          "name: collect-release-evidence",
+          "description:"
         ]
       },
       "automation/flows/collect-release-evidence.md": {
