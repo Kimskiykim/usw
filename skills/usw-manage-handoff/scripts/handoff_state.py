@@ -1450,7 +1450,7 @@ def main(argv: list[str] | None = None) -> int:
     outcome.add_argument("project", type=Path)
     outcome.add_argument("status", choices=sorted(OUTCOME_STATUSES))
     outcome.add_argument("--operation", required=True)
-    outcome.add_argument("--done", required=True)
+    outcome.add_argument("--done", action="append", required=True)
     outcome.add_argument("--position", required=True)
     outcome.add_argument("--next-action", required=True)
     outcome.add_argument("--blocker", required=True)
@@ -1555,11 +1555,13 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
         else:
+            if any(not fact.strip() for fact in args.done):
+                raise HandoffError("invalid_outcome", "outcome fields must be non-empty")
             path = outcome_handoff(
                 args.project,
                 args.status,
                 operation=args.operation,
-                done=args.done,
+                done="\n\n".join(args.done),
                 position=args.position,
                 next_action=args.next_action,
                 blocker=args.blocker,
