@@ -278,6 +278,20 @@ class PackageLayoutTests(unittest.TestCase):
 
         self.assertIn("references/recipes.md", skill)
 
+    def test_external_event_wait_distinguishes_handoff_and_manual_reentry(self):
+        recipe = (
+            ROOT / "skills/usw-create-flow/references/recipes/external-event-wait.md"
+        ).read_text(encoding="utf-8")
+        for token in ("`blocked`", "`handoff: false`", "`handoff: true`", "`version-2`"):
+            with self.subTest(token=token):
+                self.assertIn(token, recipe)
+        self.assertNotIn("resume этой operation продолжит", recipe)
+        example = recipe.split("```markdown\n", 1)[1].split("\n```", 1)[0]
+        self.assertIn("`handoff: false`", example)
+        self.assertIn("`handoff: true`", example)
+        self.assertLess(example.index("`handoff: false`"), example.index("вернуть `blocked`"))
+        self.assertLess(example.index("`handoff: true`"), example.index("вернуть `blocked`"))
+
     def test_pattern_catalog_is_complete_and_locally_navigable(self):
         import re
 

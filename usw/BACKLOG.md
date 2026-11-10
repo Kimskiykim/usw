@@ -65,7 +65,7 @@
 | [AUD-I10](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I10.md) | Критерии результата и ограничение повторных исправлений |
 | [AUD-I11](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I11.md) | Неполные результаты параллельных проверок |
 | [AUD-I12](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I12.md) | Выбор альтернатив и обработка зависимых элементов |
-| [AUD-I13](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I13.md) | Разрешения на внешние действия и ожидание событий |
+| [AUD-I13](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I13.md) | Разрешения на внешние действия и ожидание событий; [external-event-wait](../openspec/changes/archive/2026-11-10-condition-external-event-resume/proposal.md) уточнён, остальные подпункты открыты |
 | [AUD-I14](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I14.md) | Каталог рецептов и повторное использование возможностей |
 | [AUD-I17](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I17.md) | Область чтения, origin продолжения и структура готовых flow |
 | [AUD-I18](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I18.md) | Самодостаточные примеры flow |
