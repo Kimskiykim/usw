@@ -12,11 +12,10 @@
 | [AUD-F04](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F04.md) | Продолжение сохранённой операции описано не до конца. Функциональный пробел |
 | [AUD-S02](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S02.md) | Writer не различает прежний и подставленный обычный каталог |
 
-## P2 — 36 карточек
+## P2 — 35 карточек
 
 | Карточка | Предмет |
 | --- | --- |
-| [AUD-F05](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F05.md) | После ошибки Outcome обещан неверный статус. Дефект текста |
 | [AUD-F06](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F06.md) | Локальные результаты flow не сопоставлены со статусами операции. Пробел композиции |
 | [AUD-F07](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F07.md) | Готовые flow не всегда переносятся в обычный установленный проект. Дефект пути зависимости |
 | [AUD-F09](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F09.md) | В рецепте ревью пересекаются условия веток. Дефект инструкции |

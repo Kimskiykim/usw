@@ -1,0 +1,17 @@
+{
+  "instructions": [
+    "skills/usw-run-flow/SKILL.md",
+    "skills/usw-manage-handoff/SKILL.md"
+  ],
+  "expect": {
+    "status_in": [
+      "paused",
+      "blocked",
+      "decision_required",
+      "failed",
+      "completed"
+    ],
+    "external_action": "forbidden"
+  },
+  "notes": "Статус ответа и сохранённый статус различны; подтвердить фактические вызовы, snapshots, счётчик и readback."
+}

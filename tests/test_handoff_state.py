@@ -1,4 +1,6 @@
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -1209,6 +1211,69 @@ class HandoffStateTests(unittest.TestCase):
                             next_action="No.",
                             blocker="None.",
                         )
+
+    def test_failed_outcome_exact_show_preserves_actual_state_and_neighbor(self):
+        for failure in ("before-document", "after-document", "unreadable"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                project, router = self.initialize(directory)
+                project, router = project.resolve(), router.resolve()
+                path, operation = HANDOFF.begin_handoff(
+                    project, "review", "shared", self.identity, "first"
+                )
+                HANDOFF.outcome_handoff(
+                    project, "paused", operation=operation, done="Old fact.",
+                    position="Old position.", next_action="Continue.", blocker="None.",
+                )
+                neighbor_path, neighbor = HANDOFF.begin_handoff(
+                    project, "review", "shared", self.identity, "second"
+                )
+                for op, content in ((operation, path.read_bytes()), (neighbor, neighbor_path.read_bytes())):
+                    (project / ".usw/handoffs" / HANDOFF.operation_candidate_filename(op)).write_bytes(content)
+                counter = project / "effect-counter.txt"
+                counter.write_text("1\n")
+
+                def snapshot():
+                    return {p.relative_to(project): p.read_bytes() for p in (project / ".usw").rglob("*")
+                            if p.is_file() and p.name != ".lock"}
+
+                before = snapshot()
+                target = "_write_operation_at" if failure == "before-document" else "_write_readable_router_locked"
+                with mock.patch.object(HANDOFF, target, side_effect=OSError("injected write failure")) as writer:
+                    with self.assertRaisesRegex(OSError, "injected write failure"):
+                        HANDOFF.outcome_handoff(
+                            project, "completed", operation=operation, done="New fact.",
+                            position="Finished.", next_action="Review.", blocker="None.",
+                        )
+                    after_outcome = snapshot()
+                    if failure == "before-document":
+                        self.assertEqual(before, after_outcome)
+                    else:
+                        self.assertNotEqual(before[path.relative_to(project)], after_outcome[path.relative_to(project)])
+                        self.assertEqual(before[router.relative_to(project)], after_outcome[router.relative_to(project)])
+                    for p in (neighbor_path, project / ".usw/handoffs" / HANDOFF.operation_candidate_filename(operation),
+                              project / ".usw/handoffs" / HANDOFF.operation_candidate_filename(neighbor)):
+                        self.assertEqual(before[p.relative_to(project)], after_outcome[p.relative_to(project)])
+                    output, error = io.StringIO(), io.StringIO()
+                    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
+                        if failure == "unreadable":
+                            with mock.patch.object(HANDOFF, "_read_router_locked", side_effect=OSError("injected read failure")):
+                                result = HANDOFF.main(["show", str(project), operation])
+                        else:
+                            result = HANDOFF.main(["show", str(project), operation])
+                    self.assertEqual(after_outcome, snapshot())
+                    self.assertEqual("1\n", counter.read_text())
+                    self.assertEqual(1, writer.call_count, "exact show must not write router or document")
+                    if failure == "unreadable":
+                        self.assertEqual(2, result)
+                        self.assertEqual("handoff_io_error", json.loads(error.getvalue())["error"])
+                        self.assertEqual("", output.getvalue())
+                    else:
+                        self.assertEqual(0, result, error.getvalue())
+                        observed = json.loads(output.getvalue())
+                        self.assertEqual("paused" if failure == "before-document" else "completed", observed["status"])
+                        self.assertIn("Old fact." if failure == "before-document" else "New fact.", observed["content"])
+                        if failure == "before-document":
+                            self.assertNotIn("New fact.", observed["content"])
 
     def test_concurrent_outcomes_update_only_their_operations(self):
         with tempfile.TemporaryDirectory() as directory:

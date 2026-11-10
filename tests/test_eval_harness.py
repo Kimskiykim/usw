@@ -268,6 +268,13 @@ class ScenarioLoadingTests(unittest.TestCase):
             with self.subTest(scenario=directory.name):
                 HARNESS.load_scenario(directory)
 
+    def test_f05_reply_status_is_separate_from_persisted_status(self):
+        scenario = HARNESS.load_scenario(ROOT / "evals/scenarios/outcome-error-after-document")
+        for status in ("completed", "blocked"):
+            reply = f"Сохранён status completed.\n{HARNESS.RESULT_PREFIX} status={status}; external_action=no"
+            with self.subTest(status=status):
+                self.assertTrue(HARNESS.evaluate(reply, scenario).passed)
+
     def test_frontmatter_behavior_scenarios_are_checked_in(self):
         names = {path.name for path in HARNESS.discover_scenarios()}
         for name in ("create-flow-frontmatter", "create-flow-frontmatter-structured",

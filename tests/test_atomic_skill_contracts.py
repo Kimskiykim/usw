@@ -140,6 +140,13 @@ class AtomicSkillContractTests(unittest.TestCase):
             " ".join(run.split()),
         )
 
+    def test_outcome_error_uses_exact_show_not_assumed_status(self):
+        for name in ("usw-run-flow", "usw-manage-handoff"):
+            text = " ".join((ROOT / "skills" / name / "SKILL.md").read_text().split())
+            with self.subTest(skill=name):
+                self.assertIn("show <project> <operation-id>", text)
+                self.assertNotIn("ошибка Outcome оставляет `in_progress`", text)
+
     def test_create_flow_keeps_rejected_blocks_out(self):
         """Deliberate phrase assertion: semantic absence has no honest marker."""
 
