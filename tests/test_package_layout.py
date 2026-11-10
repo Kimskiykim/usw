@@ -95,6 +95,8 @@ class PackageLayoutTests(unittest.TestCase):
         for fragment in (
             "`artifacts.provider`",
             "`flow-scenario-*.md`",
+            "`invalid_config`",
+            "вложенную структуру под scalar",
         ):
             self.assertIn(fragment, fallback)
         for obsolete in (

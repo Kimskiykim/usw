@@ -1,7 +1,9 @@
 import importlib.util
 import io
+import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -23,7 +25,105 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(INIT_USW)
 
 
+def t01_tree(project):
+    return [(str(p.relative_to(project)), "dir" if p.is_dir() else "file", None if p.is_dir() else p.read_bytes())
+            for p in sorted(project.rglob("*"))]
+
+
 class InitializeUswTests(unittest.TestCase):
+    def test_rejects_nested_mapping_below_scalar_before_initialization(self):
+        for body in ("notes: |\n  handoff: false\n", "notes: ordinary text\n  handoff: false\n"):
+            with self.subTest(body=body), tempfile.TemporaryDirectory(dir="/tmp", prefix="usw-t01-") as raw:
+                project = Path(raw)
+                (project / "usw.yaml").write_text("schema_version: 1\n" + body, encoding="utf-8")
+                before = (project / "usw.yaml").read_bytes()
+                with self.assertRaises(INIT_USW.ConfigError) as error:
+                    INIT_USW.load_config(project)
+                self.assertEqual("invalid_config", error.exception.code)
+                self.assertEqual(before, (project / "usw.yaml").read_bytes())
+                self.assertEqual(["usw.yaml"], sorted(p.name for p in project.iterdir()))
+
+    def test_t01_invalid_matrix_preserves_full_initializer_tree(self):
+        cases = ("notes: |\n  handoff: false\n", "notes: >\n  flows:\n    root: embedded-text\n",
+                 "notes: |- # comment\n  handoff: false\n", "notes: >+\n  handoff: false\n",
+                 "notes: |2\n  handoff: false\n", "notes: ordinary text\n  handoff: false\n",
+                 "notes: ordinary text\n  flows:\n    root: embedded-text\n")
+        for initialized in (False, True):
+            for body in cases:
+                with self.subTest(initialized=initialized, body=body), tempfile.TemporaryDirectory(dir="/tmp", prefix="usw-t01-") as raw:
+                    project = Path(raw)
+                    if initialized:
+                        INIT_USW.initialize_usw(project)
+                    (project / "sentinel").write_bytes(b"preserve\x00bytes")
+                    (project / "usw.yaml").write_text("schema_version: 1\n" + body, encoding="utf-8")
+                    before = t01_tree(project)
+                    with self.assertRaises(INIT_USW.ConfigError) as error:
+                        INIT_USW.load_config(project)
+                    self.assertEqual("invalid_config", error.exception.code)
+                    result = subprocess.run([sys.executable, "-B", str(SCRIPT_PATH), str(project)], capture_output=True, text=True)
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn("invalid_config", result.stderr)
+                    self.assertEqual(before, t01_tree(project))
+
+    def test_t01_valid_unknown_values_and_mapping_keep_effective_configuration(self):
+        nested = "notes:\n  handoff: false\n  flows:\n    root: embedded-text\n"
+        cases = (("notes: ordinary text\n", True, "usw/flows"),
+                 (nested, True, "usw/flows"),
+                 (nested + "# sibling\n\nhandoff: false\n", False, "usw/flows"),
+                 (nested + "artifacts:\n  root: custom/artifacts\nflows:\n  root: custom/flows\nreviews:\n  root: custom/reviews\n", True, "custom/flows"),
+                 ('notes: "|" # quoted value\n', True, "usw/flows"),
+                 ("notes: '>+'\nnext: ordinary\n", True, "usw/flows"))
+        for body, handoff, flow_root in cases:
+            with self.subTest(body=body), tempfile.TemporaryDirectory(dir="/tmp", prefix="usw-t01-") as raw:
+                project = Path(raw)
+                content = "schema_version: 1\n" + body
+                (project / "usw.yaml").write_text(content, encoding="utf-8")
+                config = INIT_USW.load_config(project)
+                self.assertEqual((handoff, flow_root, content), (config.handoff, config.flow_root, config.raw_content))
+                with mock.patch.object(INIT_USW, "_existing_path_kind", wraps=INIT_USW._existing_path_kind) as checked, \
+                     mock.patch.object(INIT_USW, "create_file", wraps=INIT_USW.create_file) as created:
+                    INIT_USW.initialize_usw(project)
+                if not handoff:
+                    for call in (*checked.call_args_list, *created.call_args_list):
+                        self.assertNotIn("HANDOFF.md", str(call.args))
+                        self.assertNotIn("handoffs", str(call.args))
+                examples = project / flow_root / "examples"
+                self.assertEqual(set(INIT_USW.FLOW_EXAMPLE_PATHS) | {INIT_USW.FLOW_EXAMPLE_README}, {p.name for p in examples.iterdir()})
+                self.assertEqual(handoff, (project / ".usw/HANDOFF.md").exists())
+                self.assertFalse((project / "embedded-text").exists())
+                before = t01_tree(project)
+                INIT_USW.initialize_usw(project)
+                self.assertEqual(before, t01_tree(project))
+
+    def test_t01_shared_authoring_and_handoff_use_config_and_resolve_uses_supplied_root(self):
+        runner = SCRIPT_PATH.parents[2] / "usw-run-flow/scripts/run_flow.py"
+        handoff = SCRIPT_PATH.parents[2] / "usw-manage-handoff/scripts/handoff_state.py"
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix="usw-t01-") as raw:
+            project = Path(raw).resolve()
+            (project / "usw.yaml").write_text("schema_version: 1\nflows:\n  root: custom/flows\n", encoding="utf-8")
+            INIT_USW.initialize_usw(project)
+            flow = project / "custom/flows/review.md"
+            flow.write_text("# review\n", encoding="utf-8")
+            commands = ([sys.executable, "-B", str(runner), "prepare-write", str(project), "review", "--origin", "shared"],
+                        [sys.executable, "-B", str(handoff), "show", str(project)])
+            for body in ("notes: |\n  handoff: false\n", "notes: >\n  flows:\n    root: embedded-text\n"):
+                (project / "usw.yaml").write_text("schema_version: 1\n" + body, encoding="utf-8")
+                before = t01_tree(project)
+                for command in commands:
+                    result = subprocess.run(command, capture_output=True, text=True)
+                    self.assertEqual(2, result.returncode)
+                    self.assertIn("invalid_config", result.stderr)
+                    self.assertEqual(before, t01_tree(project))
+            (project / "usw.yaml").write_text("schema_version: 1\nnotes:\n  handoff: false\nflows:\n  root: custom/flows\n", encoding="utf-8")
+            before = t01_tree(project)
+            author = subprocess.run(commands[0], capture_output=True, text=True, check=True)
+            self.assertEqual(str(flow), json.loads(author.stdout)["path"])
+            subprocess.run(commands[1], capture_output=True, text=True, check=True)
+            resolved = subprocess.run([sys.executable, "-B", str(runner), "resolve", str(project), str(flow.parent), "review", "T01 input", "--origin", "shared"], capture_output=True, text=True, check=True)
+            result = json.loads(resolved.stdout)
+            self.assertEqual((str(flow), "shared", "T01 input"), (result["path"], result["origin"], result["input"]))
+            self.assertEqual(before, t01_tree(project))
+
     def test_inline_comments_and_normalized_roots_drive_initialization(self):
         for value, expected in (
             ("x # comment", "x"),

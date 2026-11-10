@@ -12,7 +12,7 @@
 | [AUD-F04](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F04.md) | Продолжение сохранённой операции описано не до конца. Функциональный пробел |
 | [AUD-S02](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S02.md) | Writer не различает прежний и подставленный обычный каталог |
 
-## P2 — 35 карточек
+## P2 — 34 карточки
 
 | Карточка | Предмет |
 | --- | --- |
@@ -40,7 +40,6 @@
 | [AUD-S12](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S12.md) | Успешный upgrade оставляет снятые с поставки skills |
 | [AUD-S13](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S13.md) | Явно пустой `--runner` не перекрывает переменную окружения |
 | [AUD-S14](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S14.md) | Transcript теряет исходный вывод упавшего runner |
-| [AUD-T01](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-T01.md) | Текст неизвестного YAML-поля становится управляющими настройками |
 | [AUD-T02](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-T02.md) | Кавычки вокруг ключа отключают его смысл и проверку дубликатов |
 | [AUD-T03](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-T03.md) | Quoted scalar записывается в каталог с другим именем |
 | [AUD-T04](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-T04.md) | Валидатор относительных roots принимает Windows drive paths |

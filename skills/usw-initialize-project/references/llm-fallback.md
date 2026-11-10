@@ -22,6 +22,8 @@
    - принимать optional top-level `handoff` только как unquoted boolean
      `true` или `false`; отсутствие поля означает `true`;
    - принимать безопасные custom artifact, flow и review roots;
+   - до записи отклонять как `invalid_config` некавычечный block scalar
+     (`|`, `>` и модификаторы) и вложенную структуру под scalar;
    - игнорировать legacy `refinement` и неизвестные поля, не используя их для
      создания или миграции state.
 4. Проверить artifact, flow и review roots вместе. Они должны быть

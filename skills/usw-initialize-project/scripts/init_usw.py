@@ -96,6 +96,7 @@ def _parse_yaml_mapping(content: str) -> dict[str, object]:
     """Parse the small mapping-only YAML subset used by usw.yaml v1."""
     root: dict[str, object] = {}
     stack: list[tuple[int, dict[str, object]]] = [(-1, root)]
+    scalar_indent: int | None = None
     for line_number, source_line in enumerate(content.splitlines(), start=1):
         stripped = source_line.strip()
         if not stripped or stripped.startswith("#"):
@@ -103,6 +104,9 @@ def _parse_yaml_mapping(content: str) -> dict[str, object]:
         if "\t" in source_line[: len(source_line) - len(source_line.lstrip())]:
             raise ConfigError("invalid_config", f"tabs are not allowed at line {line_number}")
         indent = len(source_line) - len(source_line.lstrip(" "))
+        if scalar_indent is not None and indent > scalar_indent:
+            raise ConfigError("invalid_config", f"nested value below scalar at line {line_number}")
+        scalar_indent = None
         if ":" not in stripped:
             raise ConfigError("invalid_config", f"expected mapping at line {line_number}")
         key, raw_value = stripped.split(":", 1)
@@ -121,6 +125,8 @@ def _parse_yaml_mapping(content: str) -> dict[str, object]:
             stack.append((indent, child))
             continue
         quoted = value.startswith(("'", '"')) and value.endswith(value[0])
+        if not quoted and value.startswith(("|", ">")):
+            raise ConfigError("invalid_config", f"block scalar is not supported at line {line_number}")
         if quoted:
             value = value[1:-1]
         if quoted:
@@ -132,6 +138,7 @@ def _parse_yaml_mapping(content: str) -> dict[str, object]:
         else:
             scalar = int(value) if value.isdecimal() else value
         parent[key] = scalar
+        scalar_indent = indent
     return root
 
 
