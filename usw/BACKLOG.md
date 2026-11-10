@@ -12,7 +12,7 @@
 | [AUD-F04](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F04.md) | Продолжение сохранённой операции описано не до конца. Функциональный пробел |
 | [AUD-S02](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S02.md) | Writer не различает прежний и подставленный обычный каталог |
 
-## P2 — 34 карточки
+## P2 — 33 карточки
 
 | Карточка | Предмет |
 | --- | --- |
@@ -46,7 +46,6 @@
 | [AUD-T05](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-T05.md) | Unicode-разделители строк ломают сохранение exact input |
 | [AUD-T06](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-T06.md) | Принятая парсером дата позволяет Show записать невалидный router |
 | [AUD-T07](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-T07.md) | Custom discovery может не предоставить данные для обязательного voting |
-| [AUD-T08](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-T08.md) | Две действующие спецификации назначают разные места recovery state |
 | [AUD-I15](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I15.md) | Проверка зависимостей и исходы dev-test |
 | [AUD-I25](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I25.md) | Проверка macOS и Windows в CI |
 | [AUD-I26](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-I26.md) | Область проверки реализации в конвейере ролей |

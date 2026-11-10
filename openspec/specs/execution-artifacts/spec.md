@@ -11,9 +11,11 @@ USW SHALL хранить завершение change-задач только в 
 findings Testing — в `testing-evidence.md`, а решения human review и общие
 переходы между ответственностями — в неизменяемых review receipts.
 
-`.usw/HANDOFF.md` SHALL быть только developer-local текущей контрольной точкой
-и ограниченным журналом активной сессии. Task-level `plan.md` и `handoff.md`
-MUST NOT быть обязательными или каноническими артефактами workflow.
+Состояние восстановления текстовой операции SHALL следовать `live-operation-state`:
+`.usw/HANDOFF.md` служит developer-local router, а текущий контекст операции
+хранится в её exact operation document `.usw/handoffs/<operation-hex>.md`.
+Task-level `plan.md` и `handoff.md` MUST NOT быть обязательными или
+каноническими артефактами workflow.
 
 #### Scenario: Development выполняет проверку
 - **WHEN** обязательная local verification действительно выполнена
@@ -22,8 +24,9 @@ MUST NOT быть обязательными или каноническими �
 
 #### Scenario: Работа приостанавливается
 - **WHEN** Development прерывает активную задачу до её завершения
-- **THEN** текущая операция и одно следующее действие записываются в
-  `.usw/HANDOFF.md`, но shared task artifacts не получают выдуманный результат
+- **THEN** текущая position и одно следующее действие записываются в exact
+  operation document по `live-operation-state`, HANDOFF остаётся router,
+  а shared task artifacts не получают выдуманный результат
 
 ### Requirement: Granular tasks имеют устойчивые контракты и краткую историю
 Каждая исполнимая change-задача MUST иметь уникальный внутри change стабильный
@@ -60,14 +63,15 @@ call.
   receipt и новый source, не изменяя identity исходной версии контракта
 
 ### Requirement: Generic handoff не требует artifact roles
-`.usw/HANDOFF.md` MUST оставаться developer-local current recovery state и MUST
-NOT требовать typed subject, role, write authority, shared evidence или review
-receipts. Он MUST NOT считаться durable shared task history.
+Generic handoff — router и operation documents по `live-operation-state` —
+MUST оставаться developer-local и MUST NOT требовать typed subject, role,
+write authority, shared evidence или review receipts. Он MUST NOT считаться
+durable shared task history.
 
 #### Scenario: Flow не использует OpenSpec artifacts
 - **WHEN** text flow приостанавливается
-- **THEN** handoff сохраняет достаточный narrative recovery context без создания
-  shared artifacts
+- **THEN** operation document сохраняет достаточный narrative recovery context
+  по `live-operation-state` без создания shared artifacts
 
 ### Requirement: Development и Testing ведут раздельное evidence
 Development MUST быть единственным writer файла `development-evidence.md`, а
@@ -171,8 +175,8 @@ receipts MUST сохраняться. Независимый новый scope MU
   предлагается пользователю
 
 ### Requirement: Replanning сохраняет факты без отдельного plan artifact
-Replanning MAY заменять неподтверждённые или pending операции текущей сессии в
-`.usw/HANDOFF.md`, но MUST сохранять подтверждённые факты, Milestone log,
+Replanning MAY заменять неподтверждённые или pending действия в exact operation
+document по `live-operation-state`, но MUST сохранять подтверждённые факты, Milestone log,
 evidence и receipts. Изменение stable task contract MUST создавать новую
 contract revision и инвалидировать всё Development и Testing evidence задачи.
 Изменение только порядка локальных операций MUST NOT менять contract revision
@@ -180,9 +184,9 @@ contract revision и инвалидировать всё Development и Testing 
 
 #### Scenario: Оставшаяся работа изменилась после частичного выполнения
 - **WHEN** после завершения части работы нужен другой порядок дальнейших действий
-- **THEN** текущие локальные операции обновляются, подтверждённые факты
-  сохраняются, а в task Milestone log добавляется запись только при новой
-  попытке или значимом переходе
+- **THEN** оставшиеся локальные действия обновляются в exact operation document,
+  HANDOFF остаётся router, подтверждённые факты сохраняются, а в task Milestone
+  log добавляется запись только при новой попытке или значимом переходе
 
 #### Scenario: Definition of done изменился
 - **WHEN** согласованное изменение затрагивает стабильный контракт задачи
