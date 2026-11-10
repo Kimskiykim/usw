@@ -11,6 +11,8 @@
 ## Scope
 
 `install.sh`, `tests/test_install.py`, раздел обновления `README.md`.
+`usw.yaml` — project prerequisite `artifacts.root: openspec/changes` по design §5;
+прочие явные roots, существующие материалы и defaults поставки сохраняются.
 Preflight источников/назначений, подготовленная копия, переключение и rollback,
 leaf symlink, сообщения о частичном результате. Tests и документация входят
 в ту же coding task, чтобы итоговая source identity была общей. Stable-token
@@ -40,6 +42,9 @@ leaf symlink, сообщения о частичном результате. Tes
 ## Definition of done
 
 Все сценарии delta покрыты матрицей design и детерминированными tests.
+Постоянные tests сравнивают полные рекурсивные paths/types/bytes/link-target
+прежнего target, retained backup и нового дерева. Proof source compatibility
+из design §5 выполнен; фактические config/manifest/exclusions общие для ролей.
 Сначала записан неуспех регрессии на исходном installer; затем все checks
 ниже успешны на окончательной редакции. Успех установки/force/legacy из четырёх
 прежних tests сохранён. Bytecode не попадает в установленную копию. README
@@ -64,10 +69,14 @@ Development evidence содержит command, result, timestamp, contract revis
    Сообщённые оставшиеся пути сверить с диском, обязательный полный backup сохранён.
    stdout процесса не заменяет filesystem assertions. При новом source
    всё прежнее v1 evidence stale; выполнить обязательные checks заново.
+5. Проверить в fixture инвариантность digest при checkbox/Milestone/evidence
+   и его изменение при installer/main spec. После actual config/source/contract
+   change повторить checks 2–3; прежние raw logs и invalid entries не переписывать.
+   Поздний sync/main spec или правка включённого backlog требует нового manifest/checks.
 
 ## Contract revision
 
-- `s10-c2`; стабильная часть не включает Milestone log.
+- `s10-c3`; стабильная часть не включает Milestone log.
 
 ## Milestone log
 
@@ -75,3 +84,10 @@ Development evidence содержит command, result, timestamp, contract revis
 |---|---|---|---|---|---|
 | 1 | planning создан | `s10-c1` | source реализации ещё не сформирован | реализация не начата | `../../proposal.md` |
 | 1 | уточнение planning после critic | `s10-c2` | source реализации ещё не сформирован | реализация не начата; прежняя history сохранена | `../../design.md` |
+| 1 | development проверен, ожидание критика | `s10-c2` | `usw-source-v1:73242e2698005f5a25ca9504eb76a316c5f86b871860f9ce63bf3fc59b3905cc` | local checks пройдены; USW operation и task остаются открытыми | `development-evidence.md` |
+| 1 | исправление source attribution | `s10-c2` | прежний digest invalid для v1 | команды остаются фактами; entries не являются current pass | `development-evidence.md` — раздел исправления |
+| 2 | repair1: config prerequisite и полнота assertions | `s10-c3` | окончательный source ещё не сформирован | ожидаются отдельный apply и повторные checks | `../../design.md` §4–5 |
+| 2 | repair1 checks, ожидание критика | `s10-c3` | `usw-source-v1:59f9f0b0f89b8c8c7ee461d0adb00963bd6ceb536f4f7d318ac2666cac98c0ed` | local checks пройдены; задача открыта до завершения операции и review | `development-evidence.md` |
+| 2 | sync spec и история AUD-S10; ожидание независимой приёмки | `s10-c3` | `usw-source-v1:0e7680de35299206af642e8ea99d8f158bbb5ce9546bf8bc6169ce89eac1930d` | Development checks пройдены; предыдущие evidence stale; USW operation и task остаются открыты | `development-evidence.md` |
+| 2 | final source после решения AUD-S10 | `s10-c3` | `usw-source-v1:67d3b00e07be3aebb9beac40241d38efb77b4c9cf836f4adb9fb33ffaf5e2cc3` | Development checks пройдены; ожидание независимых Testing и review, задача открыта | `development-evidence.md` |
+| 2 | flow завершён после accepted review | `s10-c3` | `usw-source-v1:67d3b00e07be3aebb9beac40241d38efb77b4c9cf836f4adb9fb33ffaf5e2cc3` | Outcome completed/readback; coding task завершена, transition ожидается | `development-evidence.md` |

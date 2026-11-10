@@ -26,6 +26,9 @@ USW в текущей цели, а существующие четыре тес�
 раздельные source/target roots и завершающиеся системные команды.
 Тесты с изолированными каталогами и управляемыми ошибками, краткая документация,
 актуализация только AUD-S10 и его строки индекса после приёмки.
+Предпосылка проверяемого SDD-процесса в этом repo: явно настроить в `usw.yaml`
+`artifacts.root: openspec/changes`, сохранив прочие явные roots и старые файлы.
+Это допустимая project configuration, не изменение протокола source identity.
 
 ## Non-goals
 
@@ -52,6 +55,7 @@ shell installer, исправление AUD-S11 (совпадение source/tar
 ## Impact
 
 `install.sh`, `tests/test_install.py`, обзор обновления в `README.md`;
+`usw.yaml` — только указанная project process prerequisite, без смены defaults.
 новая основная spec появится при sync. После независимой приёмки — история
 `usw/backlog/AUD-S10.md` и соответствующая строка `usw/BACKLOG.md`.
 Новых зависимостей и runtime нет. Реальная установка — отдельный шаг

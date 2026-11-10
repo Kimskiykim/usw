@@ -1,6 +1,6 @@
 schema_version: 1
 artifacts:
-  root: usw
+  root: openspec/changes
 refinement:
   root: usw/refinements
 flows:

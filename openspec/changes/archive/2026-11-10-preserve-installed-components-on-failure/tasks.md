@@ -2,7 +2,12 @@
 
 ## 1. Сохранность установленного компонента
 
-- [ ] 1.1 [Защитить обновление от ошибки подготовки и переключения](tasks/1.1-preserve-component/task.md). DoD: контракт task и все сценарии delta выполнены в `install.sh`, отрицательные тесты добавлены в `tests/test_install.py`, README ссылается на новую spec без обещания общей транзакции. Proof: сначала red на исходном installer, затем green адресных и полного unittest, `sh -n install.sh`, strict validate и `git diff --check`; фактические результаты с revision/source записаны Development. Обновить stable-token проверки путей/имён компонентов в `tests/test_install.py` вместе с fixture assertions, проверить anchors существующих package-тестов; новых phrase assertions не добавлять. `SKILL.md` не меняется, поэтому behavior evals для этой правки неприменимы.
+Repair1 по `s10-c3`: настроить project `usw.yaml` по design §5 и усилить
+постоянные full-tree assertions target/backup/new tree по §4. Defaults и
+installer capability delta не менять. До окончательного manifest учесть sync
+main spec и изменения включённых `usw/` материалов; повторить обязательные checks.
+
+- [x] 1.1 [Защитить обновление от ошибки подготовки и переключения](tasks/1.1-preserve-component/task.md). DoD: контракт task и все сценарии delta выполнены в `install.sh`, отрицательные тесты добавлены в `tests/test_install.py`, README ссылается на новую spec без обещания общей транзакции. Proof: сначала red на исходном installer, затем green адресных и полного unittest, `sh -n install.sh`, strict validate и `git diff --check`; фактические результаты с revision/source записаны Development. Обновить stable-token проверки путей/имён компонентов в `tests/test_install.py` вместе с fixture assertions, проверить anchors существующих package-тестов; новых phrase assertions не добавлять. `SKILL.md` не меняется, поэтому behavior evals для этой правки неприменимы.
 
 Порядок внутри 1.1: воспроизведение → preflight → staging/rollback →
 leaf symlink/ошибки очистки/диагностика → обзор документации → проверки source.

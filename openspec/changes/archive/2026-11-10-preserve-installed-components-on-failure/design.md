@@ -92,6 +92,34 @@ activation rename failure с успешным rollback; rollback failure с со
 backup; regular и dangling leaf symlink без force/с force; поздняя ошибка
 после раннего успеха. Успех и legacy removal защищают прежние четыре теста.
 Не привязывать assertions к целому предложению диагностики.
+Постоянные assertions должны сравнивать полный рекурсивный набор paths/types/
+bytes/link-target старого target, retained backup и активированного нового дерева;
+одного вложенного файла или наличия `SKILL.md` недостаточно.
+
+### 5. Project configuration и окончательная source identity
+
+В `usw.yaml` изменить только `artifacts.root: usw` на `openspec/changes`.
+`workspace-configuration` допускает эти непересекающиеся roots; defaults пакета
+не менять. Существующие flow/review/refinement paths и файлы не переносить.
+Legacy `refinement.root` сохранить; в v1 он не активен. Эффективные exclusions:
+`.git`, `.usw`, `openspec/changes`, `usw/flows`, `usw/reviews`; получить их из
+фактической конфигурации, не применять этот список до её изменения. Контракт
+задачи и review hashes отдельно защищают исключённые planning/execution records.
+
+После смены root Git-visible материалы прочего `usw/`, включая BACKLOG,
+карточки и старые refinements/changes/templates, входят в product manifest.
+Сначала завершить обоснованные правки этих файлов и sync main spec, затем
+зафиксировать общий конечный manifest/exclusions и повторить обязательные checks.
+Если включённый файл изменён позже, manifest/checks снова актуализировать.
+`openspec/specs` и код не исключать; proposal/delta внутри configured change root
+защищены отдельными artifact hashes. Не вводить произвольных file exceptions.
+
+Proof на изолированном fixture с фактической конфигурацией: checkbox, Milestone
+и role evidence внутри change не меняют digest; изменение installer или main
+spec меняет его. У всех participants одинаковые manifest и exclusions.
+Прежние invalid entries и Milestone оставить историей с явным исправлением;
+не переименовывать их в актуальные. После actual config/source/contract change
+Development выполняет обязательные checks заново на окончательной редакции.
 
 ## Risks / Trade-offs
 
@@ -109,7 +137,9 @@ backup; regular и dangling leaf symlink без force/с force; поздняя �
 1. Новый рабочий разработчик получает apply отдельным поручением; рекомендуемый
    маршрут — `.usw/state/autonomous-improvement/2026-11-10/planning-initial.md`.
    Этот operational flow не входит в product diff S10 и не заменяет OpenSpec apply.
-2. Сначала воспроизвести дефект тестом, затем править installer и документацию.
+2. Для repair1 выполнить prerequisite §5 и усилить постоянные full-tree assertions
+   из §4; прежние raw checks сохранить фактами. Для исходной реализации сначала
+   воспроизвести дефект тестом, затем править installer и документацию.
    После последней правки выполнить локальные checks; critics читают именно
    этот diff и evidence. До реальной установки все вызовы USW завершить с
    Outcome/readback, сохранить текущую редакцию и сценарий продолжения.
@@ -122,4 +152,5 @@ backup; regular и dangling leaf symlink без force/с force; поздняя �
    других changes. Аналитик дополняет историю только AUD-S10 фактами и
    границами, затем актуализирует его строку индекса. Постоянный контекст
    не меняется без нового обобщённого факта; правило installer живёт в spec,
-   README ссылается. Коммитер фиксирует принятый ограниченный diff.
+   README ссылается; sync делает эту ссылку действующей до финальной приёмки.
+   После sync/изменений включённого backlog применить §5. Коммитер фиксирует принятый diff.

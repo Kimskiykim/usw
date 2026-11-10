@@ -12,7 +12,7 @@
 | [AUD-F04](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-F04.md) | Продолжение сохранённой операции описано не до конца. Функциональный пробел |
 | [AUD-S02](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S02.md) | Writer не различает прежний и подставленный обычный каталог |
 
-## P2 — 37 карточек
+## P2 — 36 карточек
 
 | Карточка | Предмет |
 | --- | --- |
@@ -37,7 +37,6 @@
 | [AUD-S07](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S07.md) | Изменение `flows.root` во время staging обнаруживается после записи |
 | [AUD-S08](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S08.md) | CLI принимает буквальный input за управляющую опцию |
 | [AUD-S09](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S09.md) | Ошибка кодировки stdout скрывает уже состоявшуюся запись |
-| [AUD-S10](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S10.md) | Ошибка обновления оставляет компонент удалённым или установку частичной |
 | [AUD-S11](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S11.md) | Путь установки может совпасть с источником и уничтожить его |
 | [AUD-S12](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S12.md) | Успешный upgrade оставляет снятые с поставки skills |
 | [AUD-S13](/Users/leonidkim/Documents/projects/usw/usw/backlog/AUD-S13.md) | Явно пустой `--runner` не перекрывает переменную окружения |
